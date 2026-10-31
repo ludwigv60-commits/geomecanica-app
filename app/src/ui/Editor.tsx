@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ABREVS, ITEMS_VERIF, type Listas, type Reporte, type Verif } from '../model';
+import { ABREVS, ITEMS_VERIF, migrar, type Listas, type Reporte, type Verif } from '../model';
 import { AJUSTES_ORIENTACION, NOMBRE_ZONA, PARAMETROS, TIPOS, ZONAS, type ParamId, type Zona } from '../core/rmr';
 import { JA, JN, JR, JW, SRF, claseQ, type OpcionQ } from '../core/q';
 import { calcular } from '../calc';
 import { FotoIA } from './FotoIA';
 import { Medidor } from './Medidor';
 import { consejos } from '../ia/sugerencias';
+import { redactarCondicion } from '../ia/redaccion';
 import { entregar, nombreArchivo, MIME_PDF, MIME_XLSX } from '../export/compartir';
 
 
@@ -13,7 +14,7 @@ type Props = { inicial: Reporte; listas: Listas; historial: Reporte[]; onGuardar
 
 export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props) {
   const [midiendo, setMidiendo] = useState<number | null>(null);
-  const [r, setR] = useState<Reporte>(inicial);
+  const [r, setR] = useState<Reporte>(() => migrar(inicial));
   const [abierta, setAbierta] = useState<string | null>('cab');
   const [mismoEnZonas, setMismo] = useState(true);
   const [estado, setEstado] = useState('Guardado');
@@ -60,7 +61,13 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
   if (midiendo != null) return (
     <Medidor modo="pl" titulo={`Familia ${midiendo + 1}: dip / dip direction`} decl={listas.declinacion ?? -7} conv={listas.convergencia ?? 0}
       onCancelar={() => setMidiendo(null)}
-      onListo={l => { const i = midiendo; setMidiendo(null); set('familias', r.familias.map((x, j) => j === i ? { ...x, dip: Math.round(l.dip!), dipdir: Math.round(l.dd!) % 360 } : x)); }} />
+      onListo={l => {
+        const i = midiendo;
+        const fams = r.familias.map((x, j) => j === i ? { ...x, dip: Math.round(l.dip!), dipdir: Math.round(l.dd!) % 360 } : x);
+        set('familias', fams);
+        const sig = fams.findIndex((f, j) => j > i && (f.dip == null || f.dipdir == null));
+        setMidiendo(sig >= 0 ? sig : null); // la app pide medir la siguiente, en orden
+      }} />
   );
   return (
     <div className="pantalla">
@@ -158,12 +165,22 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
               </div>
             ))}
             {r.familias.length < 5 && <button className="btn mini" onClick={() => set('familias', [...r.familias, { abrev: 'SD', dip: null, dipdir: null }])}>+ Familia</button>}
-            <p className="tenue">🧭 Medir: apoye el dorso del celular sobre la cara de la familia y registre 3 s.</p>
+            {r.familias.some(f => f.dip == null || f.dipdir == null) && <button className="btn primario" onClick={() => setMidiendo(r.familias.findIndex(f => f.dip == null || f.dipdir == null))}>🧭 Medir familias pendientes, en orden</button>}
+            <details className="ayuda"><summary>¿Cómo medir Dip y Dip Direction?</summary>
+              <ol>
+                <li>Limpie la cara de la discontinuidad y apoye el <b>dorso</b> del celular bien plano sobre ella.</li>
+                <li>Espere "ESTABLE" y toque Registrar; no mueva el celular durante 3 s.</li>
+                <li>Dip = inclinación del plano (0–90°). Dip direction = hacia dónde baja el plano (0–360°), no el rumbo.</li>
+                <li>Aléjese al menos 1 m de pernos, malla, rieles y equipos; si sale "Interferencia magnética", repita en otro punto de la misma cara.</li>
+                <li>Si no alcanza la cara, mida una paralela accesible de la misma familia.</li>
+              </ol>
+            </details>
           </section>
         </Seccion>
 
         <Seccion titulo="Condición y verificación" resumen={r.condicion ? "lleno" : ""} abierta={abierta} setAbierta={setAbierta} id="cond">
-          <Campo t="Condición geomecánica"><textarea rows={4} value={r.condicion} onChange={e => set('condicion', e.target.value)} /></Campo>
+          <button className="btn" onClick={() => setR(p => ({ ...p, condicion: redactarCondicion(p, calcular(p)), sugeridos: [...new Set([...(p.sugeridos ?? []), 'condicion'])] }))}>✍️ Redactar con IA</button>
+          <Campo t="Condición geomecánica"><textarea className={sug('condicion')} rows={5} value={r.condicion} onChange={e => set('condicion', e.target.value)} /></Campo>
           <section className="tarjeta">
             <h3>Verificación de sostenimiento anterior</h3>
             {ITEMS_VERIF.map(it => (

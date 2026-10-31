@@ -65,3 +65,32 @@ describe('Propuestas desde el historial y consejos', () => {
     expect(avisos.some(a => a.includes('azimut'))).toBe(true);
   });
 });
+
+import { evaluar, mejorar } from './calidad';
+import { redactarCondicion } from './redaccion';
+describe('Calidad de foto y redacción', () => {
+  it('detecta foto oscura y foto sin contraste; acepta la buena', () => {
+    const { d, w, h } = sintetica();
+    expect(evaluar(d, w, h).apta).toBe(true);
+    const oscura = d.map((v, i) => (i % 4 === 3 ? 255 : v * 0.15));
+    const c = evaluar(oscura, w, h);
+    expect(c.apta).toBe(false); expect(c.motivos.join()).toMatch(/oscura/);
+    const plana = new Uint8ClampedArray(d.length).fill(128);
+    expect(evaluar(plana, w, h).motivos.join()).toMatch(/contraste/);
+    const mej = mejorar(oscura, w, h);
+    expect(evaluar(mej, w, h).brillo).toBeGreaterThan(c.brillo * 2);
+  });
+  it('redacta la condición con los datos del reporte', () => {
+    const r = nuevoReporte();
+    const pz = { ucs: 7, rqd: 8, espaciamiento: 5, persistencia: 2, abertura: 4, rugosidad: 3, relleno: 1, alteracion: 1, agua: 15 };
+    r.rmr = { HI: pz, CORONA: pz, HD: pz }; r.ajuste = { HI: -5, CORONA: -5, HD: -5 }; r.jv = 23;
+    r.litologia = { HI: 'Piroclasto', CORONA: 'Piroclasto', HD: 'Piroclasto' };
+    r.familias = [{ abrev: 'SD', dip: 50, dipdir: 170 }, { abrev: 'SD', dip: 85, dipdir: 230 }, { abrev: 'F', dip: 60, dipdir: 280 }];
+    const t = redactarCondicion(r, calcular(r));
+    expect(t).toMatch(/^Piroclasto, resistencia media a alta/);
+    expect(t).toMatch(/muy fracturado/);
+    expect(t).toMatch(/roca muy alterada/);
+    expect(t).toMatch(/RMR 41 \(ST-IV\)/);
+    expect(t).toMatch(/cuñas/); expect(t).toMatch(/falla/);
+  });
+});

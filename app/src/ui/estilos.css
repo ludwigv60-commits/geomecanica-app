@@ -86,3 +86,11 @@ input, select, textarea, output { font:inherit; color:var(--txt); background:var
 select.sug, input.sug { border:2px solid #7a4dd8; background:#7a4dd812; }
 .propuestas ul, .consejos { margin:6px 0; padding-left:18px; display:flex; flex-direction:column; gap:6px; font-size:14px; }
 .propuestas h3 { margin:6px 0; font-size:15px; }
+.zonas button { font-size:14px; line-height:1.2; padding:6px 2px; }
+.zonas small { font-weight:500; font-size:11px; opacity:.8; }
+.miniaturas { display:flex; gap:8px; overflow-x:auto; padding:6px 0; }
+.mini { position:relative; flex:0 0 72px; height:72px; padding:0; border:2px solid var(--borde); border-radius:8px; overflow:hidden; background:none; }
+.mini.sel { border-color:var(--sel); border-width:3px; }
+.mini img { width:100%; height:100%; object-fit:cover; display:block; }
+.no-apta { position:absolute; top:2px; right:2px; width:20px; height:20px; border-radius:10px; background:#b3261e; color:#fff; font-weight:800; font-size:14px; line-height:20px; }
+.ayuda { font-size:14px; } .ayuda summary { font-weight:600; min-height:40px; display:flex; align-items:center; } .ayuda ol { padding-left:18px; margin:4px 0; }

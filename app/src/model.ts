@@ -6,6 +6,17 @@ export type Verif = 'CUMPLE' | 'NO CUMPLE' | 'NO APLICA' | '';
 export const ITEMS_VERIF = ['SHOTCRETE', 'PERNO', 'MALLA', 'MARCO RETICULADO', 'SACRIFICIO'] as const;
 export const ABREVS = ['SD', 'F', 'V', 'C'] as const;
 
+export type ZonaFoto = 'FRENTE' | 'HI' | 'CORONA' | 'HD';
+export const ZONAS_FOTO: { id: ZonaFoto; nombre: string }[] = [
+  { id: 'FRENTE', nombre: 'Frente' }, { id: 'HI', nombre: 'H. I.' }, { id: 'CORONA', nombre: 'Corona' }, { id: 'HD', nombre: 'H. D.' }];
+export interface Trazas { w: number; h: number; segmentos: { x1: number; y1: number; x2: number; y2: number; ang: number; largo: number; familia: number }[] }
+export interface FotoZona {
+  id: string; zona: ZonaFoto; data: string; fecha: string;
+  az?: number; plunge?: number;      // eje de la cámara (UTM) al tomarla
+  calidad?: { apta: boolean; motivos: string[] };
+  trazas?: Trazas;
+}
+
 export interface Familia { abrev: string; dip: number | null; dipdir: number | null }
 
 export interface Reporte {
@@ -15,7 +26,8 @@ export interface Reporte {
   sincronizado: boolean;
   foto?: string;           // foto del frente (JPEG reducido)
   sugeridos?: string[];
-  trazasFoto?: { w: number; h: number; segmentos: { x1: number; y1: number; x2: number; y2: number; ang: number; largo: number; familia: number }[] };    // campos llenados por la IA y aún no confirmados
+  trazasFoto?: Trazas;     // (versión anterior, se migra a fotos)
+  fotos?: FotoZona[];    // campos llenados por la IA y aún no confirmados
   correlativo: string;
   labor: string;
   supervisor: string;
@@ -46,6 +58,12 @@ export interface Reporte {
 
 const z3 = <T,>(f: () => T): Record<Zona, T> => ({ HI: f(), CORONA: f(), HD: f() });
 
+/** Pasa reportes antiguos (una sola foto) al modelo de fotos por zona. */
+export function migrar(r: Reporte): Reporte {
+  if (r.fotos || !r.foto) return r;
+  return { ...r, fotos: [{ id: crypto.randomUUID(), zona: 'FRENTE', data: r.foto, fecha: r.modificado, az: r.azimut ?? undefined, trazas: r.trazasFoto }], foto: undefined, trazasFoto: undefined };
+}
+
 export function nuevoReporte(prev?: Reporte): Reporte {
   const ahora = new Date().toISOString();
   return {
@@ -58,7 +76,7 @@ export function nuevoReporte(prev?: Reporte): Reporte {
     q: z3(() => ({})), condicion: '',
     verificacion: { SHOTCRETE: '', PERNO: '', MALLA: '', 'MARCO RETICULADO': '', SACRIFICIO: '' },
     observaciones: '', sostenimiento: [], ordenFilas: 'menorPrimero',
-    adicionales: [], firmas: [
+    fotos: [], adicionales: [], firmas: [
       { rol: 'GEOMECÁNICA AESA', nombre: prev?.supervisor ?? '', fecha: '' },
       { rol: 'OPERACIONES AESA', nombre: '', fecha: '' },
       { rol: 'SUPERVISIÓN SYSTRA', nombre: '', fecha: '' },

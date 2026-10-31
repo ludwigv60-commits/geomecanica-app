@@ -4,7 +4,7 @@ import { camera, circStats, linStats, norm360, plane, rot, top, wrap180, toGrid,
 type Ang = { a: number; b: number; g: number };
 export type Modo = 'az' | 'pl';
 export interface Muestra { t: number; az?: number; plunge?: number; dip?: number; dd?: number; gm?: number }
-export interface Lectura { modo: Modo; az?: number; dip?: number; dd?: number; sd: number; n: number; interferencia?: number; metodo: string }
+export interface Lectura { modo: Modo; az?: number; plunge?: number; dip?: number; dd?: number; sd: number; n: number; interferencia?: number; metodo: string }
 
 const esIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
@@ -100,7 +100,7 @@ export function resumir(ms: Muestra[], modo: Modo, decl: number, conv: number, m
   const interferencia = g.length ? circStats(g).sd : undefined;
   if (modo === 'az') {
     const c = circStats(ms.map(m => m.az!));
-    return { modo, az: toGrid(c.mean, decl, conv), sd: c.sd, n: ms.length, interferencia, metodo };
+    return { modo, az: toGrid(c.mean, decl, conv), plunge: linStats(ms.map(m => m.plunge!)).mean, sd: c.sd, n: ms.length, interferencia, metodo };
   }
   const d = linStats(ms.map(m => m.dip!)), dd = circStats(ms.map(m => m.dd!));
   return { modo, dip: d.mean, dd: toGrid(dd.mean, decl, conv), sd: Math.max(d.sd, dd.sd), n: ms.length, interferencia, metodo };

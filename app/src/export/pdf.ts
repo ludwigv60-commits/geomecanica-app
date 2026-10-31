@@ -73,7 +73,39 @@ export async function generarPdf(r: Reporte, plantilla: ArrayBuffer | Uint8Array
     const [x0, y0, x1, y1] = rect;
     page.drawEllipse({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, xScale: Math.max(6, (x1 - x0) / 2 - 1.5), yScale: Math.max(3.2, (y1 - y0) / 2 + 0.6), borderColor: TINTA, borderWidth: 0.9 });
   }
+  await anexoFotos(doc, font, r);
   doc.setTitle(`Indicación Geomecánica ${r.labor} ${r.desde}`);
   doc.setProducer('App Geomecánica (PRT-JS-CLD-16)');
   return doc.save();
+}
+
+const NOMBRE_ZONA_FOTO: Record<string, string> = { FRENTE: 'Frente', HI: 'Hastial izquierdo', CORONA: 'Corona', HD: 'Hastial derecho' };
+const COL_FAM = [rgb(1, 0.83, 0), rgb(0, 0.9, 1), rgb(1, 0.31, 0.85), rgb(0.49, 1, 0.31), rgb(1, 0.54, 0)];
+
+/** Anexo: fotos por zona con sus trazas, azimut e inclinación de la cámara (Módulo 18). */
+async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
+  const fotos = (r.fotos ?? []).slice(0, 12);
+  if (!fotos.length) return;
+  const negrita = await doc.embedFont(StandardFonts.HelveticaBold);
+  const [W, H] = [595.28, 841.89], m = 36, altoCaja = (H - 2 * m - 30) / 2;
+  let page: PDFPage | null = null, slot = 0;
+  for (const f of fotos) {
+    if (!page || slot === 2) {
+      page = doc.addPage([W, H]); slot = 0;
+      page.drawText(limpiar(`Anexo: fotos de campo · ${r.labor} ${r.desde}${r.hasta ? ` a ${r.hasta}` : ''} · ${r.fecha}`), { x: m, y: H - m, size: 10, font: negrita });
+    }
+    const bytes = Uint8Array.from(atob(f.data.split(',')[1] ?? ''), ch => ch.charCodeAt(0));
+    const im = f.data.startsWith('data:image/png') ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+    const k = Math.min((W - 2 * m) / im.width, (altoCaja - 24) / im.height);
+    const w = im.width * k, h = im.height * k;
+    const top = H - m - 20 - slot * altoCaja;
+    const x = m + (W - 2 * m - w) / 2, y = top - 16 - h;
+    page.drawText(limpiar(`${NOMBRE_ZONA_FOTO[f.zona] ?? f.zona}${f.az != null ? ` · cámara azimut ${f.az}° UTM, inclinación ${f.plunge ?? '-'}°` : ''}${f.calidad && !f.calidad.apta ? ' · FOTO NO APTA' : ''}`), { x: m, y: top - 10, size: 8.5, font });
+    page.drawImage(im, { x, y, width: w, height: h });
+    if (f.trazas) {
+      const kt = w / f.trazas.w;
+      for (const sgm of f.trazas.segmentos) page.drawLine({ start: { x: x + sgm.x1 * kt, y: y + h - sgm.y1 * kt }, end: { x: x + sgm.x2 * kt, y: y + h - sgm.y2 * kt }, thickness: 1.6, color: COL_FAM[sgm.familia % COL_FAM.length]! });
+    }
+    slot++;
+  }
 }
