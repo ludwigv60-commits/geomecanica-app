@@ -49,12 +49,9 @@ export function casillas(r: Reporte): { casillas: Casilla[]; marcas: Marca[] } {
     put(`lit_${z}`, `F${row}`, r.litologia[z]);
     put(`litRmr_${z}`, `I${row}`, c.zonas[z].total, { formula: true });
   });
-  const cuenta: Record<string, number> = {};
   r.familias.slice(0, 5).forEach((f, i) => {
-    const row = 24 + i;
-    cuenta[f.abrev] = (cuenta[f.abrev] ?? 0) + 1;
-    put(`fam_${i}`, `K${row}`, `${f.abrev}${cuenta[f.abrev]}`); // como en las fotos: SD1, SD2, F1
-    put(`abrev_${i}`, `L${row}`, f.abrev); put(`dip_${i}`, `M${row}`, f.dip != null ? `${Math.round(f.dip)}°` : null); put(`dd_${i}`, `N${row}`, ang(f.dipdir));
+    const row = 24 + i; // la columna Familia ya trae impreso 1 a 5
+    put(`abrev_${i}`, `K${row}`, f.abrev); put(`dip_${i}`, `M${row}`, f.dip != null ? `${Math.round(f.dip)}°` : null); put(`dd_${i}`, `N${row}`, ang(f.dipdir));
   });
   put('condicion', 'A31', r.condicion, { multilinea: true });
   put('observaciones', 'S31', r.observaciones, { multilinea: true });
