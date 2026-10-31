@@ -1,6 +1,6 @@
 // Funciona sin señal: al abrir la app con señal se guarda TODO en el celular (lista generada al compilar).
-const CACHE = 'geomecanica-d04c2556fe';
-const ARCHIVOS = ["./","./assets/datos-CfrvqsV3.js","./assets/index--eSc1T6x.js","./assets/index-Ca_Ix1AH.css","./assets/pdf-D-E3wq6z.js","./assets/xlsx-D7wQQirU.js","./icon-192.png","./icon-512.png","./index.html","./manifest.webmanifest","./plantilla/formato.pdf","./plantilla/formato.xlsx"];
+const CACHE = 'geomecanica-7a3a899c07';
+const ARCHIVOS = ["./","./assets/datos-DQQ7ZZUs.js","./assets/index-BbWHVC8L.js","./assets/index-Pge3t4F6.css","./assets/ort-wasm-simd-threaded-DDx2apAW.wasm","./assets/ort.wasm.bundle.min-CfTt_KA_.js","./assets/pdf-Uez-TLqR.js","./assets/xlsx-CmKqhU3h.js","./icon-192.png","./icon-512.png","./index.html","./manifest.webmanifest","./modelos/labor.onnx","./plantilla/formato.pdf","./plantilla/formato.xlsx"];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS))); });
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', e => {

@@ -14,6 +14,7 @@ export interface FotoZona {
   id: string; zona: ZonaFoto; data: string; fecha: string;
   az?: number; plunge?: number;      // eje de la cámara (UTM) al tomarla
   calidad?: { apta: boolean; motivos: string[] };
+  labor?: { es: 'labor' | 'dudoso' | 'no'; sim: number; confirmada?: boolean }; // ¿la foto muestra una labor?
   trazas?: Trazas;
 }
 

@@ -119,3 +119,8 @@ select.sug, input.sug { border:2px solid #7a4dd8; background:#7a4dd812; }
 .aviso-modo { margin:0; padding:8px 10px; border-radius:8px; background:#1a73e814; font-size:14px; }
 .fila-btn { display:flex; gap:8px; flex-wrap:wrap; }
 .fila-btn .btn { flex:1; }
+.no-labor { display:flex; flex-direction:column; gap:6px; padding:12px; border-radius:10px; background:#b3261e; color:#fff; margin:8px 0; }
+.no-labor b { font-size:18px; letter-spacing:.3px; }
+.no-labor.dudosa { background:#a15c00; }
+.no-labor .btn { background:#fff; color:#111; border-color:#fff; }
+.mini .no-lab { position:absolute; inset:0; display:grid; place-items:center; background:#b3261ecc; color:#fff; font-weight:800; font-size:11px; }

@@ -6,6 +6,7 @@ import { Medidor } from './Medidor';
 import { analizar, estadisticas, segmentoDe } from '../ia/trazas';
 import { aplicar, medidasFoto, proponer } from '../ia/sugerencias';
 import { evaluar, mejorar, mensajeCalidad } from '../ia/calidad';
+import { aprender, esLabor } from '../ia/labor';
 import { colorFamilia, rotulos, simplificar, textoFamilia } from '../ia/anotacion';
 
 export const COLORES = ['#ffd400', '#00e5ff', '#ff4fd8', '#7CFF4F', '#ff8a00'];
@@ -60,7 +61,20 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
     }));
     setSelId(nueva.id);
     setEstado(mensajeCalidad(c));
+    // ¿Es una labor? (modelo de IA en el celular)
+    try {
+      const v = await esLabor(im);
+      editarFoto(nueva.id, f => ({ ...f, labor: { es: v.es, sim: v.similitud } }));
+      if (v.es === 'labor') aprender(v.rasgos).catch(() => {});
+      else rasgosPend.current.set(nueva.id, v.rasgos);
+    } catch (e) { console.warn('IA labor', e); }
   };
+  const rasgosPend = useRef(new Map<string, number[]>());
+  const confirmarLabor = (id: string) => {
+    const v = rasgosPend.current.get(id); if (v) aprender(v).catch(() => {});
+    editarFoto(id, f => ({ ...f, labor: f.labor ? { ...f.labor, confirmada: true } : f.labor }));
+  };
+  const quitarFoto = (id: string) => { setR(p => ({ ...p, fotos: (p.fotos ?? []).filter(x => x.id !== id) })); setSelId(null); };
 
   const analizarFoto = () => {
     if (!img || !sel) return;
@@ -148,8 +162,9 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
   };
 
   // La propuesta usa la foto del FRENTE con más trazas (la que mejor muestra el fracturamiento).
-  const base = useMemo(() => [...fotos].filter(f => f.zona === 'FRENTE' && f.trazas?.segmentos.length).sort((a, b) => b.trazas!.segmentos.length - a.trazas!.segmentos.length)[0]
-    ?? fotos.find(f => f.trazas?.segmentos.length), [fotos]);
+  const util = (f: FotoZona) => !f.labor || f.labor.es === 'labor' || f.labor.confirmada;
+  const base = useMemo(() => [...fotos].filter(f => util(f) && f.zona === 'FRENTE' && f.trazas?.segmentos.length).sort((a, b) => b.trazas!.segmentos.length - a.trazas!.segmentos.length)[0]
+    ?? fotos.find(f => util(f) && f.trazas?.segmentos.length), [fotos]);
   const stats = useMemo(() => (base?.trazas ? estadisticas(base.trazas.segmentos.map(s => ({ ...s })), base.trazas.w, base.trazas.h) : null), [base]);
   const medidas = useMemo(() => (stats && anchoFoto ? medidasFoto(stats, anchoFoto) : null), [stats, anchoFoto]);
   const props = useMemo(() => proponer(r, historial, medidas), [r, historial, medidas]);
@@ -178,9 +193,15 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
       {deZona.length > 0 && <div className="miniaturas">
         {deZona.map(f => (
           <button key={f.id} className={f.id === sel?.id ? 'mini sel' : 'mini'} onClick={() => setSelId(f.id)}>
-            <img src={f.data} alt="" />{f.calidad && !f.calidad.apta && <span className="no-apta">!</span>}
+            <img src={f.data} alt="" />{f.calidad && !f.calidad.apta && <span className="no-apta">!</span>}{f.labor?.es === 'no' && !f.labor.confirmada && <span className="no-lab">NO ES LABOR</span>}
           </button>
         ))}
+      </div>}
+      {sel?.labor && sel.labor.es !== 'labor' && !sel.labor.confirmada && <div className={sel.labor.es === 'no' ? 'no-labor' : 'no-labor dudosa'}>
+        <b>{sel.labor.es === 'no' ? '⛔ ESTO NO ES UNA LABOR' : '⚠️ No parece una labor'}</b>
+        <span>La IA no reconoce un frente, hastial o corona en esta foto. No se usará para llenar el reporte.</span>
+        <div className="fila-btn"><button className="btn" onClick={() => quitarFoto(sel.id)}>Quitar foto</button>
+          <button className="btn" onClick={() => confirmarLabor(sel.id)}>Sí es labor (la IA aprende)</button></div>
       </div>}
       {sel?.calidad && !sel.calidad.apta && <p className="alerta">FOTO NO APTA – {sel.calidad.motivos.join('; ')}. Tome una nueva.</p>}
       {img && <canvas ref={lienzo} className="foto-lienzo" style={{ width: '100%', borderRadius: 8, touchAction: modo === 'ver' ? 'auto' : 'none' }}
@@ -188,7 +209,7 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
       {sel && <p className="tenue">
         {zona === 'FRENTE' && (sel.az != null ? `Azimut de esta foto: ${sel.az}° UTM. ` : 'Sin azimut (foto de galería). ')}
         {zona === 'FRENTE' && r.azimut != null && <>Azimut de la labor: <b>{r.azimut}°</b>. </>}
-        <button className="btn mini" onClick={() => { setR(p => ({ ...p, fotos: (p.fotos ?? []).filter(x => x.id !== sel.id) })); setSelId(null); }}>Quitar foto</button>
+        <button className="btn mini" onClick={() => quitarFoto(sel.id)}>Quitar foto</button>
       </p>}
       <button className="btn primario foto-btn" onClick={() => setCamara(true)}>📷 Foto {ZONAS_FOTO.find(z => z.id === zona)!.nombre}{zona === 'FRENTE' ? ' + azimut' : ''}</button>
       <p className="tenue">{deZona.length < 2 ? 'Recomendado: 2 a 3 fotos por zona desde ángulos distintos. ' : ''}De pie, celular vertical, con buena luz y sin polvo.</p>

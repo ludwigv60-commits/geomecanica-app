@@ -41,3 +41,7 @@ export const guardarListas = (l: Listas) => tx('config', 'readwrite', s => s.put
 export async function pedirPersistencia(): Promise<boolean> {
   try { return (await navigator.storage?.persist?.()) ?? false; } catch { return false; }
 }
+
+/** Valores sueltos de configuración (por ejemplo, lo que la IA aprende de las fotos del usuario). */
+export const leerConfig = <T>(k: string) => tx<T | undefined>('config', 'readonly', s => s.get(k));
+export const guardarConfig = <T>(k: string, v: T) => tx('config', 'readwrite', s => s.put(v, k));
