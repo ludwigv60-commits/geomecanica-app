@@ -189,7 +189,7 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
     ram_gb: navigator.deviceMemory || '',
     webgpu: 'gpu' in navigator ? 'sí' : 'no'
   };
-  function showDev() { $('devInfo').textContent = `Equipo detectado: ${dev.plataforma} · ${dev.nucleos || '?'} núcleos · RAM ${dev.ram_gb ? dev.ram_gb + ' GB' : 'no informada'} · WebGPU ${dev.webgpu} · Giroscopio ${gyroOK ? 'sí' : 'no detectado'} · versión 2`; }
+  function showDev() { $('devInfo').textContent = `Equipo detectado: ${dev.plataforma} · ${dev.nucleos || '?'} núcleos · RAM ${dev.ram_gb ? dev.ram_gb + ' GB' : 'no informada'} · WebGPU ${dev.webgpu} · Giroscopio ${gyroOK ? 'sí' : 'no detectado'} · versión 3`; }
   showDev();
 
   // ---------- campos recordados ----------
@@ -248,7 +248,7 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
     } catch (e) { $('startMsg').textContent = 'No se pudo pedir permiso: ' + e.message; return; }
     window.addEventListener('deviceorientationabsolute', onAbs);
     window.addEventListener('deviceorientation', onRel);
-    window.addEventListener('devicemotion', e => { const r = e.rotationRate; if (r && (r.alpha != null || r.beta != null)) { if (!gyroOK) { gyroOK = true; showDev(); } } });
+    window.addEventListener('devicemotion', e => { const r = e.rotationRate; if (r && (r.alpha != null || r.beta != null)) { rotMag = Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0); if (!gyroOK) { gyroOK = true; showDev(); } } });
     const lock = () => { try { navigator.wakeLock?.request('screen').then(l => { wakeLock = l; }).catch(() => {}); } catch (e) {} };
     lock();
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') lock(); });
@@ -271,7 +271,8 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
   // ---------- fusión y filtros ----------
   // Android: el giroscopio da una orientación suave pero sin norte; el magnetómetro da el norte pero con ruido.
   // Se usa la orientación del giroscopio y se le suma un desfase hacia el norte que se corrige lentamente (τ = 2.5 s).
-  const TAU_OFF = 2.5, TAU_NOGYRO = 1.2, TAU_SHOW = 0.25;
+  const TAU_SHOW = 0.12;
+  let rotMag = 0; // velocidad de giro (°/s) del giroscopio
   let andOff = null, andT = 0, outlierSince = 0, jumpCount = 0;
   const ema = {};
   function circEma(key, val, tau, dt) {
@@ -313,8 +314,12 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
       if (andOff == null) { andOff = raw; }
       else {
         const d = O.wrap180(raw - andOff);
-        if (Math.abs(d) < 20) { andOff = O.wrap180(andOff + d * Math.min(1, dt / TAU_OFF)); outlierSince = 0; }
-        else { if (!outlierSince) outlierSince = now; if (now - outlierSince > 1500) { andOff = raw; outlierSince = 0; jumpCount++; } }
+        if (Math.abs(d) < 20) {
+          // Ganancia adaptativa: corrige rápido si el error es grande o el celular está quieto; lento mientras gira.
+          const tau = Math.abs(d) > 3 ? 0.35 : (rotMag < 4 ? 0.5 : 3);
+          andOff = O.wrap180(andOff + d * Math.min(1, dt / tau)); outlierSince = 0;
+        }
+        else { if (!outlierSince) outlierSince = now; if (now - outlierSince > 700) { andOff = raw; outlierSince = 0; jumpCount++; } }
       }
       A = relAngles; yawOff = andOff; src = 'android-giro+brujula';
     } else if (!isIOS && absAngles) { A = absAngles; src = 'android-brujula-filtrada'; }
@@ -325,7 +330,7 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
     if (mode === 'az') {
       const cam = O.camera(A.a, A.b, A.g);
       let az = O.norm360(cam.az + yawOff);
-      if (smoothNoGyro) az = circEma('azng', az, TAU_NOGYRO, dt);
+      if (smoothNoGyro) az = circEma('azng', az, Math.abs(O.wrap180(az - (ema.azng ?? az))) > 4 ? 0.2 : 0.8, dt);
       s.mag = az; s.plunge = cam.plunge;
       s.show = circEma('showaz', az, TAU_SHOW, dt);
       s.showPl = linEma('showpl', cam.plunge, TAU_SHOW, dt);
@@ -333,7 +338,7 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
     } else {
       const p = O.plane(A.a, A.b, A.g);
       let dd = O.norm360(p.dipdir + yawOff);
-      if (smoothNoGyro) dd = circEma('ddng', dd, TAU_NOGYRO, dt);
+      if (smoothNoGyro) dd = circEma('ddng', dd, Math.abs(O.wrap180(dd - (ema.ddng ?? dd))) > 4 ? 0.2 : 0.8, dt);
       s.dip = p.dip; s.dd = dd;
       s.showDip = linEma('showdip', p.dip, TAU_SHOW, dt);
       s.showDd = circEma('showdd', dd, TAU_SHOW, dt);
