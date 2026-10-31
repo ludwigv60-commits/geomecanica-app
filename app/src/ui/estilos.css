@@ -172,3 +172,4 @@ input, select, textarea { border-radius:12px; }
 .li-foto { width:64px; height:64px; flex:none; border-radius:12px; object-fit:cover; background:var(--fondo); display:grid; place-items:center; font-size:24px; }
 .li-txt .chip { display:inline-block; margin-top:4px; }
 .foto-btn { width:100%; }
+.conf-alta { color: #1b8a3a; } .conf-media { color: #b7791f; } .conf-baja { color: #c53030; }

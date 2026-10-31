@@ -7,6 +7,9 @@ import { analizar, estadisticas, segmentoDe } from '../ia/trazas';
 import { aplicar, medidasFoto, proponer } from '../ia/sugerencias';
 import { evaluar, mejorar, mensajeCalidad } from '../ia/calidad';
 import { aprender, esLabor } from '../ia/labor';
+import { detectarConRed } from '../ia/modelo-trazas';
+import { fotosConTrazas, paqueteEntrenamiento } from '../ia/datos-entrenamiento';
+import { entregar } from '../export/compartir';
 import { colorFamilia, rotulos, simplificar, textoFamilia } from '../ia/anotacion';
 
 export const COLORES = ['#ffd400', '#00e5ff', '#ff4fd8', '#7CFF4F', '#ff8a00'];
@@ -76,25 +79,54 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
   };
   const quitarFoto = (id: string) => { setR(p => ({ ...p, fotos: (p.fotos ?? []).filter(x => x.id !== id) })); setSelId(null); };
 
-  const analizarFoto = () => {
-    if (!img || !sel) return;
-    setEstado('Analizando la foto…');
-    setTimeout(() => {
+  /**
+   * Busca trazas con la red neuronal (trazas.onnx + zona.onnx, en el celular). Si la red no carga
+   * (celular antiguo o sin memoria), usa el método clásico. Todo queda como "Sugerido por IA".
+   */
+  const analizarFoto = async () => {
+    if (!img || !sel || !dims) return;
+    if (!util(sel)) { setEstado('Esta foto no es una labor: la IA no la analiza. Si sí es labor, toque "Sí es labor".'); return; }
+    setEstado('Analizando la foto con IA… (puede tardar unos segundos)');
+    await new Promise(r => setTimeout(r, 30));
+    let segs: NonNullable<FotoZona['trazas']>['segmentos'] = [], ia: NonNullable<FotoZona['trazas']>['ia'], nFam = 0, extra = '';
+    try {
+      const t = await detectarConRed(img);
+      const kx = dims.w / t.w, ky = dims.h / t.h;
+      segs = t.segmentos.map((s, i) => ({ s, z: t.zonaSeg[i] })).filter(({ s }) => s.familia >= 0 && s.familia < 5)
+        .map(({ s }) => segmentoDe(s.x1 * kx, s.y1 * ky, s.x2 * kx, s.y2 * ky, s.familia));
+      nFam = t.familias.length;
+      // Escala automática: el frente que reconoce la IA mide lo que el ancho de la labor.
+      const anchoFotoM = t.frente && r.ancho ? Math.round(r.ancho * t.w / Math.max(1, t.frente.x1 - t.frente.x0) * 10) / 10 : undefined;
+      ia = { metodo: 'red', confianza: t.confianza, nivel: t.nivel, roca: t.roca, zonas: t.zonaFr, anchoFotoM };
+      if (anchoFotoM) setAnchoFoto(anchoFotoM);
+      const vistas = Object.entries(t.zonaFr).filter(([, v]) => v > 0.04).map(([k]) => ZONAS_FOTO.find(z => z.id === k)?.nombre ?? k);
+      if (vistas.length) extra += ` Zonas reconocidas en la foto: ${vistas.join(', ').replace(/\.$/, '')}.`;
+      if (t.roca < 0.15) extra += ' Casi no se ve roca (¿shotcrete o piso?).';
+    } catch (e) {
+      console.warn('IA trazas (red)', e);
       const red = reducida(img);
       const c = evaluar(red.datos, red.w, red.h);
-      const datos = c.brillo < 0.35 || c.contraste < 0.12 ? mejorar(red.datos, red.w, red.h) : red.datos; // mejora para poca luz
+      const datos = c.brillo < 0.35 || c.contraste < 0.12 ? mejorar(red.datos, red.w, red.h) : red.datos;
       const t = analizar(datos, red.w, red.h);
-      const segs = t.segmentos.filter(s => s.familia >= 0 && s.familia < 5);
-      const nNec = segs.reduce((m, s) => Math.max(m, s.familia + 1), 0);
-      setR(p => ({
+      segs = t.segmentos.filter(s => s.familia >= 0 && s.familia < 5); nFam = t.familias.length;
+      ia = { metodo: 'clasico', confianza: 0, nivel: 'baja' };
+      extra = ' (método simple: el modelo de IA no cargó en este celular)';
+    }
+    const nNec = segs.reduce((m, s) => Math.max(m, s.familia + 1), 0);
+    // Llenado automático (solo campos vacíos, en morado "Sugerido por IA"): Jv, RQD, espaciamiento, persistencia, Jn.
+    const ancho = ia?.anchoFotoM ?? anchoFoto;
+    const med = segs.length && ancho ? medidasFoto(estadisticas(segs.map(s => ({ ...s })), dims.w, dims.h), ancho) : null;
+    setR(p => {
+      const n = {
         ...p,
         familias: p.familias.length >= nNec ? p.familias : [...p.familias, ...Array.from({ length: nNec - p.familias.length }, () => ({ abrev: 'SD', dip: null, dipdir: null }))],
-        fotos: (p.fotos ?? []).map(x => (x.id === sel.id ? { ...x, trazas: { w: red.w, h: red.h, segmentos: segs } } : x)),
-      }));
-      setEstado(t.familias.length
-        ? `Confianza baja: la IA propone ${t.familias.length} familia(s)${datos !== red.datos ? ' (con mejora de poca luz)' : ''}. Borre lo que no sea fractura (bordes, letreros, sombras) y dibuje lo que falte.`
-        : 'No se encontraron trazas claras. Dibújelas con el dedo.');
-    }, 30);
+        fotos: (p.fotos ?? []).map(x => (x.id === sel.id ? { ...x, trazas: { w: dims.w, h: dims.h, ia, segmentos: segs } } : x)),
+      };
+      return med ? aplicar(n, proponer(n, historial, med).filter(q => q.fuente === 'foto')) : n;
+    });
+    setEstado(nFam
+      ? `Sugerido por IA · confianza ${ia!.nivel}: ${nFam} estructura(s), numeradas de la más a la menos importante (trazas más largas).${extra}${med ? ` Jv ≈ ${med.jv}; se llenaron en morado los campos vacíos.` : ' Para calcular Jv y espaciamiento falta el ancho de la labor.'} Revise: borre lo que no sea fractura y mida cada estructura con 🧭 (dip/dd para cuñas).`
+      : `La IA no encontró trazas claras en la roca.${extra} Dibújelas con el dedo.`);
   };
 
   useEffect(() => {
@@ -218,6 +250,8 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
       {faltan.length > 0 && fotos.length > 0 && <p className="tenue">Falta al menos una foto de: {faltan.map(z => z.nombre).join(', ')}.</p>}
       {img && <>
         <button className="btn" onClick={analizarFoto}>🤖 Buscar trazas con IA</button>
+        {sel?.trazas?.ia && <p className="tenue"><span className="sugerido">Sugerido por IA</span> Confianza <b className={`conf-${sel.trazas.ia.nivel}`}>{sel.trazas.ia.nivel}</b>
+          {sel.trazas.ia.metodo === 'red' ? ` (${Math.round(sel.trazas.ia.confianza * 100)} %)` : ' (método simple)'}. La IA marca trazas visibles y su orientación en la foto; el buzamiento y la dirección de cada familia se miden con 🧭.</p>}
         {estado && <p className={estado.startsWith('FOTO NO APTA') ? 'alerta' : 'tenue'}>{estado}</p>}
         <div className="herramientas">
           <p className="tenue"><b>1.</b> Elija qué va a dibujar:</p>
@@ -258,6 +292,11 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
         <p className="tenue">Para la propuesta se usa la foto del frente con más trazas. {stats.familias.map(f => `Familia ${f.id + 1}: ${f.segmentos} trazas${f.espaciamientoPx && medidas ? `, espaciamiento ≈ ${(f.espaciamientoPx / medidas.escala).toFixed(2)} m` : ''}`).join(' · ')}</p>
         <label className="campo"><span>Ancho real que abarca esa foto (m)</span>
           <input inputMode="decimal" value={anchoFoto ?? ''} onChange={e => setAnchoFoto(e.target.value ? Number(e.target.value.replace(',', '.')) : null)} /></label>
+        <button className="btn mini" onClick={async () => {
+          setEstado('Preparando fotos y trazas para entrenar la IA…');
+          try { const z = await paqueteEntrenamiento(r); await entregar(z, `entrenar_IA_${(r.labor || 'labor').replace(/[^\w.+-]+/g, '_')}_${r.fecha || ''}.zip`, 'application/zip'); setEstado('Listo. Súbalo al proyecto: con 50–100 fotos así la IA aprende su criterio.'); }
+          catch (e) { setEstado('No se pudo preparar el paquete.'); console.warn(e); }
+        }}>📦 Enviar {fotosConTrazas(r).length} foto(s) con trazas para entrenar la IA</button>
       </>}
       {props.length > 0 && <div className="propuestas">
         <h3>Propuesta de la IA <span className="sugerido">Sugerido por IA</span></h3>
