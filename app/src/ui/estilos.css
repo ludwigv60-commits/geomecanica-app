@@ -55,3 +55,18 @@ input, select, textarea, output { font:inherit; color:var(--txt); background:var
 .li-txt { flex:1; min-width:0; }
 .chip { font-size:12px; font-weight:700; padding:4px 8px; border-radius:6px; border:1px solid var(--borde); white-space:nowrap; }
 @media (max-width:420px) { .fila .etq { flex-basis:90px; } .rejilla2 { gap:8px; } }
+.seccion { background:var(--carta); border:1px solid var(--borde); border-radius:10px; overflow:hidden; }
+.sec-cab { width:100%; display:flex; align-items:center; gap:8px; min-height:52px; padding:10px 12px; background:transparent; border:0; color:var(--txt); font:inherit; text-align:left; }
+.sec-tit { font-weight:700; flex:1; }
+.sec-res { font-size:13px; color:var(--tenue); text-align:right; }
+.sec-fl { width:16px; color:var(--tenue); }
+.seccion.abierta .sec-cab { border-bottom:1px solid var(--borde); }
+.sec-cuerpo { padding:12px; display:flex; flex-direction:column; gap:10px; }
+.sec-cuerpo .tarjeta { border:0; padding:0; }
+.tabla-pts { display:flex; flex-direction:column; gap:6px; }
+.tp-cab, .tp-fila { display:grid; grid-template-columns:minmax(0,1.2fr) repeat(auto-fit, minmax(0,1fr)); gap:6px; align-items:center; }
+.tp-cab { font-size:12px; color:var(--tenue); text-align:center; }
+.tp-nom { font-size:13px; font-weight:600; display:flex; flex-direction:column; }
+.tp-nom em { font-style:normal; margin-top:2px; width:fit-content; }
+.tp-fila select { padding:6px; font-size:14px; }
+.foto-btn { display:flex; align-items:center; justify-content:center; gap:10px; min-height:64px; font-size:18px; }

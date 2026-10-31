@@ -5,13 +5,12 @@ import { JA, JN, JR, JW, SRF, claseQ, type OpcionQ } from '../core/q';
 import { calcular } from '../calc';
 import { entregar, nombreArchivo, MIME_PDF, MIME_XLSX } from '../export/compartir';
 
-const PASOS = ['Cabecera', 'RMR', 'RQD y Q', 'Litología y estructuras', 'Condición', 'Sostenimiento', 'Firmas', 'Resumen'];
 
 type Props = { inicial: Reporte; listas: Listas; onGuardar: (r: Reporte) => Promise<void>; onSalir: () => void };
 
 export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
   const [r, setR] = useState<Reporte>(inicial);
-  const [paso, setPaso] = useState(0);
+  const [abierta, setAbierta] = useState<string | null>('cab');
   const [mismoEnZonas, setMismo] = useState(true);
   const [estado, setEstado] = useState('Guardado');
   const c = useMemo(() => calcular(r), [r]);
@@ -45,6 +44,7 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
     return { ...p, q };
   });
 
+  const cols = mismoEnZonas ? 'minmax(0,1.3fr) minmax(0,1fr)' : 'minmax(0,1.1fr) repeat(3, minmax(0,1fr))';
   const toggleZonas = (
     <label className="interruptor"><input type="checkbox" checked={mismoEnZonas} onChange={e => setMismo(e.target.checked)} />
       Mismo valor en H.I., Corona y H.D.</label>
@@ -54,12 +54,12 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
     <div className="pantalla">
       <header className="barra">
         <button className="btn mini claro" onClick={onSalir}>‹ Reportes</button>
-        <h1>{PASOS[paso]}</h1><span className="sub">{estado}</span>
+        <h1>{r.labor || 'Nuevo reporte'}</h1><span className="sub">{estado}</span>
       </header>
-      <nav className="pasos">{PASOS.map((p, i) => <button key={p} className={i === paso ? 'activo' : ''} onClick={() => setPaso(i)}>{i + 1}</button>)}</nav>
       <main className="contenido">
 
-        {paso === 0 && <>
+        <Foto foto={r.foto} on={f => set('foto', f)} />
+        <Seccion titulo="Datos básicos" resumen={[r.labor, r.desde, r.avance != null ? `${r.avance} m` : ""].filter(Boolean).join(" · ")} abierta={abierta} setAbierta={setAbierta} id="cab">
           <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={v => set('labor', v)} /></Campo>
           <Campo t="Sup. de geomecánica"><Lista valor={r.supervisor} opciones={listas.supervisores} on={v => set('supervisor', v)} /></Campo>
           <div className="rejilla2">
@@ -74,40 +74,38 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
           </div>
           <Campo t="Nivel de riesgo"><Segmentos valor={r.nivelRiesgo} opciones={listas.riesgos} on={v => set('nivelRiesgo', v)} /></Campo>
           <Campo t="N° correlativo"><input value={r.correlativo} onChange={e => set('correlativo', e.target.value)} /></Campo>
-        </>}
+        </Seccion>
 
-        {paso === 1 && <>
+        <Seccion titulo="RMR (puntos)" resumen={resumenRmr(c)} abierta={abierta} setAbierta={setAbierta} id="rmr">
           {toggleZonas}
-          {PARAMETROS.map(par => (
-            <section key={par.id} className="tarjeta">
-              <h3>{par.nombre}{par.id === 'rqd' && c.puntajeRqdSugerido != null && <span className="sugerido"> Sugerido por la app: {c.puntajeRqdSugerido} (RQD {c.rqd}%)</span>}</h3>
-              {(mismoEnZonas ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
-                <div key={z}>
-                  {!mismoEnZonas && <div className="zona">{NOMBRE_ZONA[z]}</div>}
-                  <div className="opciones">
-                    {par.clases.map(cl => (
-                      <button key={cl.etiqueta} className={r.rmr[z][par.id] === cl.puntaje ? 'opcion sel' : 'opcion'} onClick={() => ponerRmr(z, par.id, cl.puntaje)}>
-                        {cl.etiqueta} <b>({cl.puntaje})</b></button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </section>
-          ))}
-          <section className="tarjeta">
-            <h3>Ajuste por orientación</h3>
-            {c.ajusteIA && <p className="sugerido">Sugerido por la app: {c.ajusteIA.calificacion} ({c.ajusteIA.ajuste}). {c.ajusteIA.explicacion} Gobierna {c.ajusteIA.gobierna.dip}°/{String(c.ajusteIA.gobierna.dipdir).padStart(3, '0')}°.</p>}
-            {(mismoEnZonas ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
-              <div key={z}>{!mismoEnZonas && <div className="zona">{NOMBRE_ZONA[z]}</div>}
-                <div className="opciones">{AJUSTES_ORIENTACION.map(a => (
-                  <button key={a.etiqueta} className={r.ajuste[z] === a.puntaje ? 'opcion sel' : 'opcion'} onClick={() => ponerAjuste(z, a.puntaje)}>{a.etiqueta} <b>({a.puntaje})</b></button>
-                ))}</div></div>
+          <div className="tabla-pts">
+            <div className="tp-cab" style={{ gridTemplateColumns: cols }}><span />{(mismoEnZonas ? ['Puntos'] : ZONAS.map(z => NOMBRE_ZONA[z])).map(t => <b key={t}>{t}</b>)}</div>
+            {PARAMETROS.map(par => (
+              <div key={par.id} className="tp-fila" style={{ gridTemplateColumns: cols }}>
+                <span className="tp-nom">{par.nombre}{par.id === 'rqd' && c.puntajeRqdSugerido != null && <em className="sugerido">Sugerido: {c.puntajeRqdSugerido}</em>}</span>
+                {(mismoEnZonas ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
+                  <select key={z} value={r.rmr[z][par.id] ?? ''} onChange={e => e.target.value !== '' && ponerRmr(z, par.id, Number(e.target.value))}>
+                    <option value="">—</option>
+                    {par.clases.map(cl => <option key={cl.etiqueta} value={cl.puntaje}>{cl.puntaje} · {cl.etiqueta}</option>)}
+                  </select>
+                ))}
+              </div>
             ))}
-          </section>
+            <div className="tp-fila" style={{ gridTemplateColumns: cols }}>
+              <span className="tp-nom">Ajuste por orientación{c.ajusteIA && <em className="sugerido">Sugerido: {c.ajusteIA.ajuste}</em>}</span>
+              {(mismoEnZonas ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
+                <select key={z} value={r.ajuste[z] ?? ''} onChange={e => e.target.value !== '' && ponerAjuste(z, Number(e.target.value))}>
+                  <option value="">—</option>
+                  {AJUSTES_ORIENTACION.map(a => <option key={a.etiqueta} value={a.puntaje}>{a.puntaje} · {a.etiqueta}</option>)}
+                </select>
+              ))}
+            </div>
+          </div>
+          {c.ajusteIA && <p className="tenue">Ajuste sugerido: {c.ajusteIA.calificacion} ({c.ajusteIA.ajuste}). {c.ajusteIA.explicacion}</p>}
           <TablaRmr c={c} />
-        </>}
+        </Seccion>
 
-        {paso === 2 && <>
+        <Seccion titulo="RQD y Q de Barton" resumen={resumenQ(c)} abierta={abierta} setAbierta={setAbierta} id="q">
           <section className="tarjeta">
             <h3>Cálculo de RQD · RQD = 115 − 3.3·Jv</h3>
             <div className="rejilla2">
@@ -125,9 +123,9 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
             <div className="tres">{ZONAS.map(z => <div key={z}><small>{NOMBRE_ZONA[z]}</small><b>{c.zonas[z].q ?? '—'}</b><small>{c.zonas[z].q != null ? claseQ(c.zonas[z].q!) : ''}</small></div>)}</div>
             {ZONAS.map(z => c.zonas[z].control?.alerta && <p key={z} className="alerta">{NOMBRE_ZONA[z]}: {c.zonas[z].control!.alerta}</p>)}
           </section>
-        </>}
+        </Seccion>
 
-        {paso === 3 && <>
+        <Seccion titulo="Litología y estructuras" resumen={`${r.familias.filter(f => f.dip != null).length} familias`} abierta={abierta} setAbierta={setAbierta} id="est">
           <section className="tarjeta">
             <h3>Litología</h3>
             {ZONAS.map(z => <Campo key={z} t={NOMBRE_ZONA[z]}><Lista valor={r.litologia[z]} opciones={listas.litologias}
@@ -149,9 +147,9 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
             {r.familias.length < 5 && <button className="btn mini" onClick={() => set('familias', [...r.familias, { abrev: 'SD', dip: null, dipdir: null }])}>+ Familia</button>}
             <p className="tenue">La medición con el celular y el dibujo de trazas sobre la foto llegan en la Fase 1B.</p>
           </section>
-        </>}
+        </Seccion>
 
-        {paso === 4 && <>
+        <Seccion titulo="Condición y verificación" resumen={r.condicion ? "lleno" : ""} abierta={abierta} setAbierta={setAbierta} id="cond">
           <Campo t="Condición geomecánica"><textarea rows={4} value={r.condicion} onChange={e => set('condicion', e.target.value)} /></Campo>
           <section className="tarjeta">
             <h3>Verificación de sostenimiento anterior</h3>
@@ -162,9 +160,9 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
             ))}
           </section>
           <Campo t="Observaciones"><textarea rows={3} value={r.observaciones} onChange={e => set('observaciones', e.target.value)} /></Campo>
-        </>}
+        </Seccion>
 
-        {paso === 5 && <>
+        <Seccion titulo="Sostenimiento" resumen={c.tipoFinal ? `ST-${c.tipoFinal}` : ""} abierta={abierta} setAbierta={setAbierta} id="sos">
           <TablaRmr c={c} />
           {c.diseno?.alerta && <p className="alerta">{c.diseno.alerta}</p>}
           <Campo t="RMR de diseño (vacío = el calculado)">
@@ -184,9 +182,9 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
             ))}
             <button className="btn mini" onClick={() => set('sostenimiento', [...r.sostenimiento, ''])}>+ Línea</button>
           </section>
-        </>}
+        </Seccion>
 
-        {paso === 6 && <>
+        <Seccion titulo="Indicaciones y firmas" resumen={r.firmas.filter(f => f.nombre).length ? `${r.firmas.filter(f => f.nombre).length} firmas` : ""} abierta={abierta} setAbierta={setAbierta} id="fir">
           <section className="tarjeta">
             <h3>Indicaciones adicionales</h3>
             {r.adicionales.map((a, i) => (
@@ -213,14 +211,10 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
             ))}
             <p className="tenue">La firma dibujada con el dedo se agrega con la exportación a PDF.</p>
           </section>
-        </>}
+        </Seccion>
 
-        {paso === 7 && <Resumen r={r} c={c} />}
+        <Seccion titulo="Revisar y descargar" resumen="PDF · Excel" abierta={abierta} setAbierta={setAbierta} id="res"><Resumen r={r} c={c} /></Seccion>
       </main>
-      <footer className="pie">
-        <button className="btn" disabled={paso === 0} onClick={() => setPaso(paso - 1)}>‹ Anterior</button>
-        <button className="btn primario" disabled={paso === PASOS.length - 1} onClick={() => setPaso(paso + 1)}>Siguiente ›</button>
-      </footer>
     </div>
   );
 }
@@ -306,6 +300,52 @@ function Descargas({ r }: { r: Reporte }) {
       </div>
       {msg && <p className="tenue">{msg}</p>}
       <p className="tenue">Funciona sin señal. En el celular se abre el menú para guardar o enviar por WhatsApp o correo.</p>
+    </section>
+  );
+}
+
+function Seccion({ id, titulo, resumen, abierta, setAbierta, children }: { id: string; titulo: string; resumen?: string; abierta: string | null; setAbierta: (s: string | null) => void; children: React.ReactNode }) {
+  const open = abierta === id;
+  return (
+    <section className={open ? 'seccion abierta' : 'seccion'}>
+      <button className="sec-cab" onClick={() => setAbierta(open ? null : id)}>
+        <span className="sec-tit">{titulo}</span><span className="sec-res">{resumen}</span><span className="sec-fl">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && <div className="sec-cuerpo">{children}</div>}
+    </section>
+  );
+}
+function resumenRmr(c: ReturnType<typeof calcular>) {
+  const t = ZONAS.map(z => c.zonas[z].total);
+  if (t.every(v => v == null)) return '';
+  return `RMR ${t.map(v => v ?? '—').join(' / ')}${c.tipoFinal ? ` · ST-${c.tipoFinal}` : ''}`;
+}
+function resumenQ(c: ReturnType<typeof calcular>) {
+  const q = ZONAS.map(z => c.zonas[z].q);
+  return [c.rqd != null ? `RQD ${c.rqd}` : '', q.some(v => v != null) ? `Q ${q.map(v => v ?? '—').join(' / ')}` : ''].filter(Boolean).join(' · ');
+}
+
+/** Foto del frente: se reduce a 1600 px y se guarda con el reporte (sin señal). */
+function Foto({ foto, on }: { foto?: string; on: (f: string | undefined) => void }) {
+  const tomar = (file: File | undefined) => {
+    if (!file) return;
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const cv = Object.assign(document.createElement('canvas'), { width: Math.round(img.width * k), height: Math.round(img.height * k) });
+      cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height);
+      on(cv.toDataURL('image/jpeg', 0.85));
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(file);
+  };
+  return (
+    <section className="tarjeta">
+      {foto && <img src={foto} alt="Foto del frente" style={{ width: '100%', borderRadius: 8 }} />}
+      <label className="btn primario foto-btn">
+        📷 {foto ? 'Cambiar foto del frente' : 'Tomar foto del frente'}
+        <input type="file" accept="image/*" capture="environment" hidden onChange={e => tomar(e.target.files?.[0])} />
+      </label>
     </section>
   );
 }

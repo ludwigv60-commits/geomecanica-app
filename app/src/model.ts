@@ -13,6 +13,7 @@ export interface Reporte {
   creado: string;
   modificado: string;
   sincronizado: boolean;
+  foto?: string;           // foto del frente (JPEG reducido)
   correlativo: string;
   labor: string;
   supervisor: string;
