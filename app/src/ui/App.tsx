@@ -38,32 +38,37 @@ export function App() {
 
   return (
     <div className="pantalla">
-      <header className="barra"><h1>Indicación Geomecánica</h1><span className="sub">PRT-JS-CLD-16</span></header>
+      <header className="portada">
+        <button className="ajustes" aria-label="Editar listas" onClick={() => setVista({ v: 'listas' })}>⚙️</button>
+        <small>JUSTA · PRT-JS-CLD-16</small>
+        <h1>Indicación Geomecánica</h1>
+        <p>{reportes.length ? `${reportes.length} reporte${reportes.length > 1 ? 's' : ''} en este celular` : 'Mapeo RMR · Q · sostenimiento'}</p>
+      </header>
       <main className="contenido">
-        <button className="btn primario grande" onClick={() => setVista({ v: 'editor', r: nuevoReporte(reportes[0]) })}>+ Nuevo reporte</button>
         {aviso && <p className="alerta" onClick={() => setAviso(null)}>{aviso}</p>}
-        <h2>Reportes en este celular</h2>
-        {reportes.length === 0 && <p className="tenue">Todavía no hay reportes.</p>}
+        {reportes.length === 0 && <div className="vacio"><b>⛏️</b>Todavía no hay reportes.<br />Toque <b style={{ display: 'inline', fontSize: 'inherit' }}>+ Nuevo reporte</b> para empezar.</div>}
         <ul className="lista">
           {reportes.map(r => {
             const c = calcular(r);
             const t = c.rmrFinal != null ? TIPOS.find(x => x.tipo === tipoRoca(c.rmrFinal!)) : null;
+            const foto = r.fotos?.find(f => f.zona === 'FRENTE') ?? r.fotos?.[0];
             return (
-              <li key={r.id} onClick={() => setVista({ v: 'editor', r })}>
-                <span className="chip" style={t ? { background: t.color, color: t.texto } : {}}>{t ? `ST-${t.tipo}` : '—'}</span>
-                <span className="li-txt"><b>{r.labor || 'Sin labor'}</b> {r.desde && `· ${r.desde}${r.hasta ? ` a ${r.hasta}` : ''}`}<br />
-                  <small>{r.fecha} {r.turno} · RMR {c.rmrFinal ?? '—'}</small></span>
+              <li key={r.id} onClick={() => setVista({ v: 'editor', r })} style={{ borderLeftColor: t?.color ?? 'var(--borde)' }}>
+                {foto ? <img className="li-foto" src={foto.data} alt="" /> : <span className="li-foto vacia">📷</span>}
+                <span className="li-txt"><b>{r.labor || 'Sin labor'}</b>{r.desde && <> · PK {r.desde}{r.hasta ? ` a ${r.hasta}` : ''}</>}<br />
+                  <small>{[r.fecha, r.turno, `RMR ${c.rmrFinal ?? '—'}`].filter(Boolean).join(' · ')}</small><br />
+                  <span className="chip" style={t ? { background: t.color, color: t.texto, borderColor: t.color } : {}}>{t ? `ST-${t.tipo}` : 'Sin tipo'}</span></span>
                 <button className={confirmar === r.id ? 'btn mini peligro' : 'btn mini'} onClick={async e => {
                   e.stopPropagation();
                   if (confirmar !== r.id) { setConfirmar(r.id); setTimeout(() => setConfirmar(c => (c === r.id ? null : c)), 4000); return; }
                   setConfirmar(null);
                   try { await borrarReporte(r); recargar(); } catch (err) { setAviso((err as Error).message); }
-                }}>{confirmar === r.id ? '¿Borrar? Toque otra vez' : 'Borrar'}</button>
+                }}>{confirmar === r.id ? '¿Borrar? Toque otra vez' : '🗑'}</button>
               </li>
             );
           })}
         </ul>
-        <button className="btn" onClick={() => setVista({ v: 'listas' })}>Editar listas (labores, supervisores, litologías, riesgo)</button>
+        <button className="fab" onClick={() => setVista({ v: 'editor', r: nuevoReporte(reportes[0]) })}>＋ Nuevo reporte</button>
       </main>
     </div>
   );

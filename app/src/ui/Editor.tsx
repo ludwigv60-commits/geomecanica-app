@@ -17,7 +17,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
   const [midiendo, setMidiendo] = useState<number | null>(null);
   const [enCadena, setEnCadena] = useState(false); // medir pendientes en orden
   const [r, setR] = useState<Reporte>(() => migrar(inicial));
-  const [abierta, setAbierta] = useState<string | null>('cab');
+  const [abierta, setAbierta] = useState<string | null>(inicial.labor ? null : 'cab');
   const [mismoEnZonas, setMismo] = useState(true);
   const [estado, setEstado] = useState('Guardado');
   const c = useMemo(() => calcular(r), [r]);
@@ -54,6 +54,18 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
     return { ...p, q, sugeridos: quitar(p, `q.${k}`) };
   });
 
+  const listo = {
+    cab: !!(r.labor && r.desde && r.avance != null && r.azimut != null),
+    fotos: (r.fotos ?? []).some(f => f.zona === 'FRENTE'),
+    rmr: ZONAS.every(z => c.zonas[z].total != null),
+    q: ZONAS.every(z => c.zonas[z].q != null),
+    est: r.familias.length > 0 && r.familias.every(f => f.dip != null && f.dipdir != null) && ZONAS.every(z => !!r.litologia[z]),
+    cond: !!r.condicion.trim(),
+    sos: r.sostenimiento.length > 0,
+    fir: r.firmas.some(f => f.nombre),
+  };
+  const hechos = Object.values(listo).filter(Boolean).length, totalPasos = Object.keys(listo).length;
+  const ir = (id: string) => { setAbierta(id); setTimeout(() => document.getElementById(`sec-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); };
   const cols = mismoEnZonas ? 'minmax(0,1.3fr) minmax(0,1fr)' : 'minmax(0,1.1fr) repeat(3, minmax(0,1fr))';
   const toggleZonas = (
     <label className="interruptor"><input type="checkbox" checked={mismoEnZonas} onChange={e => setMismo(e.target.checked)} />
@@ -80,13 +92,14 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
     {medidor}
     <div className="pantalla" style={midiendo != null ? { display: 'none' } : undefined}>
       <header className="barra">
-        <button className="btn mini claro" onClick={onSalir}>‹ Reportes</button>
-        <h1>{r.labor || 'Nuevo reporte'}</h1><span className="sub">{estado}</span>
+        <button className="btn-atras" onClick={onSalir} aria-label="Volver a reportes">‹</button>
+        <div className="barra-tit"><h1>{r.labor || 'Nuevo reporte'}</h1><span className="sub">{[r.desde && `PK ${r.desde}`, r.fecha, estado].filter(Boolean).join(' · ')}</span></div>
       </header>
+      <div className="progreso"><div style={{ width: `${(hechos / totalPasos) * 100}%` }} /><span>{hechos} de {totalPasos} listos</span></div>
       <main className="contenido">
 
-        <FotoIA r={r} setR={setR} historial={historial} decl={listas.declinacion ?? -7} conv={listas.convergencia ?? 0} onMedir={i => { setEnCadena(false); setMidiendo(i); }} />
-        <Seccion titulo="Datos básicos" resumen={[r.labor, r.desde, r.avance != null ? `${r.avance} m` : ""].filter(Boolean).join(" · ")} abierta={abierta} setAbierta={setAbierta} id="cab">
+        <Seccion titulo="Datos de la labor" listo={listo.cab} resumen={[r.labor, r.desde, r.avance != null ? `${r.avance} m` : ""].filter(Boolean).join(" · ") || 'Se llena una sola vez'} abierta={abierta} setAbierta={setAbierta} id="cab">
+          <p className="nota">Se llenan una sola vez y valen para todo el reporte: Frente, H.I., Corona y H.D.</p>
           <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={v => set('labor', v)} /></Campo>
           <Campo t="Sup. de geomecánica"><Lista valor={r.supervisor} opciones={listas.supervisores} on={v => set('supervisor', v)} /></Campo>
           <div className="rejilla2">
@@ -103,7 +116,15 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
           <Campo t="N° correlativo"><input value={r.correlativo} onChange={e => set('correlativo', e.target.value)} /></Campo>
         </Seccion>
 
-        <Seccion titulo="RMR (puntos)" resumen={resumenRmr(c)} abierta={abierta} setAbierta={setAbierta} id="rmr">
+        <section className="seccion abierta" id="sec-fotos">
+          <div className="sec-cab estatica"><span className={`sec-ico${listo.fotos ? ' listo' : ''}`}>{listo.fotos ? '✓' : '📷'}</span>
+            <span className="sec-tit">Fotos y estructuras<small className="sec-res">La IA revisa la foto, avisa si no es labor y propone</small></span></div>
+          <div className="sec-cuerpo">
+            <FotoIA r={r} setR={setR} historial={historial} decl={listas.declinacion ?? -7} conv={listas.convergencia ?? 0} onMedir={i => { setEnCadena(false); setMidiendo(i); }} />
+          </div>
+        </section>
+
+        <Seccion titulo="RMR (puntos)" resumen={resumenRmr(c)} abierta={abierta} setAbierta={setAbierta} id="rmr" listo={listo.rmr}>
           {toggleZonas}
           <div className="tabla-pts">
             <div className="tp-cab" style={{ gridTemplateColumns: cols }}><span />{(mismoEnZonas ? ['Puntos'] : ZONAS.map(z => NOMBRE_ZONA[z])).map(t => <b key={t}>{t}</b>)}</div>
@@ -132,7 +153,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
           <TablaRmr c={c} />
         </Seccion>
 
-        <Seccion titulo="RQD y Q de Barton" resumen={resumenQ(c)} abierta={abierta} setAbierta={setAbierta} id="q">
+        <Seccion titulo="RQD y Q de Barton" resumen={resumenQ(c)} abierta={abierta} setAbierta={setAbierta} id="q" listo={listo.q}>
           <section className="tarjeta">
             <h3>Cálculo de RQD · RQD = 115 − 3.3·Jv</h3>
             <div className="rejilla2">
@@ -152,7 +173,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
           </section>
         </Seccion>
 
-        <Seccion titulo="Litología y estructuras" resumen={`${r.familias.filter(f => f.dip != null).length} familias`} abierta={abierta} setAbierta={setAbierta} id="est">
+        <Seccion titulo="Litología y estructuras" resumen={`${r.familias.filter(f => f.dip != null).length} familias`} abierta={abierta} setAbierta={setAbierta} id="est" listo={listo.est}>
           <section className="tarjeta">
             <h3>Litología</h3>
             {ZONAS.map(z => <Campo key={z} t={NOMBRE_ZONA[z]}><Lista valor={r.litologia[z]} opciones={listas.litologias}
@@ -186,7 +207,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
           </section>
         </Seccion>
 
-        <Seccion titulo="Condición y verificación" resumen={r.condicion ? "lleno" : ""} abierta={abierta} setAbierta={setAbierta} id="cond">
+        <Seccion titulo="Condición y verificación" resumen={r.condicion ? "lleno" : ""} abierta={abierta} setAbierta={setAbierta} id="cond" listo={listo.cond}>
           <button className="btn" onClick={() => setR(p => ({ ...p, condicion: redactarCondicion(p, calcular(p)), sugeridos: [...new Set([...(p.sugeridos ?? []), 'condicion'])] }))}>✍️ Redactar con IA</button>
           <Campo t="Condición geomecánica"><textarea className={sug('condicion')} rows={5} value={r.condicion} onChange={e => set('condicion', e.target.value)} /></Campo>
           <section className="tarjeta">
@@ -200,7 +221,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
           <Campo t="Observaciones"><textarea rows={3} value={r.observaciones} onChange={e => set('observaciones', e.target.value)} /></Campo>
         </Seccion>
 
-        <Seccion titulo="Sostenimiento" resumen={c.tipoFinal ? `ST-${c.tipoFinal}` : ""} abierta={abierta} setAbierta={setAbierta} id="sos">
+        <Seccion titulo="Sostenimiento" resumen={c.tipoFinal ? `ST-${c.tipoFinal}` : ""} abierta={abierta} setAbierta={setAbierta} id="sos" listo={listo.sos}>
           <TablaRmr c={c} />
           {c.diseno?.alerta && <p className="alerta">{c.diseno.alerta}</p>}
           <Campo t="RMR de diseño (vacío = el calculado)">
@@ -222,7 +243,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
           </section>
         </Seccion>
 
-        <Seccion titulo="Indicaciones y firmas" resumen={r.firmas.filter(f => f.nombre).length ? `${r.firmas.filter(f => f.nombre).length} firmas` : ""} abierta={abierta} setAbierta={setAbierta} id="fir">
+        <Seccion titulo="Indicaciones y firmas" resumen={r.firmas.filter(f => f.nombre).length ? `${r.firmas.filter(f => f.nombre).length} firmas` : ""} abierta={abierta} setAbierta={setAbierta} id="fir" listo={listo.fir}>
           <section className="tarjeta">
             <h3>Indicaciones adicionales</h3>
             {r.adicionales.map((a, i) => (
@@ -256,6 +277,12 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
         </Seccion>
         <Seccion titulo="Revisar y descargar" resumen="PDF · Excel" abierta={abierta} setAbierta={setAbierta} id="res"><Resumen r={r} c={c} /></Seccion>
       </main>
+      <nav className="barra-abajo">
+        <button onClick={() => document.getElementById('sec-fotos')?.scrollIntoView({ behavior: 'smooth' })}><span>📷</span>Fotos</button>
+        <button onClick={() => ir('rmr')}><span>🪨</span>RMR</button>
+        <button onClick={() => ir('est')}><span>🧭</span>Medir</button>
+        <button className="principal" onClick={() => ir('res')}><span>⬇</span>Descargar</button>
+      </nav>
     </div>
   </>
   );
@@ -346,12 +373,14 @@ function Descargas({ r }: { r: Reporte }) {
   );
 }
 
-function Seccion({ id, titulo, resumen, abierta, setAbierta, children }: { id: string; titulo: string; resumen?: string; abierta: string | null; setAbierta: (s: string | null) => void; children: React.ReactNode }) {
+const ICONOS: Record<string, string> = { cab: '📋', rmr: '🪨', q: '🔢', est: '🧭', cond: '📝', sos: '🔩', fir: '✍️', ia: '💡', res: '📄' };
+function Seccion({ id, titulo, resumen, abierta, setAbierta, children, listo }: { id: string; titulo: string; resumen?: string; abierta: string | null; setAbierta: (s: string | null) => void; children: React.ReactNode; listo?: boolean }) {
   const open = abierta === id;
   return (
-    <section className={open ? 'seccion abierta' : 'seccion'}>
+    <section id={`sec-${id}`} className={open ? 'seccion abierta' : 'seccion'}>
       <button className="sec-cab" onClick={() => setAbierta(open ? null : id)}>
-        <span className="sec-tit">{titulo}</span><span className="sec-res">{resumen}</span><span className="sec-fl">{open ? '▾' : '▸'}</span>
+        <span className={`sec-ico${listo ? ' listo' : ''}`}>{listo ? '✓' : ICONOS[id] ?? '•'}</span>
+        <span className="sec-tit">{titulo}<small className="sec-res">{resumen}</small></span><span className="sec-fl">{open ? '▾' : '▸'}</span>
       </button>
       {open && <div className="sec-cuerpo">{children}</div>}
     </section>
