@@ -31,7 +31,7 @@ function escribir(page: PDFPage, font: PDFFont, rect: [number, number, number, n
   const ancho = x1 - x0, alto = y1 - y0;
   const t = limpiar(valor);
   if (multilinea) {
-    for (let size = 8; size >= 4.5; size -= 0.5) {
+    for (let size = 7; size >= 4.5; size -= 0.5) { // proporcional al texto impreso del formato
       const lineas = partirLineas(t, font, size, ancho);
       const lh = size * 1.18;
       if (lineas.length * lh <= alto + 2 || size <= 4.5) {
@@ -40,7 +40,8 @@ function escribir(page: PDFPage, font: PDFFont, rect: [number, number, number, n
       }
     }
   }
-  let size = Math.min(8.5, alto + 2.5);
+  // Tamaño proporcional a la casilla: ~65 % de su alto, entre 5 y 7.5 pt (el impreso usa 6–7 pt).
+  let size = Math.max(5, Math.min(7, alto * 0.62));
   while (size > 4 && font.widthOfTextAtSize(t, size) > ancho + 1) size -= 0.25;
   const w = font.widthOfTextAtSize(t, size);
   const x = alinear === 'centro' ? x0 + (ancho - w) / 2 : x0;

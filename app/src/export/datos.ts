@@ -50,7 +50,7 @@ export function casillas(r: Reporte): { casillas: Casilla[]; marcas: Marca[] } {
     put(`litRmr_${z}`, `I${row}`, c.zonas[z].total, { formula: true });
   });
   r.familias.slice(0, 5).forEach((f, i) => {
-    const row = 24 + i; // la columna Familia ya trae impreso 1 a 5
+    const row = 25 + i; // la columna Familia ya trae impreso 1 a 5 (filas 25-29)
     put(`abrev_${i}`, `K${row}`, f.abrev); put(`dip_${i}`, `M${row}`, f.dip != null ? `${Math.round(f.dip)}°` : null); put(`dd_${i}`, `N${row}`, ang(f.dipdir));
   });
   put('condicion', 'A31', r.condicion, { multilinea: true });
