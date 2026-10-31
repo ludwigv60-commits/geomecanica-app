@@ -3,17 +3,22 @@ import { ABREVS, ITEMS_VERIF, type Listas, type Reporte, type Verif } from '../m
 import { AJUSTES_ORIENTACION, NOMBRE_ZONA, PARAMETROS, TIPOS, ZONAS, type ParamId, type Zona } from '../core/rmr';
 import { JA, JN, JR, JW, SRF, claseQ, type OpcionQ } from '../core/q';
 import { calcular } from '../calc';
+import { FotoIA } from './FotoIA';
+import { Medidor } from './Medidor';
+import { consejos } from '../ia/sugerencias';
 import { entregar, nombreArchivo, MIME_PDF, MIME_XLSX } from '../export/compartir';
 
 
-type Props = { inicial: Reporte; listas: Listas; onGuardar: (r: Reporte) => Promise<void>; onSalir: () => void };
+type Props = { inicial: Reporte; listas: Listas; historial: Reporte[]; onGuardar: (r: Reporte) => Promise<void>; onSalir: () => void };
 
-export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
+export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props) {
+  const [midiendo, setMidiendo] = useState<number | null>(null);
   const [r, setR] = useState<Reporte>(inicial);
   const [abierta, setAbierta] = useState<string | null>('cab');
   const [mismoEnZonas, setMismo] = useState(true);
   const [estado, setEstado] = useState('Guardado');
   const c = useMemo(() => calcular(r), [r]);
+  const avisos = useMemo(() => consejos(r, c, historial), [r, c, historial]);
   const primera = useRef(true);
 
   // Autoguardado: cada cambio se escribe en el celular a los 400 ms.
@@ -24,24 +29,26 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
     return () => clearTimeout(t);
   }, [r]);
 
-  const set = <K extends keyof Reporte>(k: K, v: Reporte[K]) => setR(p => ({ ...p, [k]: v }));
+  const quitar = (p: Reporte, clave: string) => (p.sugeridos?.includes(clave) ? p.sugeridos.filter(x => x !== clave) : p.sugeridos);
+  const set = <K extends keyof Reporte>(k: K, v: Reporte[K]) => setR(p => ({ ...p, [k]: v, sugeridos: quitar(p, String(k)) }));
+  const sug = (clave: string) => (r.sugeridos?.includes(clave) ? ' sug' : '');
   const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')));
 
   const ponerRmr = (z: Zona, id: ParamId, v: number) => setR(p => {
     const zs = mismoEnZonas ? ZONAS : [z];
     const rmr = { ...p.rmr };
     for (const zz of zs) rmr[zz] = { ...rmr[zz], [id]: v };
-    return { ...p, rmr };
+    return { ...p, rmr, sugeridos: quitar(p, `rmr.${id}`) };
   });
   const ponerAjuste = (z: Zona, v: number) => setR(p => {
     const a = { ...p.ajuste };
     for (const zz of mismoEnZonas ? ZONAS : [z]) a[zz] = v;
-    return { ...p, ajuste: a };
+    return { ...p, ajuste: a, sugeridos: quitar(p, 'ajuste') };
   });
   const ponerQ = (z: Zona, k: 'jn' | 'jr' | 'ja' | 'jw' | 'srf', v: number) => setR(p => {
     const q = { ...p.q };
     for (const zz of mismoEnZonas ? ZONAS : [z]) q[zz] = { ...q[zz], [k]: v };
-    return { ...p, q };
+    return { ...p, q, sugeridos: quitar(p, `q.${k}`) };
   });
 
   const cols = mismoEnZonas ? 'minmax(0,1.3fr) minmax(0,1fr)' : 'minmax(0,1.1fr) repeat(3, minmax(0,1fr))';
@@ -50,6 +57,11 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
       Mismo valor en H.I., Corona y H.D.</label>
   );
 
+  if (midiendo != null) return (
+    <Medidor modo="pl" titulo={`Familia ${midiendo + 1}: dip / dip direction`} decl={listas.declinacion ?? -7} conv={listas.convergencia ?? 0}
+      onCancelar={() => setMidiendo(null)}
+      onListo={l => { const i = midiendo; setMidiendo(null); set('familias', r.familias.map((x, j) => j === i ? { ...x, dip: Math.round(l.dip!), dipdir: Math.round(l.dd!) % 360 } : x)); }} />
+  );
   return (
     <div className="pantalla">
       <header className="barra">
@@ -58,7 +70,7 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
       </header>
       <main className="contenido">
 
-        <Foto foto={r.foto} on={f => set('foto', f)} />
+        <FotoIA r={r} setR={setR} historial={historial} decl={listas.declinacion ?? -7} conv={listas.convergencia ?? 0} />
         <Seccion titulo="Datos básicos" resumen={[r.labor, r.desde, r.avance != null ? `${r.avance} m` : ""].filter(Boolean).join(" · ")} abierta={abierta} setAbierta={setAbierta} id="cab">
           <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={v => set('labor', v)} /></Campo>
           <Campo t="Sup. de geomecánica"><Lista valor={r.supervisor} opciones={listas.supervisores} on={v => set('supervisor', v)} /></Campo>
@@ -84,7 +96,7 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
               <div key={par.id} className="tp-fila" style={{ gridTemplateColumns: cols }}>
                 <span className="tp-nom">{par.nombre}{par.id === 'rqd' && c.puntajeRqdSugerido != null && <em className="sugerido">Sugerido: {c.puntajeRqdSugerido}</em>}</span>
                 {(mismoEnZonas ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
-                  <select key={z} value={r.rmr[z][par.id] ?? ''} onChange={e => e.target.value !== '' && ponerRmr(z, par.id, Number(e.target.value))}>
+                  <select key={z} className={sug(`rmr.${par.id}`)} value={r.rmr[z][par.id] ?? ''} onChange={e => e.target.value !== '' && ponerRmr(z, par.id, Number(e.target.value))}>
                     <option value="">—</option>
                     {par.clases.map(cl => <option key={cl.etiqueta} value={cl.puntaje}>{cl.puntaje} · {cl.etiqueta}</option>)}
                   </select>
@@ -94,7 +106,7 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
             <div className="tp-fila" style={{ gridTemplateColumns: cols }}>
               <span className="tp-nom">Ajuste por orientación{c.ajusteIA && <em className="sugerido">Sugerido: {c.ajusteIA.ajuste}</em>}</span>
               {(mismoEnZonas ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
-                <select key={z} value={r.ajuste[z] ?? ''} onChange={e => e.target.value !== '' && ponerAjuste(z, Number(e.target.value))}>
+                <select key={z} className={sug('ajuste')} value={r.ajuste[z] ?? ''} onChange={e => e.target.value !== '' && ponerAjuste(z, Number(e.target.value))}>
                   <option value="">—</option>
                   {AJUSTES_ORIENTACION.map(a => <option key={a.etiqueta} value={a.puntaje}>{a.puntaje} · {a.etiqueta}</option>)}
                 </select>
@@ -109,7 +121,7 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
           <section className="tarjeta">
             <h3>Cálculo de RQD · RQD = 115 − 3.3·Jv</h3>
             <div className="rejilla2">
-              <Campo t="N° fracturas por m³ (Jv)"><input inputMode="decimal" value={r.jv ?? ''} onChange={e => set('jv', num(e.target.value))} /></Campo>
+              <Campo t="N° fracturas por m³ (Jv)"><input className={sug('jv')} inputMode="decimal" value={r.jv ?? ''} onChange={e => set('jv', num(e.target.value))} /></Campo>
               <Campo t="RQD (%)"><output className="resultado">{c.rqd ?? '—'}</output></Campo>
             </div>
           </section>
@@ -141,11 +153,12 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
                   {ABREVS.map(a => <option key={a}>{a}</option>)}</select>
                 <input inputMode="decimal" placeholder="Dip" value={f.dip ?? ''} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, dip: num(e.target.value) } : x))} />
                 <input inputMode="decimal" placeholder="D/D" value={f.dipdir ?? ''} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, dipdir: num(e.target.value) } : x))} />
+                <button className="btn mini btn-med" onClick={() => setMidiendo(i)}>🧭 Medir</button>
                 <button className="btn mini" onClick={() => set('familias', r.familias.filter((_, j) => j !== i))}>×</button>
               </div>
             ))}
             {r.familias.length < 5 && <button className="btn mini" onClick={() => set('familias', [...r.familias, { abrev: 'SD', dip: null, dipdir: null }])}>+ Familia</button>}
-            <p className="tenue">La medición con el celular y el dibujo de trazas sobre la foto llegan en la Fase 1B.</p>
+            <p className="tenue">🧭 Medir: apoye el dorso del celular sobre la cara de la familia y registre 3 s.</p>
           </section>
         </Seccion>
 
@@ -213,6 +226,9 @@ export function Editor({ inicial, listas, onGuardar, onSalir }: Props) {
           </section>
         </Seccion>
 
+        <Seccion titulo="Consejos de la IA" resumen={avisos.length ? `${avisos.length} aviso(s)` : 'sin avisos'} abierta={abierta} setAbierta={setAbierta} id="ia">
+          {avisos.length ? <ul className="consejos">{avisos.map(a => <li key={a}>{a}</li>)}</ul> : <p className="ok">Nada que observar por ahora.</p>}
+        </Seccion>
         <Seccion titulo="Revisar y descargar" resumen="PDF · Excel" abierta={abierta} setAbierta={setAbierta} id="res"><Resumen r={r} c={c} /></Seccion>
       </main>
     </div>
@@ -235,7 +251,7 @@ function SelectorQ({ titulo, opciones, r, mismo, k, on }: { titulo: string; opci
       {(mismo ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
         <div key={z} className="fila">
           {!mismo && <span className="etq">{NOMBRE_ZONA[z]}</span>}
-          <select value={r.q[z][k] ?? ''} onChange={e => on(z, k, Number(e.target.value))}>
+          <select className={r.sugeridos?.includes(`q.${k}`) ? 'sug' : ''} value={r.q[z][k] ?? ''} onChange={e => on(z, k, Number(e.target.value))}>
             <option value="">—</option>
             {opciones.map((o, i) => <option key={i} value={o.valor}>{o.valor} · {o.texto}{o.rango ? ` (${o.rango[0]}–${o.rango[1]})` : ''}</option>)}
           </select>
@@ -325,27 +341,3 @@ function resumenQ(c: ReturnType<typeof calcular>) {
   return [c.rqd != null ? `RQD ${c.rqd}` : '', q.some(v => v != null) ? `Q ${q.map(v => v ?? '—').join(' / ')}` : ''].filter(Boolean).join(' · ');
 }
 
-/** Foto del frente: se reduce a 1600 px y se guarda con el reporte (sin señal). */
-function Foto({ foto, on }: { foto?: string; on: (f: string | undefined) => void }) {
-  const tomar = (file: File | undefined) => {
-    if (!file) return;
-    const img = new Image();
-    img.onload = () => {
-      const k = Math.min(1, 1600 / Math.max(img.width, img.height));
-      const cv = Object.assign(document.createElement('canvas'), { width: Math.round(img.width * k), height: Math.round(img.height * k) });
-      cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height);
-      on(cv.toDataURL('image/jpeg', 0.85));
-      URL.revokeObjectURL(img.src);
-    };
-    img.src = URL.createObjectURL(file);
-  };
-  return (
-    <section className="tarjeta">
-      {foto && <img src={foto} alt="Foto del frente" style={{ width: '100%', borderRadius: 8 }} />}
-      <label className="btn primario foto-btn">
-        📷 {foto ? 'Cambiar foto del frente' : 'Tomar foto del frente'}
-        <input type="file" accept="image/*" capture="environment" hidden onChange={e => tomar(e.target.files?.[0])} />
-      </label>
-    </section>
-  );
-}

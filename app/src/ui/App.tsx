@@ -26,7 +26,7 @@ export function App() {
   }, []);
 
   if (vista.v === 'editor') return (
-    <Editor inicial={vista.r} listas={listas}
+    <Editor inicial={vista.r} listas={listas} historial={reportes}
       onGuardar={async r => { await guardarReporte(r); await recargar(); }}
       onSalir={() => { recargar(); setVista({ v: 'lista' }); }} />
   );

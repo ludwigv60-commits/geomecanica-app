@@ -70,3 +70,19 @@ input, select, textarea, output { font:inherit; color:var(--txt); background:var
 .tp-nom em { font-style:normal; margin-top:2px; width:fit-content; }
 .tp-fila select { padding:6px; font-size:14px; }
 .foto-btn { display:flex; align-items:center; justify-content:center; gap:10px; min-height:64px; font-size:18px; }
+.medidor { position:fixed; inset:0; z-index:20; background:var(--fondo); display:flex; flex-direction:column; overflow:auto; }
+.visor { position:relative; border-radius:10px; overflow:hidden; background:#000; aspect-ratio:4/3; }
+.visor video { width:100%; height:100%; object-fit:cover; }
+.mira { position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px; border:2px solid #ff0; border-radius:50%; }
+.mira::before, .mira::after { content:''; position:absolute; background:#ff0; }
+.mira::before { left:50%; top:-14px; bottom:-14px; width:2px; margin-left:-1px; }
+.mira::after { top:50%; left:-14px; right:-14px; height:2px; margin-top:-1px; }
+.lectura { display:flex; flex-direction:column; align-items:center; padding:8px; }
+.lectura b { font-size:48px; font-variant-numeric:tabular-nums; }
+.chips { display:flex; gap:8px; justify-content:center; }
+.chip.ok { background:#1e7b3a; color:#fff; border-color:#1e7b3a; }
+.chip.mal { background:#b3261e; color:#fff; border-color:#b3261e; }
+.btn-med { white-space:nowrap; }
+select.sug, input.sug { border:2px solid #7a4dd8; background:#7a4dd812; }
+.propuestas ul, .consejos { margin:6px 0; padding-left:18px; display:flex; flex-direction:column; gap:6px; font-size:14px; }
+.propuestas h3 { margin:6px 0; font-size:15px; }

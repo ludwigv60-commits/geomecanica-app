@@ -14,6 +14,8 @@ export interface Reporte {
   modificado: string;
   sincronizado: boolean;
   foto?: string;           // foto del frente (JPEG reducido)
+  sugeridos?: string[];
+  trazasFoto?: { w: number; h: number; segmentos: { x1: number; y1: number; x2: number; y2: number; ang: number; largo: number; familia: number }[] };    // campos llenados por la IA y aún no confirmados
   correlativo: string;
   labor: string;
   supervisor: string;
@@ -65,10 +67,12 @@ export function nuevoReporte(prev?: Reporte): Reporte {
   };
 }
 
-export interface Listas { labores: string[]; supervisores: string[]; litologias: string[]; riesgos: string[] }
+export interface Listas { labores: string[]; supervisores: string[]; litologias: string[]; riesgos: string[]; declinacion?: number; convergencia?: number }
 export const LISTAS_INICIALES: Listas = {
   labores: ['Rampa Norte', 'Rampa Sur'],
   supervisores: ['Kliutsmann Julca Miranda'],
   litologias: ['Andesita', 'Piroclasto'],
   riesgos: ['Bajo', 'Medio', 'Alto'],
+  declinacion: -7,
+  convergencia: 0,
 };

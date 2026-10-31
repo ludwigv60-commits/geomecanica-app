@@ -35,7 +35,7 @@ export async function borrarReporte(r: Reporte): Promise<void> {
   await tx('reportes', 'readwrite', s => s.delete(r.id));
 }
 
-export const leerListas = () => tx<Listas | undefined>('config', 'readonly', s => s.get('listas')).then(l => l ?? LISTAS_INICIALES);
+export const leerListas = () => tx<Listas | undefined>('config', 'readonly', s => s.get('listas')).then(l => ({ ...LISTAS_INICIALES, ...(l ?? {}) }));
 export const guardarListas = (l: Listas) => tx('config', 'readwrite', s => s.put(l, 'listas'));
 
 /** Pide al navegador que no borre los datos por falta de espacio. */
