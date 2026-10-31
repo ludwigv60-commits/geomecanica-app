@@ -117,3 +117,10 @@ describe('Sostenimiento', () => {
     expect(s.alerta).toMatch(/no tiene fila/);
   });
 });
+
+import { siguienteCorrelativo } from '../model';
+test('siguiente correlativo', () => {
+  expect(siguienteCorrelativo([{ correlativo: '259' }, { correlativo: '261' }, { correlativo: 'x' }])).toBe('262');
+  expect(siguienteCorrelativo([{ correlativo: '009' }])).toBe('010');
+  expect(siguienteCorrelativo([])).toBe('');
+});

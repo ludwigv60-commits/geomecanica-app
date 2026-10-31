@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { nuevoReporte, LISTAS_INICIALES, type Listas, type Reporte } from '../model';
+import { nuevoReporte, siguienteCorrelativo, LISTAS_INICIALES, type Listas, type Reporte } from '../model';
 import { borrarReporte, guardarListas, guardarReporte, leerListas, listarReportes, pedirPersistencia } from '../store';
 import { Editor } from './Editor';
 import { EditorListas } from './EditorListas';
@@ -68,7 +68,7 @@ export function App() {
             );
           })}
         </ul>
-        <button className="fab" onClick={() => setVista({ v: 'editor', r: nuevoReporte(reportes[0]) })}>＋ Nuevo reporte</button>
+        <button className="fab" onClick={() => setVista({ v: 'editor', r: nuevoReporte(reportes[0], siguienteCorrelativo(reportes)) })}>＋ Nuevo reporte</button>
       </main>
     </div>
   );

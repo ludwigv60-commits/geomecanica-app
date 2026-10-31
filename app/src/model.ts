@@ -65,11 +65,19 @@ export function migrar(r: Reporte): Reporte {
   return { ...r, fotos: [{ id: crypto.randomUUID(), zona: 'FRENTE', data: r.foto, fecha: r.modificado, az: r.azimut ?? undefined, trazas: r.trazasFoto }], foto: undefined, trazasFoto: undefined };
 }
 
-export function nuevoReporte(prev?: Reporte): Reporte {
+/** Siguiente N° correlativo: el mayor de los reportes guardados + 1 (conserva ceros a la izquierda). */
+export function siguienteCorrelativo(reportes: { correlativo: string }[]): string {
+  const nums = reportes.map(r => r.correlativo.trim()).filter(c => /^\d+$/.test(c));
+  if (!nums.length) return '';
+  const max = nums.reduce((a, c) => (Number(c) > Number(a) ? c : a));
+  return String(Number(max) + 1).padStart(max.length, '0');
+}
+
+export function nuevoReporte(prev?: Reporte, correlativo = ''): Reporte {
   const ahora = new Date().toISOString();
   return {
     id: crypto.randomUUID(), creado: ahora, modificado: ahora, sincronizado: false,
-    correlativo: '', labor: prev?.labor ?? '', supervisor: prev?.supervisor ?? '',
+    correlativo, labor: prev?.labor ?? '', supervisor: prev?.supervisor ?? '',
     fecha: ahora.slice(0, 10), turno: '', desde: prev?.hasta ?? '', hasta: '', avance: null,
     ancho: null, alto: null, azimut: null, nivelRiesgo: '',
     rmr: z3(() => ({})), ajuste: z3(() => null), rmrDisenoManual: null, jv: null,

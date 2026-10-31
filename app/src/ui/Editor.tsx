@@ -100,6 +100,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
 
         <Seccion titulo="Datos de la labor" listo={listo.cab} resumen={[r.labor, r.desde, r.avance != null ? `${r.avance} m` : ""].filter(Boolean).join(" · ") || 'Se llena una sola vez'} abierta={abierta} setAbierta={setAbierta} id="cab">
           <p className="nota">Se llenan una sola vez y valen para todo el reporte: Frente, H.I., Corona y H.D.</p>
+          <Campo t="N° correlativo (sale en el formato)"><input inputMode="numeric" value={r.correlativo} onChange={e => set('correlativo', e.target.value)} /></Campo>
           <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={v => set('labor', v)} /></Campo>
           <Campo t="Sup. de geomecánica"><Lista valor={r.supervisor} opciones={listas.supervisores} on={v => set('supervisor', v)} /></Campo>
           <div className="rejilla2">
@@ -113,7 +114,6 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
             <Campo t="Alto (m)"><input inputMode="decimal" value={r.alto ?? ''} onChange={e => set('alto', num(e.target.value))} /></Campo>
           </div>
           <Campo t="Nivel de riesgo"><Segmentos valor={r.nivelRiesgo} opciones={listas.riesgos} on={v => set('nivelRiesgo', v)} /></Campo>
-          <Campo t="N° correlativo"><input value={r.correlativo} onChange={e => set('correlativo', e.target.value)} /></Campo>
         </Seccion>
 
         <section className="seccion abierta" id="sec-fotos">
