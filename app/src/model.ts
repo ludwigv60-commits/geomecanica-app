@@ -9,7 +9,7 @@ export const ABREVS = ['SD', 'F', 'V', 'C'] as const;
 export type ZonaFoto = 'FRENTE' | 'HI' | 'CORONA' | 'HD';
 export const ZONAS_FOTO: { id: ZonaFoto; nombre: string }[] = [
   { id: 'FRENTE', nombre: 'Frente' }, { id: 'HI', nombre: 'H. I.' }, { id: 'CORONA', nombre: 'Corona' }, { id: 'HD', nombre: 'H. D.' }];
-export interface Trazas { w: number; h: number; segmentos: { x1: number; y1: number; x2: number; y2: number; ang: number; largo: number; familia: number }[] }
+export interface Trazas { w: number; h: number; segmentos: { x1: number; y1: number; x2: number; y2: number; ang: number; largo: number; familia: number; pts?: [number, number][] }[] }
 export interface FotoZona {
   id: string; zona: ZonaFoto; data: string; fecha: string;
   az?: number; plunge?: number;      // eje de la cámara (UTM) al tomarla

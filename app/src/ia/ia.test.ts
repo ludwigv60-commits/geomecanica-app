@@ -94,3 +94,17 @@ describe('Calidad de foto y redacción', () => {
     expect(t).toMatch(/cuñas/); expect(t).toMatch(/falla/);
   });
 });
+
+import { etiquetas, simplificar } from './anotacion';
+describe('Anotación de fotos', () => {
+  it('rótulos como en las fotos del geomecánico', () => {
+    const e = etiquetas([{ abrev: 'SD', dip: 55, dipdir: 350 }, { abrev: 'SD', dip: 45, dipdir: 150 }, { abrev: 'F', dip: 28, dipdir: 85 }, { abrev: 'SD', dip: null, dipdir: null }]);
+    expect(e.map(x => x.texto)).toEqual(['D1:55°/350°', 'D2:45°/150°', 'F1:28°/085°', 'D3']);
+    expect(e[2]!.color).toBe('#FF2A2A');
+  });
+  it('trazo recto queda como segmento; en arco guarda puntos', () => {
+    expect(simplificar([[0, 0], [50, 1], [100, 0]])).toBeUndefined();
+    const arco = Array.from({ length: 30 }, (_, i) => [i * 10, 100 - Math.sin(i / 29 * Math.PI) * 80] as [number, number]);
+    expect(simplificar(arco)!.length).toBeGreaterThan(5);
+  });
+});

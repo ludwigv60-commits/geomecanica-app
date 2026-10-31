@@ -1,6 +1,6 @@
 // Funciona sin señal: al abrir la app con señal se guarda TODO en el celular (lista generada al compilar).
-const CACHE = 'geomecanica-8a206fb14f';
-const ARCHIVOS = ["./","./assets/datos-C-cP0quU.js","./assets/index-BFeHZTi7.js","./assets/index-D_13103b.css","./assets/pdf-J7Tfogpl.js","./assets/xlsx-Cl7Wj0th.js","./icon-192.png","./icon-512.png","./index.html","./manifest.webmanifest","./plantilla/formato.pdf","./plantilla/formato.xlsx"];
+const CACHE = 'geomecanica-dd958470a7';
+const ARCHIVOS = ["./","./assets/datos-Df0q6Roc.js","./assets/index-D_13103b.css","./assets/index-Oc1HfeYV.js","./assets/pdf-BfF429Cl.js","./assets/xlsx-DRO17itZ.js","./icon-192.png","./icon-512.png","./index.html","./manifest.webmanifest","./plantilla/formato.pdf","./plantilla/formato.xlsx"];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS))); });
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', e => {

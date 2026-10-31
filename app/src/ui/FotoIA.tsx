@@ -6,6 +6,7 @@ import { Medidor } from './Medidor';
 import { analizar, estadisticas, segmentoDe } from '../ia/trazas';
 import { aplicar, medidasFoto, proponer } from '../ia/sugerencias';
 import { evaluar, mejorar, mensajeCalidad } from '../ia/calidad';
+import { colorFamilia, rotulos, simplificar, textoFamilia } from '../ia/anotacion';
 
 export const COLORES = ['#ffd400', '#00e5ff', '#ff4fd8', '#7CFF4F', '#ff8a00'];
 const MAX = 800;
@@ -34,6 +35,7 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const lienzo = useRef<HTMLCanvasElement>(null);
   const inicio = useRef<[number, number] | null>(null);
+  const trazo = useRef<[number, number][]>([]);
   const [arrastre, setArrastre] = useState<[number, number, number, number] | null>(null);
 
   const deZona = fotos.filter(f => f.zona === zona);
@@ -68,7 +70,7 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
       const t = analizar(datos, red.w, red.h);
       editarFoto(sel.id, f => ({ ...f, trazas: { w: red.w, h: red.h, segmentos: t.segmentos.filter(s => s.familia >= 0) } }));
       setEstado(t.familias.length
-        ? `La IA propone ${t.familias.length} familia(s)${datos !== red.datos ? ' (con mejora de poca luz)' : ''}. Borre lo que no sea fractura (bordes, letreros, sombras) y dibuje lo que falte.`
+        ? `Confianza baja: la IA propone ${t.familias.length} familia(s)${datos !== red.datos ? ' (con mejora de poca luz)' : ''}. Borre lo que no sea fractura (bordes, letreros, sombras) y dibuje lo que falte.`
         : 'No se encontraron trazas claras. Dibújelas con el dedo.');
     }, 30);
   };
@@ -79,9 +81,22 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
     const ctx = cv.getContext('2d')!; ctx.drawImage(img, 0, 0);
     const k = img.width / dims.w; ctx.lineWidth = Math.max(3, img.width / 250); ctx.lineCap = 'round';
     const linea = (x1: number, y1: number, x2: number, y2: number, c: string) => { ctx.strokeStyle = c; ctx.beginPath(); ctx.moveTo(x1 * k, y1 * k); ctx.lineTo(x2 * k, y2 * k); ctx.stroke(); };
-    for (const s of sel?.trazas?.segmentos ?? []) linea(s.x1, s.y1, s.x2, s.y2, COLORES[s.familia % COLORES.length]!);
+    for (const s of sel?.trazas?.segmentos ?? []) {
+      const c = colorFamilia(r.familias, s.familia);
+      if (s.pts) { ctx.strokeStyle = c; ctx.beginPath(); s.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * k, y * k) : ctx.moveTo(x * k, y * k))); ctx.stroke(); }
+      else linea(s.x1, s.y1, s.x2, s.y2, c);
+    }
+    // Rótulos como en tus fotos: caja blanca con "D1:55°/350°".
+    const fs = Math.max(14, img.width / 40); ctx.font = `bold ${fs}px Arial`;
+    for (const ro of rotulos(sel?.trazas?.segmentos ?? [])) {
+      const t = textoFamilia(r.familias, ro.familia); const tw = ctx.measureText(t).width;
+      ctx.save(); ctx.translate(ro.x * k, ro.y * k); ctx.rotate(ro.ang * Math.PI / 180);
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+      ctx.fillRect(-tw / 2 - fs * 0.4, -fs * 0.75, tw + fs * 0.8, fs * 1.5); ctx.strokeRect(-tw / 2 - fs * 0.4, -fs * 0.75, tw + fs * 0.8, fs * 1.5);
+      ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(t, 0, 0); ctx.restore();
+    }
     if (arrastre) linea(...arrastre, '#ffffff');
-  }, [img, sel?.trazas, arrastre]);
+  }, [img, sel?.trazas, arrastre, r.familias]);
 
   const punto = (e: React.PointerEvent<HTMLCanvasElement>): [number, number] => {
     const b = e.currentTarget.getBoundingClientRect();
@@ -99,14 +114,18 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
       if (best >= 0) setSegs(ss => ss.filter((_, i) => i !== best));
       return;
     }
-    inicio.current = p;
+    inicio.current = p; trazo.current = [p];
   };
-  const mover = (e: React.PointerEvent<HTMLCanvasElement>) => { if (inicio.current) setArrastre([...inicio.current, ...punto(e)]); };
+  const mover = (e: React.PointerEvent<HTMLCanvasElement>) => { if (inicio.current) { const p = punto(e); trazo.current.push(p); setArrastre([...inicio.current, ...p]); } };
   const arriba = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!inicio.current) return;
     const [x1, y1] = inicio.current, [x2, y2] = punto(e);
     inicio.current = null; setArrastre(null);
-    if (Math.hypot(x2 - x1, y2 - y1) > 12) setSegs(ss => [...ss, segmentoDe(x1, y1, x2, y2, fam)]);
+    if (Math.hypot(x2 - x1, y2 - y1) > 12) {
+      const pts = simplificar([...trazo.current, [x2, y2]]);
+      const sg = segmentoDe(x1, y1, x2, y2, fam);
+      setSegs(ss => [...ss, pts ? { ...sg, pts, largo: pts.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - pts[i]![0], p[1] - pts[i]![1]), 0) } : sg]);
+    }
   };
 
   // La propuesta usa la foto del FRENTE con más trazas (la que mejor muestra el fracturamiento).
@@ -166,10 +185,11 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
             <button key={m} className={modo === m ? 'sel' : ''} onClick={() => setModo(m)}>{m === 'ver' ? 'Ver' : m === 'dibujar' ? '✏️ Dibujar traza' : '🧽 Borrar traza'}</button>
           ))}
         </div>
+        {modo === 'dibujar' && <p className="tenue">Elija la estructura y trace con el dedo; puede ser recta o en arco. Las de la tabla de estructuras aparecen aquí con su dip/dip direction.</p>}
         {modo === 'dibujar' && <div className="chips" style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
           {Array.from({ length: Math.min(5, nFam) }, (_, i) => (
-            <button key={i} className="chip" style={{ borderColor: COLORES[i], background: fam === i ? COLORES[i] : 'transparent', color: fam === i ? '#000' : undefined }} onClick={() => setFam(i)}>
-              Familia {i + 1}{r.familias[i] ? ` · ${r.familias[i]!.abrev}` : ''}</button>
+            <button key={i} className="chip" style={{ borderColor: colorFamilia(r.familias, i), background: fam === i ? colorFamilia(r.familias, i) : 'transparent', color: fam === i ? '#000' : undefined }} onClick={() => setFam(i)}>
+              {textoFamilia(r.familias, i)}</button>
           ))}
         </div>}
       </>}

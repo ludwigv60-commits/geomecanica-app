@@ -1,9 +1,10 @@
 // Llena el PDF del formato oficial en blanco escribiendo en las posiciones exactas de cada celda.
 // Las posiciones (mapa-celdas.json) se midieron sobre el mismo PDF que genera la plantilla Excel.
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { Reporte } from '../model';
 import { casillas } from './datos';
 import MAPA from './mapa-celdas.json';
+import { colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
 
 const TINTA = rgb(0.05, 0.2, 0.62); // azul lapicero, como en los reportes llenados a mano
 const celdas = MAPA.celdas as unknown as Record<string, [number, number, number, number]>;
@@ -80,7 +81,7 @@ export async function generarPdf(r: Reporte, plantilla: ArrayBuffer | Uint8Array
 }
 
 const NOMBRE_ZONA_FOTO: Record<string, string> = { FRENTE: 'Frente', HI: 'Hastial izquierdo', CORONA: 'Corona', HD: 'Hastial derecho' };
-const COL_FAM = [rgb(1, 0.83, 0), rgb(0, 0.9, 1), rgb(1, 0.31, 0.85), rgb(0.49, 1, 0.31), rgb(1, 0.54, 0)];
+const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
 
 /** Anexo: fotos por zona con sus trazas, azimut e inclinación de la cámara (Módulo 18). */
 async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
@@ -104,7 +105,21 @@ async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
     page.drawImage(im, { x, y, width: w, height: h });
     if (f.trazas) {
       const kt = w / f.trazas.w;
-      for (const sgm of f.trazas.segmentos) page.drawLine({ start: { x: x + sgm.x1 * kt, y: y + h - sgm.y1 * kt }, end: { x: x + sgm.x2 * kt, y: y + h - sgm.y2 * kt }, thickness: 1.6, color: COL_FAM[sgm.familia % COL_FAM.length]! });
+      const P = (px: number, py: number) => ({ x: x + px * kt, y: y + h - py * kt });
+      for (const sgm of f.trazas.segmentos) {
+        const color = hex(colorFamilia(r.familias, sgm.familia));
+        const pts = sgm.pts ?? [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]];
+        for (let i = 1; i < pts.length; i++) page.drawLine({ start: P(pts[i - 1]![0], pts[i - 1]![1]), end: P(pts[i]![0], pts[i]![1]), thickness: 1.8, color });
+      }
+      for (const ro of rotulos(f.trazas.segmentos)) {
+        const t = limpiar(textoFamilia(r.familias, ro.familia)); const size = 7.5;
+        const tw = negrita.widthOfTextAtSize(t, size); const c = P(ro.x, ro.y);
+        const a = -ro.ang * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
+        const ox = -tw / 2 - 3, oy = -size / 2 - 2; // esquina inferior izquierda de la caja, girada
+        page.drawRectangle({ x: c.x + ox * cos - oy * sin, y: c.y + ox * sin + oy * cos, width: tw + 6, height: size + 4, color: rgb(1, 1, 1), borderColor: rgb(0.2, 0.2, 0.2), borderWidth: 0.4, rotate: degrees(-ro.ang) });
+        const tx = -tw / 2, ty = -size * 0.35;
+        page.drawText(t, { x: c.x + tx * cos - ty * sin, y: c.y + tx * sin + ty * cos, size, font: negrita, color: rgb(0, 0, 0), rotate: degrees(-ro.ang) });
+      }
     }
     slot++;
   }
