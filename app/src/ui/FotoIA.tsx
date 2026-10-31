@@ -122,10 +122,11 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
         familias: p.familias.length >= nNec ? p.familias : [...p.familias, ...Array.from({ length: nNec - p.familias.length }, () => ({ abrev: 'SD', dip: null, dipdir: null }))],
         fotos: (p.fotos ?? []).map(x => (x.id === sel.id ? { ...x, trazas: { w: dims.w, h: dims.h, ia, segmentos: segs } } : x)),
       };
-      return med ? aplicar(n, proponer(n, historial, med).filter(q => q.fuente === 'foto')) : n;
+      // Con confianza baja NO se llena nada solo: un Jv mal leído daría un RQD y un RMR falsamente altos.
+      return med && ia?.nivel !== 'baja' ? aplicar(n, proponer(n, historial, med).filter(q => q.fuente === 'foto')) : n;
     });
     setEstado(nFam
-      ? `Sugerido por IA · confianza ${ia!.nivel}: ${nFam} estructura(s), numeradas de la más a la menos importante (trazas más largas).${extra}${med ? ` Jv ≈ ${med.jv}; se llenaron en morado los campos vacíos.` : ' Para calcular Jv y espaciamiento falta el ancho de la labor.'} Revise: borre lo que no sea fractura y mida cada estructura con 🧭 (dip/dd para cuñas).`
+      ? `Sugerido por IA · confianza ${ia!.nivel}: ${nFam} estructura(s), numeradas de la más a la menos importante (trazas más largas).${extra}${med ? (ia?.nivel === 'baja' ? ` Confianza baja: NO se llenaron parámetros (Jv ≈ ${med.jv} no es confiable).` : ` Jv ≈ ${med.jv}; se llenaron en morado los campos vacíos.`) : ' Para calcular Jv y espaciamiento falta el ancho de la labor.'} Revise: borre lo que no sea fractura y mida cada estructura con 🧭 (dip/dd para cuñas).`
       : `La IA no encontró trazas claras en la roca.${extra} Dibújelas con el dedo.`);
   };
 
@@ -199,7 +200,8 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
     ?? fotos.find(f => util(f) && f.trazas?.segmentos.length), [fotos]);
   const stats = useMemo(() => (base?.trazas ? estadisticas(base.trazas.segmentos.map(s => ({ ...s })), base.trazas.w, base.trazas.h) : null), [base]);
   const medidas = useMemo(() => (stats && anchoFoto ? medidasFoto(stats, anchoFoto) : null), [stats, anchoFoto]);
-  const props = useMemo(() => proponer(r, historial, medidas), [r, historial, medidas]);
+  const baja = base?.trazas?.ia?.nivel === 'baja';
+  const props = useMemo(() => proponer(r, historial, baja ? null : medidas), [r, historial, medidas, baja]);
 
   const galeria = async (file?: File) => {
     if (!file) return;
@@ -300,6 +302,7 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
       </>}
       {props.length > 0 && <div className="propuestas">
         <h3>Propuesta de la IA <span className="sugerido">Sugerido por IA</span></h3>
+        {baja && <p className="alerta">La detección de trazas de esta foto tiene confianza baja: los parámetros de la foto (Jv, RQD, espaciamiento) no se proponen. Corrija las trazas o llénelos usted.</p>}
         <ul>{props.map(p => <li key={p.clave}><b>{p.fuente === 'foto' ? 'Foto' : 'Historial'}:</b> {p.texto}</li>)}</ul>
         <button className="btn primario" onClick={() => setR(p => aplicar(p, props))}>Llenar lo que está vacío</button>
         <p className="tenue">Solo llena campos vacíos. Lo llenado queda marcado en morado hasta que usted lo confirme o cambie.</p>
