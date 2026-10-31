@@ -180,6 +180,7 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
   let recording = null, lastReading = null;
   let readings = store.get('fase0_lecturas', []);
   let wakeLock = null;
+  let gyroOK = isIOS; // en Android se confirma con devicemotion.rotationRate
 
   // ---------- info del equipo ----------
   const dev = {
@@ -188,7 +189,8 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
     ram_gb: navigator.deviceMemory || '',
     webgpu: 'gpu' in navigator ? 'sí' : 'no'
   };
-  $('devInfo').textContent = `Equipo detectado: ${dev.plataforma} · ${dev.nucleos || '?'} núcleos · RAM ${dev.ram_gb ? dev.ram_gb + ' GB' : 'no informada'} · WebGPU ${dev.webgpu}`;
+  function showDev() { $('devInfo').textContent = `Equipo detectado: ${dev.plataforma} · ${dev.nucleos || '?'} núcleos · RAM ${dev.ram_gb ? dev.ram_gb + ' GB' : 'no informada'} · WebGPU ${dev.webgpu} · Giroscopio ${gyroOK ? 'sí' : 'no detectado'} · versión 2`; }
+  showDev();
 
   // ---------- campos recordados ----------
   ['fModelo', 'fOperador', 'fLabor', 'fPk', 'fDecl', 'fConv'].forEach(id => {
@@ -222,7 +224,7 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
   function onAbs(e) { if (e.alpha == null) return; absAngles = { a: e.alpha, b: e.beta, g: e.gamma }; }
   function onRel(e) {
     if (e.alpha == null) return;
-    if (e.absolute === true && !isIOS) { absAngles = { a: e.alpha, b: e.beta, g: e.gamma }; }
+    if (e.absolute === true && !isIOS) { absAngles = { a: e.alpha, b: e.beta, g: e.gamma }; return; }
     relAngles = { a: e.alpha, b: e.beta, g: e.gamma };
     if (isIOS && typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) {
       iosHeading = e.webkitCompassHeading; iosAcc = e.webkitCompassAccuracy;
@@ -246,6 +248,7 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
     } catch (e) { $('startMsg').textContent = 'No se pudo pedir permiso: ' + e.message; return; }
     window.addEventListener('deviceorientationabsolute', onAbs);
     window.addEventListener('deviceorientation', onRel);
+    window.addEventListener('devicemotion', e => { const r = e.rotationRate; if (r && (r.alpha != null || r.beta != null)) { if (!gyroOK) { gyroOK = true; showDev(); } } });
     const lock = () => { try { navigator.wakeLock?.request('screen').then(l => { wakeLock = l; }).catch(() => {}); } catch (e) {} };
     lock();
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') lock(); });
@@ -265,27 +268,75 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
     } catch (e) { toast('No se pudo abrir la cámara: ' + e.message); }
   };
 
+  // ---------- fusión y filtros ----------
+  // Android: el giroscopio da una orientación suave pero sin norte; el magnetómetro da el norte pero con ruido.
+  // Se usa la orientación del giroscopio y se le suma un desfase hacia el norte que se corrige lentamente (τ = 2.5 s).
+  const TAU_OFF = 2.5, TAU_NOGYRO = 1.2, TAU_SHOW = 0.25;
+  let andOff = null, andT = 0, outlierSince = 0, jumpCount = 0;
+  const ema = {};
+  function circEma(key, val, tau, dt) {
+    if (ema[key] == null || !isFinite(ema[key])) { ema[key] = val; return val; }
+    const k = Math.min(1, dt / tau);
+    ema[key] = O.norm360(ema[key] + O.wrap180(val - ema[key]) * k);
+    return ema[key];
+  }
+  function linEma(key, val, tau, dt) {
+    if (ema[key] == null || !isFinite(ema[key])) { ema[key] = val; return val; }
+    ema[key] = ema[key] + (val - ema[key]) * Math.min(1, dt / tau);
+    return ema[key];
+  }
+  // Rumbo de un vector del celular que esté lo más horizontal posible (cámara o borde superior).
+  function refHeading(A) {
+    const R = O.rot(A.a, A.b, A.g);
+    const cam = [-R[0][2], -R[1][2]], topv = [R[0][1], R[1][1]];
+    const v = Math.hypot(cam[0], cam[1]) >= Math.hypot(topv[0], topv[1]) ? cam : topv;
+    return O.norm360(Math.atan2(v[0], v[1]) * 180 / Math.PI);
+  }
+  // En Android y con giroscopio, la alpha relativa y la absoluta difieren solo por un giro vertical.
+  function refHeadingPair(Aabs, Arel) {
+    const Ra = O.rot(Aabs.a, Aabs.b, Aabs.g), Rr = O.rot(Arel.a, Arel.b, Arel.g);
+    const useCam = Math.hypot(Rr[0][2], Rr[1][2]) >= Math.hypot(Rr[0][1], Rr[1][1]);
+    const j = useCam ? 2 : 1, sg = useCam ? -1 : 1;
+    const h = R => O.norm360(Math.atan2(sg * R[0][j], sg * R[1][j]) * 180 / Math.PI);
+    return O.wrap180(h(Ra) - h(Rr));
+  }
+
   // ---------- una muestra ----------
+  let lastT = 0;
   function sample() {
     const now = Date.now();
-    let A = null, src = '';
-    if (!isIOS && absAngles) { A = absAngles; src = 'android-absoluto'; }
-    else if (isIOS && relAngles && iosOffset != null) { A = { a: O.norm360(relAngles.a + 0), b: relAngles.b, g: relAngles.g }; src = 'ios-giro+ref'; }
+    const dt = lastT ? Math.min(0.2, (now - lastT) / 1000) : 0.016; lastT = now;
+    let A = null, src = '', yawOff = 0, gm = null;
+    if (!isIOS && absAngles && relAngles && gyroOK) {
+      const raw = refHeadingPair(absAngles, relAngles);
+      gm = O.norm360(raw);
+      if (andOff == null) { andOff = raw; }
+      else {
+        const d = O.wrap180(raw - andOff);
+        if (Math.abs(d) < 20) { andOff = O.wrap180(andOff + d * Math.min(1, dt / TAU_OFF)); outlierSince = 0; }
+        else { if (!outlierSince) outlierSince = now; if (now - outlierSince > 1500) { andOff = raw; outlierSince = 0; jumpCount++; } }
+      }
+      A = relAngles; yawOff = andOff; src = 'android-giro+brujula';
+    } else if (!isIOS && absAngles) { A = absAngles; src = 'android-brujula-filtrada'; }
+    else if (isIOS && relAngles && iosOffset != null) { A = relAngles; yawOff = iosOffset; src = 'ios-giro+ref'; }
     if (!A) return null;
-    const s = { t: now, src };
+    const s = { t: now, src, gm };
+    const smoothNoGyro = src === 'android-brujula-filtrada';
     if (mode === 'az') {
-      let cam = O.camera(A.a, A.b, A.g);
-      if (src === 'ios-giro+ref') cam = { ...cam, az: O.norm360(cam.az + iosOffset) };
-      s.mag = cam.az; s.plunge = cam.plunge;
+      const cam = O.camera(A.a, A.b, A.g);
+      let az = O.norm360(cam.az + yawOff);
+      if (smoothNoGyro) az = circEma('azng', az, TAU_NOGYRO, dt);
+      s.mag = az; s.plunge = cam.plunge;
+      s.show = circEma('showaz', az, TAU_SHOW, dt);
+      s.showPl = linEma('showpl', cam.plunge, TAU_SHOW, dt);
       if (isIOS && iosHeading != null) s.iosA = iosHeading;
     } else {
-      let p = O.plane(A.a, A.b, A.g);
-      if (src === 'ios-giro+ref') p = { ...p, dipdir: O.norm360(p.dipdir + iosOffset) };
-      s.dip = p.dip; s.dd = p.dipdir;
-    }
-    // Consistencia giroscopio vs magnetómetro: con ambos sensores, la diferencia debería ser constante.
-    if (!isIOS && absAngles && relAngles) {
-      s.gm = O.norm360(O.camera(absAngles.a, absAngles.b, absAngles.g).az - O.camera(relAngles.a, relAngles.b, relAngles.g).az);
+      const p = O.plane(A.a, A.b, A.g);
+      let dd = O.norm360(p.dipdir + yawOff);
+      if (smoothNoGyro) dd = circEma('ddng', dd, TAU_NOGYRO, dt);
+      s.dip = p.dip; s.dd = dd;
+      s.showDip = linEma('showdip', p.dip, TAU_SHOW, dt);
+      s.showDd = circEma('showdd', dd, TAU_SHOW, dt);
     }
     return s;
   }
@@ -315,16 +366,16 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
       $('recBtn').disabled = true;
       setChip('chipStable', 'SIN DATOS', 'off');
     } else if (mode === 'az') {
-      const grid = O.toGrid(s.mag, decl, conv);
+      const grid = O.toGrid(s.show, decl, conv);
       $('bigVal').innerHTML = `${grid.toFixed(1)}°<small> UTM</small>`;
-      const parts = [`<span>Magnético <b>${s.mag.toFixed(1)}°</b></span>`, `<span>Inclinación cámara <b>${s.plunge.toFixed(1)}°</b></span>`];
+      const parts = [`<span>Magnético <b>${s.show.toFixed(1)}°</b></span>`, `<span>Inclinación cámara <b>${s.showPl.toFixed(1)}°</b></span>`];
       if (s.iosA != null) parts.push(`<span>iPhone directo <b>${O.toGrid(s.iosA, decl, conv).toFixed(1)}°</b></span>`);
       $('subVal').innerHTML = parts.join('');
       $('recBtn').disabled = !!recording;
     } else {
-      const dd = O.toGrid(s.dd, decl, conv);
-      $('bigVal').innerHTML = `${s.dip.toFixed(0)}°<small>/</small>${s.dip < 3 ? '—' : dd.toFixed(0).padStart(3, '0') + '°'}`;
-      $('subVal').innerHTML = `<span>Dip <b>${s.dip.toFixed(1)}°</b></span><span>Dip direction UTM <b>${s.dip < 3 ? 'no definido (plano horizontal)' : dd.toFixed(1) + '°'}</b></span>`;
+      const dd = O.toGrid(s.showDd, decl, conv);
+      $('bigVal').innerHTML = `${s.showDip.toFixed(0)}°<small>/</small>${s.showDip < 3 ? '—' : dd.toFixed(0).padStart(3, '0') + '°'}`;
+      $('subVal').innerHTML = `<span>Dip <b>${s.showDip.toFixed(1)}°</b></span><span>Dip direction UTM <b>${s.showDip < 3 ? 'no definido (plano horizontal)' : dd.toFixed(1) + '°'}</b></span>`;
       $('recBtn').disabled = !!recording;
     }
     // estabilidad
@@ -336,7 +387,8 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
     // interferencia
     if (!isIOS) {
       const g = buf.filter(x => x.gm != null).map(x => x.gm);
-      if (g.length > 30) { const sd = O.circStats(g).sd; setChip('chipMag', `BRÚJULA ${sd < 1 ? 'OK' : sd < 3 ? 'DUDOSA' : 'INTERFERENCIA'} · ${sd.toFixed(1)}°`, sd < 1 ? 'ok' : sd < 3 ? 'mid' : 'bad'); }
+      if (!gyroOK && absAngles) setChip('chipMag', 'SIN GIROSCOPIO · FILTRO', 'mid');
+      else if (g.length > 30) { const sd = O.circStats(g).sd; setChip('chipMag', `BRÚJULA ${sd < 2 ? 'OK' : sd < 5 ? 'DUDOSA' : 'INTERFERENCIA'} · ±${sd.toFixed(1)}°`, sd < 2 ? 'ok' : sd < 5 ? 'mid' : 'bad'); }
       else setChip('chipMag', 'BRÚJULA —', 'off');
     } else {
       if (iosAcc != null && iosAcc >= 0) setChip('chipMag', `PRECISIÓN ±${Math.round(iosAcc)}°`, iosAcc <= 5 ? 'ok' : iosAcc <= 15 ? 'mid' : 'bad');
@@ -385,6 +437,7 @@ details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;alig
     }
     const g = w.filter(x => x.gm != null).map(x => x.gm);
     if (g.length) r.interferencia_desv = +O.circStats(g).sd.toFixed(2);
+    r.giroscopio = gyroOK ? 'sí' : 'no'; r.saltos_referencia = jumpCount;
     if (isIOS) { r.precision_ios = iosAcc; r.ref_ios_edad_s = iosOffset == null ? '' : Math.round((Date.now() - iosOffsetT) / 1000); }
     lastReading = r;
     haptic();
