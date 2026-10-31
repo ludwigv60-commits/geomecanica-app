@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Brújula Geomecánica · Prueba</title>
+<meta name="theme-color" content="#0f1418">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Brújula Geo">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<style>
+/* Pantalla de campo: una columna, números grandes, botones para guantes. Oscuro por defecto (interior mina), alto contraste para superficie. */
+:root{
+  --bg:#0f1418; --panel:#182027; --line:#2a3540; --fg:#e8eef2; --muted:#9aa8b4;
+  --accent:#ffb000; --accent-ink:#1a1200; --good:#3ecf6e; --warn:#ff5a4f; --mid:#f2c94c;
+  --num:"DIN Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:dark;
+}
+:root[data-contrast="alto"]{
+  --bg:#ffffff; --panel:#ffffff; --line:#000000; --fg:#000000; --muted:#222222;
+  --accent:#000000; --accent-ink:#ffffff; --good:#006b2e; --warn:#b00000; --mid:#6b4e00;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--ui);font-size:17px;-webkit-text-size-adjust:100%}
+body{padding:env(safe-area-inset-top,0) max(14px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0)) max(14px,env(safe-area-inset-left,0px))}
+main{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-top:10px}
+h1{font-size:20px;margin:0;letter-spacing:.02em}
+h2{font-size:13px;margin:0;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px}
+button,.btn{font:inherit;font-weight:700;border-radius:10px;border:2px solid var(--line);background:transparent;color:var(--fg);min-height:56px;padding:0 16px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-size:19px}
+button:disabled{opacity:.45}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.small{min-height:40px;font-size:14px;padding:0 12px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tabs button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:600}
+input,select{font:inherit;font-size:18px;color:var(--fg);background:var(--bg);border:2px solid var(--line);border-radius:8px;min-height:48px;padding:0 10px;width:100%}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.big{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:76px;line-height:1;font-weight:700;letter-spacing:-.01em}
+.big small{font-size:28px;color:var(--muted);font-weight:600}
+.sub{font-variant-numeric:tabular-nums;color:var(--muted);font-size:15px;display:flex;flex-wrap:wrap;gap:4px 14px}
+.sub b{color:var(--fg)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border-radius:999px;padding:6px 12px;font-size:14px;font-weight:800;border:2px solid currentColor;letter-spacing:.03em}
+.ok{color:var(--good)} .bad{color:var(--warn)} .mid{color:var(--mid)} .off{color:var(--muted)}
+.hint{font-size:14px;color:var(--muted);line-height:1.4;margin:0}
+.cam{position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:3/4;max-height:46vh}
+.cam video{width:100%;height:100%;object-fit:cover;display:block}
+.cross{position:absolute;inset:0;pointer-events:none}
+.cross::before,.cross::after{content:"";position:absolute;background:var(--accent)}
+.cross::before{left:50%;top:0;bottom:0;width:2px;transform:translateX(-1px)}
+.cross::after{top:50%;left:0;right:0;height:2px;transform:translateY(-1px)}
+.level{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px;border-radius:50%;border:3px solid var(--good);background:rgba(0,0,0,.25)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;width:100%}
+th,td{border-bottom:1px solid var(--line);padding:6px 6px;text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1 1 140px}
+details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;align-items:center}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:12px 18px;border-radius:10px;font-weight:800;max-width:90vw;z-index:5}
+@media (prefers-reduced-motion:no-preference){.chip{transition:color .2s}}
+</style>
+</head>
+<body>
+<main>
+  <div class="bar">
+    <h1>Brújula Geomecánica · Prueba</h1>
+    <button class="small" id="contrastBtn" type="button">Alto contraste</button>
+  </div>
+
+  <section class="panel" id="startPanel">
+    <h2>1 · Activar sensores</h2>
+    <p class="hint">Antes de empezar: aléjese al menos 1 m de pernos, malla, rieles y equipos. Haga el movimiento en 8 con el celular durante 10 segundos para calibrar la brújula.</p>
+    <button class="primary" id="startBtn" type="button">Activar sensores</button>
+    <p class="hint" id="startMsg"></p>
+  </section>
+
+
+  <section class="panel">
+    <div class="tabs" role="group" aria-label="Modo de medición">
+      <button type="button" id="modeAz" aria-pressed="true">Azimut de la labor</button>
+      <button type="button" id="modePl" aria-pressed="false">Plano (clinómetro)</button>
+    </div>
+    <p class="hint" id="modeHint"></p>
+
+    <div class="cam" id="camBox" hidden>
+      <video id="video" playsinline muted autoplay></video>
+      <div class="cross"></div>
+    </div>
+    <button class="small" id="camBtn" type="button">Ver cámara para apuntar</button>
+
+    <div>
+      <div class="big" id="bigVal">—</div>
+      <div class="sub" id="subVal"></div>
+    </div>
+    <div class="chips">
+      <span class="chip off" id="chipStable">SIN DATOS</span>
+      <span class="chip off" id="chipMag">BRÚJULA —</span>
+      <span class="chip off" id="chipCal" hidden>REFERENCIA —</span>
+    </div>
+    <button class="primary" id="recBtn" type="button" disabled>Registrar lectura (3 s)</button>
+  </section>
+
+  <section class="panel" id="lastPanel" hidden>
+    <h2>Comparar con la referencia</h2>
+    <p class="hint" id="lastSummary"></p>
+    <div class="grid2" id="refAz">
+      <label for="rTopo">Azimut de topografía (°)<input id="rTopo" type="number" inputmode="decimal" step="0.1"></label>
+      <label for="rBrunton">Azimut con Brunton (°)<input id="rBrunton" type="number" inputmode="decimal" step="0.5"></label>
+    </div>
+    <div class="grid2" id="refPl" hidden>
+      <label for="rDip">Dip con Brunton (°)<input id="rDip" type="number" inputmode="decimal" step="1"></label>
+      <label for="rDd">Dip direction con Brunton (°)<input id="rDd" type="number" inputmode="decimal" step="1"></label>
+    </div>
+    <label for="rNota">Nota (cerca de pernos, malla, equipo…)<input id="rNota" autocomplete="off"></label>
+    <button class="primary" id="saveBtn" type="button">Guardar lectura</button>
+  </section>
+
+  <section class="panel">
+    <h2>Datos de la prueba (se recuerdan)</h2>
+    <div class="grid2">
+      <label for="fModelo">Celular (marca y modelo)<input id="fModelo" placeholder="Ej. iPhone 12" autocomplete="off"></label>
+      <label for="fOperador">Operador<input id="fOperador" autocomplete="off"></label>
+      <label for="fLabor">Labor<input id="fLabor" placeholder="Ej. Rampa Norte" autocomplete="off"></label>
+      <label for="fPk">Punto o PK<input id="fPk" placeholder="Ej. 0+936.4" autocomplete="off"></label>
+      <label for="fDecl">Declinación (°)<input id="fDecl" type="number" inputmode="decimal" step="0.1" value="-7"></label>
+      <label for="fConv">Convergencia (°)<input id="fConv" type="number" inputmode="decimal" step="0.01" value="0"></label>
+    </div>
+    <p class="hint" id="devInfo"></p>
+  </section>
+  <section class="panel">
+    <div class="bar"><h2>Lecturas guardadas</h2><span class="sub" id="count"></span></div>
+    <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+    <div class="row">
+      <button type="button" id="exportBtn">Exportar CSV</button>
+      <button type="button" id="clearBtn">Borrar todas</button>
+    </div>
+    <p class="hint" id="clearMsg"></p>
+  </section>
+
+  <details class="panel">
+    <summary>Cómo medir</summary>
+    <p class="hint"><b>Azimut de la labor:</b> de pie, en el eje de la labor, celular vertical con la cámara apuntando al frente. Use la cámara para centrar la cruz en el frente. Espere "ESTABLE" y toque Registrar.</p>
+    <p class="hint"><b>Plano:</b> apoye el dorso del celular sobre la superficie de la discontinuidad (o la pantalla, si el plano está sobre su cabeza). El borde del celular no importa: la app calcula el dip y el dip direction de la superficie.</p>
+    <p class="hint"><b>iPhone:</b> deje el celular echado (pantalla arriba) 3 segundos antes de cada medición para fijar la referencia de norte. Si el chip REFERENCIA está en rojo, repita.</p>
+    <p class="hint"><b>Interferencia:</b> el chip BRÚJULA compara el giroscopio con el magnetómetro. Si se pone rojo, hay acero o magnetita cerca: aléjese y repita, o anote la lectura con la nota "interferencia".</p>
+  </details>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="orient.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const O = window.Orient;
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  };
+
+  // ---------- estado ----------
+  let mode = 'az';
+  let absAngles = null;      // Android: alpha absoluta
+  let relAngles = null;      // giroscopio (alpha relativa)
+  let iosHeading = null, iosAcc = null;
+  let iosOffset = null, iosOffsetT = 0, iosOffsetBuf = [];
+  const buf = [];            // muestras de los últimos 4 s
+  let recording = null, lastReading = null;
+  let readings = store.get('fase0_lecturas', []);
+  let wakeLock = null;
+
+  // ---------- info del equipo ----------
+  const dev = {
+    plataforma: isIOS ? 'iOS' : (/Android/.test(ua) ? 'Android' : 'Otro'),
+    nucleos: navigator.hardwareConcurrency || '',
+    ram_gb: navigator.deviceMemory || '',
+    webgpu: 'gpu' in navigator ? 'sí' : 'no'
+  };
+  $('devInfo').textContent = `Equipo detectado: ${dev.plataforma} · ${dev.nucleos || '?'} núcleos · RAM ${dev.ram_gb ? dev.ram_gb + ' GB' : 'no informada'} · WebGPU ${dev.webgpu}`;
+
+  // ---------- campos recordados ----------
+  ['fModelo', 'fOperador', 'fLabor', 'fPk', 'fDecl', 'fConv'].forEach(id => {
+    const v = store.get('fase0_' + id, null);
+    if (v != null) $(id).value = v;
+    $(id).addEventListener('change', () => store.set('fase0_' + id, $(id).value));
+  });
+  const num = id => { const v = parseFloat(String($(id).value).replace(',', '.')); return isFinite(v) ? v : null; };
+
+  // ---------- contraste ----------
+  const setContrast = on => { document.documentElement.toggleAttribute('data-contrast', false); if (on) document.documentElement.setAttribute('data-contrast', 'alto'); $('contrastBtn').textContent = on ? 'Modo oscuro' : 'Alto contraste'; store.set('fase0_contraste', on); };
+  setContrast(store.get('fase0_contraste', false));
+  $('contrastBtn').onclick = () => setContrast(!document.documentElement.hasAttribute('data-contrast'));
+
+  // ---------- modos ----------
+  function setMode(m) {
+    mode = m;
+    $('modeAz').setAttribute('aria-pressed', m === 'az');
+    $('modePl').setAttribute('aria-pressed', m === 'pl');
+    $('modeHint').textContent = m === 'az'
+      ? 'Celular vertical, cámara apuntando al frente, en el eje de la labor.'
+      : 'Apoye el celular sobre el plano de la discontinuidad.';
+    $('refAz').hidden = m !== 'az'; $('refPl').hidden = m !== 'pl';
+    buf.length = 0;
+  }
+  $('modeAz').onclick = () => setMode('az');
+  $('modePl').onclick = () => setMode('pl');
+  setMode('az');
+
+  // ---------- sensores ----------
+  function onAbs(e) { if (e.alpha == null) return; absAngles = { a: e.alpha, b: e.beta, g: e.gamma }; }
+  function onRel(e) {
+    if (e.alpha == null) return;
+    if (e.absolute === true && !isIOS) { absAngles = { a: e.alpha, b: e.beta, g: e.gamma }; }
+    relAngles = { a: e.alpha, b: e.beta, g: e.gamma };
+    if (isIOS && typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) {
+      iosHeading = e.webkitCompassHeading; iosAcc = e.webkitCompassAccuracy;
+      // Con el equipo casi echado, webkitCompassHeading es el rumbo del borde superior: fija la referencia de norte.
+      if (Math.abs(e.beta) < 25 && Math.abs(e.gamma) < 25) {
+        const off = O.wrap180(iosHeading - O.top(e.alpha, e.beta, e.gamma));
+        iosOffsetBuf.push(off); if (iosOffsetBuf.length > 60) iosOffsetBuf.shift();
+        iosOffset = O.circStats(iosOffsetBuf.map(O.norm360)).mean; iosOffsetT = Date.now();
+      }
+    }
+  }
+
+  async function start() {
+    $('startMsg').textContent = '';
+    try {
+      if (isIOS && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== 'granted') { $('startMsg').textContent = 'Permiso de sensores denegado. En iPhone: Ajustes › Safari › Movimiento y orientación, actívelo y recargue.'; return; }
+        if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) { try { await DeviceMotionEvent.requestPermission(); } catch (e) {} }
+      }
+    } catch (e) { $('startMsg').textContent = 'No se pudo pedir permiso: ' + e.message; return; }
+    window.addEventListener('deviceorientationabsolute', onAbs);
+    window.addEventListener('deviceorientation', onRel);
+    const lock = () => { try { navigator.wakeLock?.request('screen').then(l => { wakeLock = l; }).catch(() => {}); } catch (e) {} };
+    lock();
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') lock(); });
+    $('startPanel').hidden = true;
+    setTimeout(() => { if (!relAngles && !absAngles) $('startMsg').textContent = 'No llegan datos de orientación. Abra la app desde una dirección https y en Chrome (Android) o Safari (iPhone).'; }, 2500);
+    requestAnimationFrame(loop);
+  }
+  $('startBtn').onclick = start;
+
+  // ---------- cámara ----------
+  let stream = null;
+  $('camBtn').onclick = async () => {
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; $('camBox').hidden = true; $('camBtn').textContent = 'Ver cámara para apuntar'; return; }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      $('video').srcObject = stream; $('camBox').hidden = false; $('camBtn').textContent = 'Ocultar cámara';
+    } catch (e) { toast('No se pudo abrir la cámara: ' + e.message); }
+  };
+
+  // ---------- una muestra ----------
+  function sample() {
+    const now = Date.now();
+    let A = null, src = '';
+    if (!isIOS && absAngles) { A = absAngles; src = 'android-absoluto'; }
+    else if (isIOS && relAngles && iosOffset != null) { A = { a: O.norm360(relAngles.a + 0), b: relAngles.b, g: relAngles.g }; src = 'ios-giro+ref'; }
+    if (!A) return null;
+    const s = { t: now, src };
+    if (mode === 'az') {
+      let cam = O.camera(A.a, A.b, A.g);
+      if (src === 'ios-giro+ref') cam = { ...cam, az: O.norm360(cam.az + iosOffset) };
+      s.mag = cam.az; s.plunge = cam.plunge;
+      if (isIOS && iosHeading != null) s.iosA = iosHeading;
+    } else {
+      let p = O.plane(A.a, A.b, A.g);
+      if (src === 'ios-giro+ref') p = { ...p, dipdir: O.norm360(p.dipdir + iosOffset) };
+      s.dip = p.dip; s.dd = p.dipdir;
+    }
+    // Consistencia giroscopio vs magnetómetro: con ambos sensores, la diferencia debería ser constante.
+    if (!isIOS && absAngles && relAngles) {
+      s.gm = O.norm360(O.camera(absAngles.a, absAngles.b, absAngles.g).az - O.camera(relAngles.a, relAngles.b, relAngles.g).az);
+    }
+    return s;
+  }
+
+  // ---------- bucle de pantalla ----------
+  let lastBeep = 0, wasStable = false;
+  function loop() {
+    const s = sample();
+    const now = Date.now();
+    if (s) { buf.push(s); if (recording) recording.push(s); }
+    while (buf.length && now - buf[0].t > 4000) buf.shift();
+    render(s, now);
+    requestAnimationFrame(loop);
+  }
+
+  function windowStats(ms) {
+    const w = buf.filter(x => Date.now() - x.t <= ms);
+    if (mode === 'az') return { main: O.circStats(w.map(x => x.mag)), n: w.length };
+    return { main: O.circStats(w.map(x => x.dd)), dip: O.linStats(w.map(x => x.dip)), n: w.length };
+  }
+
+  function render(s, now) {
+    const decl = num('fDecl') ?? 0, conv = num('fConv') ?? 0;
+    if (!s) {
+      $('bigVal').textContent = '—';
+      $('subVal').textContent = isIOS && relAngles && iosOffset == null ? 'Ponga el celular echado 3 s para fijar el norte.' : '';
+      $('recBtn').disabled = true;
+      setChip('chipStable', 'SIN DATOS', 'off');
+    } else if (mode === 'az') {
+      const grid = O.toGrid(s.mag, decl, conv);
+      $('bigVal').innerHTML = `${grid.toFixed(1)}°<small> UTM</small>`;
+      const parts = [`<span>Magnético <b>${s.mag.toFixed(1)}°</b></span>`, `<span>Inclinación cámara <b>${s.plunge.toFixed(1)}°</b></span>`];
+      if (s.iosA != null) parts.push(`<span>iPhone directo <b>${O.toGrid(s.iosA, decl, conv).toFixed(1)}°</b></span>`);
+      $('subVal').innerHTML = parts.join('');
+      $('recBtn').disabled = !!recording;
+    } else {
+      const dd = O.toGrid(s.dd, decl, conv);
+      $('bigVal').innerHTML = `${s.dip.toFixed(0)}°<small>/</small>${s.dip < 3 ? '—' : dd.toFixed(0).padStart(3, '0') + '°'}`;
+      $('subVal').innerHTML = `<span>Dip <b>${s.dip.toFixed(1)}°</b></span><span>Dip direction UTM <b>${s.dip < 3 ? 'no definido (plano horizontal)' : dd.toFixed(1) + '°'}</b></span>`;
+      $('recBtn').disabled = !!recording;
+    }
+    // estabilidad
+    const st = windowStats(1500);
+    const stable = st.n > 15 && st.main.sd < 0.7 && (!st.dip || st.dip.sd < 0.5);
+    if (s) setChip('chipStable', stable ? 'ESTABLE' : 'MOVIENDO', stable ? 'ok' : 'mid');
+    if (stable && !wasStable && now - lastBeep > 1500) { haptic(); lastBeep = now; }
+    wasStable = stable;
+    // interferencia
+    if (!isIOS) {
+      const g = buf.filter(x => x.gm != null).map(x => x.gm);
+      if (g.length > 30) { const sd = O.circStats(g).sd; setChip('chipMag', `BRÚJULA ${sd < 1 ? 'OK' : sd < 3 ? 'DUDOSA' : 'INTERFERENCIA'} · ${sd.toFixed(1)}°`, sd < 1 ? 'ok' : sd < 3 ? 'mid' : 'bad'); }
+      else setChip('chipMag', 'BRÚJULA —', 'off');
+    } else {
+      if (iosAcc != null && iosAcc >= 0) setChip('chipMag', `PRECISIÓN ±${Math.round(iosAcc)}°`, iosAcc <= 5 ? 'ok' : iosAcc <= 15 ? 'mid' : 'bad');
+      $('chipCal').hidden = false;
+      const age = iosOffset == null ? Infinity : (now - iosOffsetT) / 1000;
+      const sdOff = iosOffsetBuf.length > 10 ? O.circStats(iosOffsetBuf.map(O.norm360)).sd : null;
+      if (age === Infinity) setChip('chipCal', 'REFERENCIA: ECHE EL CELULAR', 'bad');
+      else if (age > 90) setChip('chipCal', `REFERENCIA VIEJA (${Math.round(age)} s)`, 'bad');
+      else setChip('chipCal', `REFERENCIA OK${sdOff != null ? ' · ±' + sdOff.toFixed(1) + '°' : ''}`, sdOff != null && sdOff > 2 ? 'mid' : 'ok');
+    }
+  }
+  function setChip(id, text, cls) { const el = $(id); el.textContent = text; el.className = 'chip ' + cls; }
+
+  // ---------- aviso háptico / sonoro ----------
+  let ac = null;
+  function haptic() {
+    if (navigator.vibrate) { navigator.vibrate(60); return; }
+    try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); const o = ac.createOscillator(), gn = ac.createGain(); o.frequency.value = 1200; gn.gain.value = 0.08; o.connect(gn).connect(ac.destination); o.start(); o.stop(ac.currentTime + 0.08); } catch (e) {}
+  }
+
+  // ---------- registrar ----------
+  $('recBtn').onclick = () => {
+    try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+    recording = [];
+    $('recBtn').textContent = 'Midiendo… no mueva el celular';
+    setTimeout(finishRecording, 3000);
+  };
+  function finishRecording() {
+    const w = recording; recording = null;
+    $('recBtn').textContent = 'Registrar lectura (3 s)';
+    if (!w || w.length < 20) { toast('Pocas muestras. Repita.'); return; }
+    const decl = num('fDecl') ?? 0, conv = num('fConv') ?? 0;
+    const r = {
+      fecha_hora: new Date().toISOString(), celular: $('fModelo').value, plataforma: dev.plataforma, nucleos: dev.nucleos, ram_gb: dev.ram_gb, webgpu: dev.webgpu,
+      operador: $('fOperador').value, labor: $('fLabor').value, pk: $('fPk').value, modo: mode === 'az' ? 'azimut' : 'plano', metodo: w[0].src,
+      declinacion: decl, convergencia: conv, n: w.length
+    };
+    if (mode === 'az') {
+      const m = O.circStats(w.map(x => x.mag)), p = O.linStats(w.map(x => x.plunge));
+      Object.assign(r, { azimut_mag: +m.mean.toFixed(2), azimut_utm: +O.toGrid(m.mean, decl, conv).toFixed(2), desv_est: +m.sd.toFixed(2), inclinacion_camara: +p.mean.toFixed(1) });
+      const ia = w.filter(x => x.iosA != null).map(x => x.iosA);
+      if (ia.length) r.azimut_utm_ios_directo = +O.toGrid(O.circStats(ia).mean, decl, conv).toFixed(2);
+    } else {
+      const d = O.linStats(w.map(x => x.dip)), dd = O.circStats(w.map(x => x.dd));
+      Object.assign(r, { dip: +d.mean.toFixed(1), dip_dir_utm: +O.toGrid(dd.mean, decl, conv).toFixed(1), desv_est: +Math.max(d.sd, dd.sd).toFixed(2) });
+    }
+    const g = w.filter(x => x.gm != null).map(x => x.gm);
+    if (g.length) r.interferencia_desv = +O.circStats(g).sd.toFixed(2);
+    if (isIOS) { r.precision_ios = iosAcc; r.ref_ios_edad_s = iosOffset == null ? '' : Math.round((Date.now() - iosOffsetT) / 1000); }
+    lastReading = r;
+    haptic();
+    $('lastPanel').hidden = false;
+    $('lastSummary').textContent = mode === 'az'
+      ? `Azimut UTM ${r.azimut_utm.toFixed(1)}° (±${r.desv_est.toFixed(1)}°, ${r.n} muestras). Ingrese la referencia y guarde.`
+      : `Plano ${r.dip.toFixed(0)}°/${String(Math.round(r.dip_dir_utm)).padStart(3, '0')}° (±${r.desv_est.toFixed(1)}°). Ingrese la referencia y guarde.`;
+    if (r.desv_est > 2) toast('Lectura inestable (más de 2°). Conviene repetir.');
+    $('lastPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  $('saveBtn').onclick = () => {
+    if (!lastReading) return;
+    const r = { ...lastReading, nota: $('rNota').value };
+    if (r.modo === 'azimut') {
+      r.ref_topografia = num('rTopo') ?? ''; r.ref_brunton = num('rBrunton') ?? '';
+      r.error_vs_topografia = r.ref_topografia === '' ? '' : +O.wrap180(r.azimut_utm - r.ref_topografia).toFixed(2);
+      r.error_vs_brunton = r.ref_brunton === '' ? '' : +O.wrap180(r.azimut_utm - r.ref_brunton).toFixed(2);
+    } else {
+      r.ref_dip = num('rDip') ?? ''; r.ref_dip_dir = num('rDd') ?? '';
+      r.error_dip = r.ref_dip === '' ? '' : +(r.dip - r.ref_dip).toFixed(1);
+      r.error_dip_dir = r.ref_dip_dir === '' ? '' : +O.wrap180(r.dip_dir_utm - r.ref_dip_dir).toFixed(1);
+    }
+    readings.push(r);
+    if (!store.set('fase0_lecturas', readings)) toast('No se pudo guardar en el celular. Exporte el CSV ahora.');
+    else toast('Lectura guardada');
+    lastReading = null; $('lastPanel').hidden = true;
+    ['rTopo', 'rBrunton', 'rDip', 'rDd', 'rNota'].forEach(id => $(id).value = '');
+    renderTable();
+  };
+
+  // ---------- tabla ----------
+  function renderTable() {
+    $('count').textContent = readings.length + ' lecturas';
+    const head = ['Hora', 'Modo', 'Medido', 'Ref.', 'Error', '±'];
+    $('tbl').tHead.innerHTML = '<tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr>';
+    $('tbl').tBodies[0].innerHTML = readings.slice().reverse().map(r => {
+      const t = new Date(r.fecha_hora).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+      if (r.modo === 'azimut') {
+        const ref = r.ref_topografia !== '' ? r.ref_topografia : r.ref_brunton;
+        const err = r.error_vs_topografia !== '' ? r.error_vs_topografia : r.error_vs_brunton;
+        return `<tr><td>${t}</td><td>Azimut</td><td>${r.azimut_utm.toFixed(1)}°</td><td>${ref === '' ? '—' : ref + '°'}</td><td class="${err === '' ? '' : Math.abs(err) <= 3 ? 'ok' : Math.abs(err) <= 6 ? 'mid' : 'bad'}">${err === '' ? '—' : (err > 0 ? '+' : '') + err.toFixed(1) + '°'}</td><td>${r.desv_est.toFixed(1)}</td></tr>`;
+      }
+      const ref = r.ref_dip === '' ? '—' : `${r.ref_dip}/${r.ref_dip_dir}`;
+      const err = r.error_dip_dir === '' ? '—' : `${r.error_dip}/${r.error_dip_dir}`;
+      return `<tr><td>${t}</td><td>Plano</td><td>${r.dip.toFixed(0)}/${Math.round(r.dip_dir_utm)}</td><td>${ref}</td><td>${err}</td><td>${r.desv_est.toFixed(1)}</td></tr>`;
+    }).join('');
+  }
+  renderTable();
+
+  // ---------- exportar ----------
+  $('exportBtn').onclick = async () => {
+    if (!readings.length) { toast('No hay lecturas'); return; }
+    const cols = [...new Set(readings.flatMap(r => Object.keys(r)))];
+    const esc = v => { v = v == null ? '' : String(v); return /[",;\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const csv = '﻿' + [cols.join(';'), ...readings.map(r => cols.map(c => esc(r[c])).join(';'))].join('\n');
+    const name = `prueba_brujula_${($('fModelo').value || 'celular').replace(/[^\w]+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+    const file = new File([csv], name, { type: 'text/csv' });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
+    } catch (e) { if (e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  };
+
+  let clearArmed = false;
+  $('clearBtn').onclick = () => {
+    if (!clearArmed) { clearArmed = true; $('clearBtn').textContent = 'Toque otra vez para borrar'; $('clearMsg').textContent = 'Exporte el CSV antes de borrar: las lecturas no se pueden recuperar.'; setTimeout(() => { clearArmed = false; $('clearBtn').textContent = 'Borrar todas'; $('clearMsg').textContent = ''; }, 4000); return; }
+    readings = []; store.set('fase0_lecturas', readings); renderTable(); clearArmed = false; $('clearBtn').textContent = 'Borrar todas'; $('clearMsg').textContent = ''; toast('Lecturas borradas');
+  };
+
+  // ---------- utilidades ----------
+  let tt = null;
+  function toast(msg) { const el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(tt); tt = setTimeout(() => el.hidden = true, 2600); }
+
+  // almacenamiento persistente
+  try { navigator.storage?.persist?.(); } catch (e) {}
+  // trabajo sin conexión
+  if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }
+})();
+</script>
+</body>
+</html>
