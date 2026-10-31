@@ -31,7 +31,6 @@ export const guardarReporte = (r: Reporte) =>
   tx<IDBValidKey>('reportes', 'readwrite', s => s.put({ ...r, modificado: new Date().toISOString(), sincronizado: false }));
 
 export async function borrarReporte(r: Reporte): Promise<void> {
-  if (!r.sincronizado) throw new Error('Este reporte no está sincronizado. No se puede borrar (regla de oro). Expórtelo primero.');
   await tx('reportes', 'readwrite', s => s.delete(r.id));
 }
 

@@ -13,6 +13,7 @@ export function App() {
   const [reportes, setReportes] = useState<Reporte[]>([]);
   const [listas, setListas] = useState<Listas>(LISTAS_INICIALES);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [confirmar, setConfirmar] = useState<string | null>(null);
 
   const recargar = () => listarReportes().then(setReportes);
   useEffect(() => {
@@ -37,7 +38,7 @@ export function App() {
 
   return (
     <div className="pantalla">
-      <header className="barra"><h1>Indicación Geomecánica</h1><span className="sub">PRT-JS-CLD-16 · sin señal</span></header>
+      <header className="barra"><h1>Indicación Geomecánica</h1><span className="sub">PRT-JS-CLD-16</span></header>
       <main className="contenido">
         <button className="btn primario grande" onClick={() => setVista({ v: 'editor', r: nuevoReporte(reportes[0]) })}>+ Nuevo reporte</button>
         {aviso && <p className="alerta" onClick={() => setAviso(null)}>{aviso}</p>}
@@ -51,11 +52,13 @@ export function App() {
               <li key={r.id} onClick={() => setVista({ v: 'editor', r })}>
                 <span className="chip" style={t ? { background: t.color, color: t.texto } : {}}>{t ? `ST-${t.tipo}` : '—'}</span>
                 <span className="li-txt"><b>{r.labor || 'Sin labor'}</b> {r.desde && `· ${r.desde}${r.hasta ? ` a ${r.hasta}` : ''}`}<br />
-                  <small>{r.fecha} {r.turno} · RMR {c.rmrFinal ?? '—'} · {r.sincronizado ? 'sincronizado' : 'solo en este celular'}</small></span>
-                <button className="btn mini" onClick={async e => {
+                  <small>{r.fecha} {r.turno} · RMR {c.rmrFinal ?? '—'}</small></span>
+                <button className={confirmar === r.id ? 'btn mini peligro' : 'btn mini'} onClick={async e => {
                   e.stopPropagation();
+                  if (confirmar !== r.id) { setConfirmar(r.id); setTimeout(() => setConfirmar(c => (c === r.id ? null : c)), 4000); return; }
+                  setConfirmar(null);
                   try { await borrarReporte(r); recargar(); } catch (err) { setAviso((err as Error).message); }
-                }}>Borrar</button>
+                }}>{confirmar === r.id ? '¿Borrar? Toque otra vez' : 'Borrar'}</button>
               </li>
             );
           })}

@@ -94,3 +94,14 @@ select.sug, input.sug { border:2px solid #7a4dd8; background:#7a4dd812; }
 .mini img { width:100%; height:100%; object-fit:cover; display:block; }
 .no-apta { position:absolute; top:2px; right:2px; width:20px; height:20px; border-radius:10px; background:#b3261e; color:#fff; font-weight:800; font-size:14px; line-height:20px; }
 .ayuda { font-size:14px; } .ayuda summary { font-weight:600; min-height:40px; display:flex; align-items:center; } .ayuda ol { padding-left:18px; margin:4px 0; }
+.btn.peligro { background:#b3261e; color:#fff; border-color:#b3261e; }
+.camara { position:fixed; inset:0; z-index:30; background:#000; color:#fff; }
+.camara video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.camara .mira { top:45%; }
+.cam-arriba { position:absolute; top:0; left:0; right:0; display:flex; gap:12px; align-items:center; padding:calc(env(safe-area-inset-top) + 10px) 16px 10px; background:linear-gradient(#000a, #0000); }
+.cam-abajo { position:absolute; left:0; right:0; bottom:0; display:flex; flex-direction:column; align-items:center; gap:8px; padding:12px 16px calc(env(safe-area-inset-bottom) + 14px); background:linear-gradient(#0000, #000b); text-align:center; }
+.cam-lectura { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px; }
+.cam-lectura b { font-size:40px; font-variant-numeric:tabular-nums; width:100%; }
+.cam-aviso { margin:0; background:#000a; padding:6px 10px; border-radius:6px; }
+.obturador { width:76px; height:76px; border-radius:50%; border:5px solid #fff; background:#ffffff55; color:#fff; font-size:24px; }
+.obturador:disabled { opacity:.4; }

@@ -146,8 +146,8 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
   };
 
   if (camara) return (
-    <Medidor modo="az" foto titulo={`Foto: ${ZONAS_FOTO.find(z => z.id === zona)!.nombre}`} decl={decl} conv={conv} onCancelar={() => setCamara(false)}
-      onListo={(l, data) => { setCamara(false); if (data) agregar(data, l.az != null ? Math.round(l.az * 10) / 10 : undefined, l.plunge != null ? Math.round(l.plunge) : undefined); }} />
+    <Medidor modo="az" foto conAzimut={zona === 'FRENTE'} titulo={`Foto: ${ZONAS_FOTO.find(z => z.id === zona)!.nombre}`} decl={decl} conv={conv} onCancelar={() => setCamara(false)}
+      onListo={(l, data) => { setCamara(false); if (data) zona === 'FRENTE' ? agregar(data, l.az != null ? Math.round(l.az * 10) / 10 : undefined, l.plunge != null ? Math.round(l.plunge) : undefined) : agregar(data); }} />
   );
 
   const faltan = ZONAS_FOTO.filter(z => !fotos.some(f => f.zona === z.id));
@@ -168,7 +168,7 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
       {img && <canvas ref={lienzo} className="foto-lienzo" style={{ width: '100%', borderRadius: 8, touchAction: modo === 'ver' ? 'auto' : 'none' }}
         onPointerDown={abajo} onPointerMove={mover} onPointerUp={arriba} onPointerCancel={() => { inicio.current = null; setArrastre(null); }} />}
       {sel && <p className="tenue">
-        {sel.az != null ? `Cámara: azimut ${sel.az}° UTM, inclinación ${sel.plunge ?? '—'}°. ` : 'Sin azimut (foto de galería). '}
+        {zona === 'FRENTE' && (sel.az != null ? `Azimut de esta foto: ${sel.az}° UTM. ` : 'Sin azimut (foto de galería). ')}
         {zona === 'FRENTE' && r.azimut != null && <>Azimut de la labor: <b>{r.azimut}°</b>. </>}
         <button className="btn mini" onClick={() => { setR(p => ({ ...p, fotos: (p.fotos ?? []).filter(x => x.id !== sel.id) })); setSelId(null); }}>Quitar foto</button>
       </p>}
