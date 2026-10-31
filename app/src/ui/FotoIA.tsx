@@ -1,7 +1,7 @@
 // Fotos por zona (Frente, H.I., Corona, H.D.) desde varios ángulos, con azimut e inclinación de la cámara,
 // control de calidad, mejora con poca luz, trazas (IA o a mano) y propuestas de la IA. Módulos 5, 6, 8 y 11.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ZONAS_FOTO, type FotoZona, type Reporte, type ZonaFoto } from '../model';
+import { ABREVS, ZONAS_FOTO, type FotoZona, type Reporte, type ZonaFoto } from '../model';
 import { Medidor } from './Medidor';
 import { analizar, estadisticas, segmentoDe } from '../ia/trazas';
 import { aplicar, medidasFoto, proponer } from '../ia/sugerencias';
@@ -11,7 +11,8 @@ import { colorFamilia, rotulos, simplificar, textoFamilia } from '../ia/anotacio
 export const COLORES = ['#ffd400', '#00e5ff', '#ff4fd8', '#7CFF4F', '#ff8a00'];
 const MAX = 800;
 
-type Props = { r: Reporte; setR: (f: (p: Reporte) => Reporte) => void; historial: Reporte[]; decl: number; conv: number };
+type Props = { r: Reporte; setR: (f: (p: Reporte) => Reporte) => void; historial: Reporte[]; decl: number; conv: number; onMedir: (i: number) => void };
+const NOMBRE_TIPO: Record<string, string> = { SD: 'Diaclasa', F: 'Falla', V: 'Veta', C: 'Contacto' };
 type Modo = 'ver' | 'dibujar' | 'borrar';
 
 const cargar = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
@@ -23,7 +24,7 @@ const reducida = (img: HTMLImageElement) => {
   return { w, h, datos: ctx.getImageData(0, 0, w, h).data };
 };
 
-export function FotoIA({ r, setR, historial, decl, conv }: Props) {
+export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
   const fotos = r.fotos ?? [];
   const [zona, setZona] = useState<ZonaFoto>('FRENTE');
   const [selId, setSelId] = useState<string | null>(fotos[0]?.id ?? null);
@@ -37,6 +38,7 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
   const inicio = useRef<[number, number] | null>(null);
   const trazo = useRef<[number, number][]>([]);
   const [arrastre, setArrastre] = useState<[number, number, number, number] | null>(null);
+  const [confirmaTodo, setConfirmaTodo] = useState(false);
 
   const deZona = fotos.filter(f => f.zona === zona);
   const sel = fotos.find(f => f.id === selId && f.zona === zona) ?? deZona[0] ?? null;
@@ -68,7 +70,13 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
       const c = evaluar(red.datos, red.w, red.h);
       const datos = c.brillo < 0.35 || c.contraste < 0.12 ? mejorar(red.datos, red.w, red.h) : red.datos; // mejora para poca luz
       const t = analizar(datos, red.w, red.h);
-      editarFoto(sel.id, f => ({ ...f, trazas: { w: red.w, h: red.h, segmentos: t.segmentos.filter(s => s.familia >= 0) } }));
+      const segs = t.segmentos.filter(s => s.familia >= 0 && s.familia < 5);
+      const nNec = segs.reduce((m, s) => Math.max(m, s.familia + 1), 0);
+      setR(p => ({
+        ...p,
+        familias: p.familias.length >= nNec ? p.familias : [...p.familias, ...Array.from({ length: nNec - p.familias.length }, () => ({ abrev: 'SD', dip: null, dipdir: null }))],
+        fotos: (p.fotos ?? []).map(x => (x.id === sel.id ? { ...x, trazas: { w: red.w, h: red.h, segmentos: segs } } : x)),
+      }));
       setEstado(t.familias.length
         ? `Confianza baja: la IA propone ${t.familias.length} familia(s)${datos !== red.datos ? ' (con mejora de poca luz)' : ''}. Borre lo que no sea fractura (bordes, letreros, sombras) y dibuje lo que falte.`
         : 'No se encontraron trazas claras. Dibújelas con el dedo.');
@@ -89,7 +97,7 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
     // Rótulos como en tus fotos: caja blanca con "D1:55°/350°".
     const fs = Math.max(14, img.width / 40); ctx.font = `bold ${fs}px Arial`;
     for (const ro of rotulos(sel?.trazas?.segmentos ?? [])) {
-      const t = textoFamilia(r.familias, ro.familia); const tw = ctx.measureText(t).width;
+      const t = textoFamilia(r.familias, ro.familia) + (r.familias[ro.familia]?.dip == null ? ' (medir)' : ''); const tw = ctx.measureText(t).width;
       ctx.save(); ctx.translate(ro.x * k, ro.y * k); ctx.rotate(ro.ang * Math.PI / 180);
       ctx.fillStyle = '#fff'; ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
       ctx.fillRect(-tw / 2 - fs * 0.4, -fs * 0.75, tw + fs * 0.8, fs * 1.5); ctx.strokeRect(-tw / 2 - fs * 0.4, -fs * 0.75, tw + fs * 0.8, fs * 1.5);
@@ -109,13 +117,24 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
     e.currentTarget.setPointerCapture(e.pointerId);
     const p = punto(e);
     if (modo === 'borrar') {
-      let best = -1, bd = 25;
-      (sel?.trazas?.segmentos ?? []).forEach((s, i) => { const d = distSeg(p, s); if (d < bd) { bd = d; best = i; } });
+      const b = e.currentTarget.getBoundingClientRect();
+      let best = -1, bd = 28 * dims.w / b.width; // ~28 px de pantalla: tamaño de un dedo
+      (sel?.trazas?.segmentos ?? []).forEach((s, i) => { const d = distTraza(p, s); if (d < bd) { bd = d; best = i; } });
       if (best >= 0) setSegs(ss => ss.filter((_, i) => i !== best));
       return;
     }
     inicio.current = p; trazo.current = [p];
   };
+  const nuevaEstructura = (abrev: string) => {
+    const usadas = new Set((r.fotos ?? []).flatMap(f => f.trazas?.segmentos.map(s => s.familia) ?? []));
+    // Si solo está la familia vacía de inicio (sin medir ni dibujar), se reemplaza en vez de agregar otra.
+    const reusar = r.familias.length === 1 && r.familias[0]!.dip == null && !usadas.has(0);
+    if (!reusar && r.familias.length >= 5) { setEstado('El formato admite máximo 5 estructuras.'); return; }
+    const i = reusar ? 0 : r.familias.length;
+    setR(p => ({ ...p, familias: reusar ? [{ abrev, dip: null, dipdir: null }] : [...p.familias, { abrev, dip: null, dipdir: null }] }));
+    setFam(i); setModo('dibujar');
+  };
+  const deshacer = () => setSegs(ss => ss.slice(0, -1));
   const mover = (e: React.PointerEvent<HTMLCanvasElement>) => { if (inicio.current) { const p = punto(e); trazo.current.push(p); setArrastre([...inicio.current, ...p]); } };
   const arriba = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!inicio.current) return;
@@ -134,7 +153,6 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
   const stats = useMemo(() => (base?.trazas ? estadisticas(base.trazas.segmentos.map(s => ({ ...s })), base.trazas.w, base.trazas.h) : null), [base]);
   const medidas = useMemo(() => (stats && anchoFoto ? medidasFoto(stats, anchoFoto) : null), [stats, anchoFoto]);
   const props = useMemo(() => proponer(r, historial, medidas), [r, historial, medidas]);
-  const nFam = Math.max(3, r.familias.length);
 
   const galeria = async (file?: File) => {
     if (!file) return;
@@ -180,18 +198,40 @@ export function FotoIA({ r, setR, historial, decl, conv }: Props) {
       {img && <>
         <button className="btn" onClick={analizarFoto}>🤖 Buscar trazas con IA</button>
         {estado && <p className={estado.startsWith('FOTO NO APTA') ? 'alerta' : 'tenue'}>{estado}</p>}
-        <div className="segmentos">
-          {(['ver', 'dibujar', 'borrar'] as Modo[]).map(m => (
-            <button key={m} className={modo === m ? 'sel' : ''} onClick={() => setModo(m)}>{m === 'ver' ? 'Ver' : m === 'dibujar' ? '✏️ Dibujar traza' : '🧽 Borrar traza'}</button>
-          ))}
+        <div className="herramientas">
+          <p className="tenue"><b>1.</b> Elija qué va a dibujar:</p>
+          <div className="tipos">
+            {ABREVS.map(a => <button key={a} className="tipo" style={{ borderColor: colorTipo(a) }} onClick={() => nuevaEstructura(a)}>
+              <i style={{ background: colorTipo(a) }} />+ {NOMBRE_TIPO[a] ?? a}</button>)}
+          </div>
+          {r.familias.length > 0 && <>
+            <p className="tenue"><b>2.</b> Toque la estructura y trace con el dedo sobre la foto (recta o en arco):</p>
+            <div className="estructuras">
+              {r.familias.map((f, i) => (
+                <div key={i} className={`estr ${modo === 'dibujar' && fam === i ? 'sel' : ''}`} style={{ borderColor: colorFamilia(r.familias, i) }}>
+                  <button className="estr-nom" onClick={() => { setFam(i); setModo('dibujar'); }}>
+                    <i style={{ background: colorFamilia(r.familias, i) }} />{textoFamilia(r.familias, i)}
+                    <small>{NOMBRE_TIPO[f.abrev] ?? f.abrev}{f.dip == null ? ' · sin medir' : ''}</small></button>
+                  <button className="estr-med" onClick={() => onMedir(i)}>🧭 {f.dip == null ? 'Medir' : 'Volver a medir'}</button>
+                </div>
+              ))}
+            </div>
+            <p className="tenue"><b>3.</b> Toque <b>🧭 Medir</b> y apoye el celular en esa estructura: el rótulo (ej. D1:55°/350°) aparece solo sobre la traza.</p>
+          </>}
+          <div className="segmentos">
+            <button className={modo === 'ver' ? 'sel' : ''} onClick={() => setModo('ver')}>👆 Mover</button>
+            <button className={modo === 'dibujar' ? 'sel' : ''} disabled={!r.familias.length} onClick={() => setModo('dibujar')}>✏️ Dibujar</button>
+            <button className={modo === 'borrar' ? 'sel' : ''} onClick={() => setModo('borrar')}>🧽 Borrar</button>
+          </div>
+          {modo === 'dibujar' && r.familias[fam] && <p className="aviso-modo">Dibujando: <b>{textoFamilia(r.familias, fam)}</b> ({NOMBRE_TIPO[r.familias[fam]!.abrev]})</p>}
+          {modo === 'borrar' && <p className="aviso-modo">Toque la traza que quiere borrar.</p>}
+          <div className="fila-btn">
+            <button className="btn mini" disabled={!sel?.trazas?.segmentos.length} onClick={deshacer}>↶ Deshacer última traza</button>
+            <button className={`btn mini ${confirmaTodo ? 'peligro' : ''}`} disabled={!sel?.trazas?.segmentos.length}
+              onClick={() => { if (confirmaTodo) { setSegs(() => []); setConfirmaTodo(false); } else { setConfirmaTodo(true); setTimeout(() => setConfirmaTodo(false), 3000); } }}>
+              {confirmaTodo ? '¿Borrar todas? Toque otra vez' : '🗑 Borrar todas las trazas'}</button>
+          </div>
         </div>
-        {modo === 'dibujar' && <p className="tenue">Elija la estructura y trace con el dedo; puede ser recta o en arco. Las de la tabla de estructuras aparecen aquí con su dip/dip direction.</p>}
-        {modo === 'dibujar' && <div className="chips" style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
-          {Array.from({ length: Math.min(5, nFam) }, (_, i) => (
-            <button key={i} className="chip" style={{ borderColor: colorFamilia(r.familias, i), background: fam === i ? colorFamilia(r.familias, i) : 'transparent', color: fam === i ? '#000' : undefined }} onClick={() => setFam(i)}>
-              {textoFamilia(r.familias, i)}</button>
-          ))}
-        </div>}
       </>}
       {stats && <>
         <p className="tenue">Para la propuesta se usa la foto del frente con más trazas. {stats.familias.map(f => `Familia ${f.id + 1}: ${f.segmentos} trazas${f.espaciamientoPx && medidas ? `, espaciamiento ≈ ${(f.espaciamientoPx / medidas.escala).toFixed(2)} m` : ''}`).join(' · ')}</p>
@@ -214,6 +254,14 @@ function azimutFrente(fotos: FotoZona[]): number | null {
   if (!v.length) return null;
   let s = 0, c = 0; for (const a of v) { s += Math.sin(a * Math.PI / 180); c += Math.cos(a * Math.PI / 180); }
   return Math.round((((Math.atan2(s, c) * 180 / Math.PI) + 360) % 360) * 10) / 10;
+}
+const colorTipo = (a: string) => colorFamilia([{ abrev: a, dip: null, dipdir: null }], 0);
+/** Distancia del dedo a una traza (recta o arco). */
+function distTraza(p: [number, number], s: { x1: number; y1: number; x2: number; y2: number; pts?: [number, number][] }) {
+  if (!s.pts || s.pts.length < 2) return distSeg(p, s);
+  let d = Infinity;
+  for (let i = 1; i < s.pts.length; i++) { const [a, b] = [s.pts[i - 1]!, s.pts[i]!]; d = Math.min(d, distSeg(p, { x1: a[0], y1: a[1], x2: b[0], y2: b[1] })); }
+  return d;
 }
 function distSeg([px, py]: [number, number], s: { x1: number; y1: number; x2: number; y2: number }) {
   const dx = s.x2 - s.x1, dy = s.y2 - s.y1, L = dx * dx + dy * dy || 1;

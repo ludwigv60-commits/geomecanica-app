@@ -7,6 +7,7 @@ import { FotoIA } from './FotoIA';
 import { Medidor } from './Medidor';
 import { consejos } from '../ia/sugerencias';
 import { redactarCondicion } from '../ia/redaccion';
+import { textoFamilia } from '../ia/anotacion';
 import { entregar, nombreArchivo, MIME_PDF, MIME_XLSX } from '../export/compartir';
 
 
@@ -14,6 +15,7 @@ type Props = { inicial: Reporte; listas: Listas; historial: Reporte[]; onGuardar
 
 export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props) {
   const [midiendo, setMidiendo] = useState<number | null>(null);
+  const [enCadena, setEnCadena] = useState(false); // medir pendientes en orden
   const [r, setR] = useState<Reporte>(() => migrar(inicial));
   const [abierta, setAbierta] = useState<string | null>('cab');
   const [mismoEnZonas, setMismo] = useState(true);
@@ -58,26 +60,32 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
       Mismo valor en H.I., Corona y H.D.</label>
   );
 
-  if (midiendo != null) return (
-    <Medidor modo="pl" titulo={`Familia ${midiendo + 1}: dip / dip direction`} decl={listas.declinacion ?? -7} conv={listas.convergencia ?? 0}
+  const quitarFamilia = (i: number) => setR(p => ({
+    ...p, familias: p.familias.filter((_, j) => j !== i),
+    // Las trazas de esa estructura se borran y las demás conservan su estructura.
+    fotos: (p.fotos ?? []).map(f => f.trazas ? { ...f, trazas: { ...f.trazas, segmentos: f.trazas.segmentos.filter(s => s.familia !== i).map(s => (s.familia > i ? { ...s, familia: s.familia - 1 } : s)) } } : f),
+  }));
+  const medidor = midiendo != null && (
+    <Medidor modo="pl" titulo={`${textoFamilia(r.familias, midiendo).split(':')[0]}: apoye el celular en la estructura`} decl={listas.declinacion ?? -7} conv={listas.convergencia ?? 0}
       onCancelar={() => setMidiendo(null)}
       onListo={l => {
         const i = midiendo;
         const fams = r.familias.map((x, j) => j === i ? { ...x, dip: Math.round(l.dip!), dipdir: Math.round(l.dd!) % 360 } : x);
         set('familias', fams);
         const sig = fams.findIndex((f, j) => j > i && (f.dip == null || f.dipdir == null));
-        setMidiendo(sig >= 0 ? sig : null); // la app pide medir la siguiente, en orden
+        setMidiendo(enCadena && sig >= 0 ? sig : null); // en cadena, la app pide medir la siguiente, en orden
       }} />
   );
-  return (
-    <div className="pantalla">
+  return (<>
+    {medidor}
+    <div className="pantalla" style={midiendo != null ? { display: 'none' } : undefined}>
       <header className="barra">
         <button className="btn mini claro" onClick={onSalir}>‹ Reportes</button>
         <h1>{r.labor || 'Nuevo reporte'}</h1><span className="sub">{estado}</span>
       </header>
       <main className="contenido">
 
-        <FotoIA r={r} setR={setR} historial={historial} decl={listas.declinacion ?? -7} conv={listas.convergencia ?? 0} />
+        <FotoIA r={r} setR={setR} historial={historial} decl={listas.declinacion ?? -7} conv={listas.convergencia ?? 0} onMedir={i => { setEnCadena(false); setMidiendo(i); }} />
         <Seccion titulo="Datos básicos" resumen={[r.labor, r.desde, r.avance != null ? `${r.avance} m` : ""].filter(Boolean).join(" · ")} abierta={abierta} setAbierta={setAbierta} id="cab">
           <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={v => set('labor', v)} /></Campo>
           <Campo t="Sup. de geomecánica"><Lista valor={r.supervisor} opciones={listas.supervisores} on={v => set('supervisor', v)} /></Campo>
@@ -160,12 +168,12 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
                   {ABREVS.map(a => <option key={a}>{a}</option>)}</select>
                 <input inputMode="decimal" placeholder="Dip" value={f.dip ?? ''} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, dip: num(e.target.value) } : x))} />
                 <input inputMode="decimal" placeholder="D/D" value={f.dipdir ?? ''} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, dipdir: num(e.target.value) } : x))} />
-                <button className="btn mini btn-med" onClick={() => setMidiendo(i)}>🧭 Medir</button>
-                <button className="btn mini" onClick={() => set('familias', r.familias.filter((_, j) => j !== i))}>×</button>
+                <button className="btn mini btn-med" onClick={() => { setEnCadena(false); setMidiendo(i); }}>🧭 Medir</button>
+                <button className="btn mini" onClick={() => quitarFamilia(i)}>×</button>
               </div>
             ))}
             {r.familias.length < 5 && <button className="btn mini" onClick={() => set('familias', [...r.familias, { abrev: 'SD', dip: null, dipdir: null }])}>+ Familia</button>}
-            {r.familias.some(f => f.dip == null || f.dipdir == null) && <button className="btn primario" onClick={() => setMidiendo(r.familias.findIndex(f => f.dip == null || f.dipdir == null))}>🧭 Medir familias pendientes, en orden</button>}
+            {r.familias.some(f => f.dip == null || f.dipdir == null) && <button className="btn primario" onClick={() => { setEnCadena(true); setMidiendo(r.familias.findIndex(f => f.dip == null || f.dipdir == null)); }}>🧭 Medir familias pendientes, en orden</button>}
             <details className="ayuda"><summary>¿Cómo medir Dip y Dip Direction?</summary>
               <ol>
                 <li>Limpie la cara de la discontinuidad y apoye el <b>dorso</b> del celular bien plano sobre ella.</li>
@@ -249,6 +257,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
         <Seccion titulo="Revisar y descargar" resumen="PDF · Excel" abierta={abierta} setAbierta={setAbierta} id="res"><Resumen r={r} c={c} /></Seccion>
       </main>
     </div>
+  </>
   );
 }
 
