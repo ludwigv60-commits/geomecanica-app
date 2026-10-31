@@ -4,4 +4,4 @@ import { App } from './ui/App';
 import './ui/estilos.css';
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').catch(() => {});
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('./sw.js').catch(() => {});

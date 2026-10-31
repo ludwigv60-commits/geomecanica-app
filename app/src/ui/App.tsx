@@ -15,7 +15,15 @@ export function App() {
   const [aviso, setAviso] = useState<string | null>(null);
 
   const recargar = () => listarReportes().then(setReportes);
-  useEffect(() => { recargar(); leerListas().then(setListas); pedirPersistencia(); }, []);
+  useEffect(() => {
+    recargar(); leerListas().then(setListas); pedirPersistencia();
+    // Deja listo en el celular todo lo necesario para exportar sin señal.
+    const t = setTimeout(() => {
+      import('../export/xlsx').catch(() => {}); import('../export/pdf').catch(() => {});
+      fetch('./plantilla/formato.xlsx').catch(() => {}); fetch('./plantilla/formato.pdf').catch(() => {});
+    }, 1500);
+    return () => clearTimeout(t);
+  }, []);
 
   if (vista.v === 'editor') return (
     <Editor inicial={vista.r} listas={listas}

@@ -3,6 +3,7 @@ import { ABREVS, ITEMS_VERIF, type Listas, type Reporte, type Verif } from '../m
 import { AJUSTES_ORIENTACION, NOMBRE_ZONA, PARAMETROS, TIPOS, ZONAS, type ParamId, type Zona } from '../core/rmr';
 import { JA, JN, JR, JW, SRF, claseQ, type OpcionQ } from '../core/q';
 import { calcular } from '../calc';
+import { entregar, nombreArchivo, MIME_PDF, MIME_XLSX } from '../export/compartir';
 
 const PASOS = ['Cabecera', 'RMR', 'RQD y Q', 'Litología y estructuras', 'Condición', 'Sostenimiento', 'Firmas', 'Resumen'];
 
@@ -280,7 +281,31 @@ function Resumen({ r, c }: { r: Reporte; c: ReturnType<typeof calcular> }) {
         <p>RMR de diseño {c.rmrFinal ?? '—'} → ST-{c.tipoFinal ?? '—'}</p>
         <ul>{r.sostenimiento.map(l => <li key={l}>{l}</li>)}</ul>
       </section>
-      <p className="tenue">La descarga en Excel y PDF del formato oficial es el siguiente paso de la Fase 1A.</p>
+      <Descargas r={r} />
     </>
+  );
+}
+
+function Descargas({ r }: { r: Reporte }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  const bajar = async (tipo: 'xlsx' | 'pdf') => {
+    setMsg('Generando…');
+    try {
+      const plantilla = await fetch(`./plantilla/formato.${tipo}`).then(x => { if (!x.ok) throw new Error('No se encontró la plantilla'); return x.arrayBuffer(); });
+      const datos = tipo === 'xlsx' ? await (await import('../export/xlsx')).generarXlsx(r, plantilla) : await (await import('../export/pdf')).generarPdf(r, plantilla);
+      const res = await entregar(datos, nombreArchivo(r, tipo), tipo === 'xlsx' ? MIME_XLSX : MIME_PDF);
+      setMsg(res === 'descargado' ? 'Archivo descargado.' : null);
+    } catch (e) { setMsg(`No se pudo generar: ${(e as Error).message}`); }
+  };
+  return (
+    <section className="tarjeta">
+      <h3>Descargar el formato oficial lleno</h3>
+      <div className="rejilla2">
+        <button className="btn primario" onClick={() => bajar('pdf')}>PDF</button>
+        <button className="btn primario" onClick={() => bajar('xlsx')}>Excel</button>
+      </div>
+      {msg && <p className="tenue">{msg}</p>}
+      <p className="tenue">Funciona sin señal. En el celular se abre el menú para guardar o enviar por WhatsApp o correo.</p>
+    </section>
   );
 }
