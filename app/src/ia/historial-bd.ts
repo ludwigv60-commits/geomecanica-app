@@ -59,7 +59,7 @@ export function desdeFilas(filas: string[][]): Reporte[] {
   const contiene = (n: string, no?: string) => cab.findIndex(c => c.includes(n) && (!no || !c.includes(no)));
   const num = (f: string[], i: number) => { if (i < 0) return null; const v = Number(String(f[i] ?? '').replace(',', '.')); return f[i] !== '' && Number.isFinite(v) ? v : null; };
   const iL = exacta('labor'), iF = exacta('fecha'), iT = exacta('turno'), iLit = exacta('litologia'), iD = contiene('progresiva - desde'), iH = contiene('progresiva - hasta');
-  const iOr = exacta('orientacion'), iItem = exacta('item');
+  const iOr = exacta('orientacion'), iItem = exacta('item'), iRqdQ = exacta('rqd (rqd)');
   const iR: Record<string, number> = Object.fromEntries(COL_RMR.map(([id, n]) => [id, id === 'rqd' ? exacta('rqd') : contiene(n, 'numero')]));
   const iQ: Record<string, number> = Object.fromEntries(COL_Q.map(([id, n]) => [id, contiene(n)]));
   const out: Reporte[] = [];
@@ -75,6 +75,8 @@ export function desdeFilas(filas: string[][]): Reporte[] {
       r.ajuste[z] = num(f, iOr); r.litologia[z] = (f[iLit] ?? '').trim();
       for (const [id] of COL_Q) { const v = num(f, iQ[id] ?? -1); if (v != null) (r.q[z] as Record<string, number>)[id] = v; }
     }
+    // RQD (%) del bloque Q → Jv equivalente (RQD = 115 − 3.3·Jv), para que el Q del historial se pueda recalcular.
+    const rq = num(f, iRqdQ); if (rq != null && rq > 0) r.jv = Math.max(0, Math.round((115 - Math.min(100, rq)) / 3.3 * 10) / 10);
     const fams: Familia[] = [];
     for (let j = 1; j <= 5; j++) {
       const dip = num(f, contiene(`buzamiento (familia ${j})`, 'd. buz')), dd = num(f, contiene(`d. buz (familia ${j})`));

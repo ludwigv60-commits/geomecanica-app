@@ -12,6 +12,8 @@ import { redactarCondicion } from '../ia/redaccion';
 import { textoFamilia } from '../ia/anotacion';
 import { entregar, nombreArchivo, MIME_PDF, MIME_XLSX } from '../export/compartir';
 import { aSvg, vistaPlanta, vistaSeccion } from '../export/croquis';
+import { aplicarPlantilla, plantillaTipo, revisarTipo } from '../ia/plantilla-roca';
+import type { TipoRoca } from '../core/rmr';
 
 
 type Props = { inicial: Reporte; listas: Listas; historial: Reporte[]; onGuardar: (r: Reporte) => Promise<void>; onSalir: () => void };
@@ -23,6 +25,9 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
   const [abierta, setAbierta] = useState<string | null>(inicial.labor ? null : 'cab');
   const [mismoEnZonas, setMismo] = useState(true);
   const [estado, setEstado] = useState('Guardado');
+  const [modo, setModo] = useState<'campo' | 'detalle'>(inicial.importado ? 'detalle' : 'campo');
+  const [paso, setPaso] = useState(0);
+  const [midiendoAz, setMidiendoAz] = useState(false);
   const c = useMemo(() => calcular(r), [r]);
   const riesgoIA = useMemo(() => { const x = riesgoPropuesto(r); return x ? { ...x, opcion: enLista(x.nivel, listas.riesgos) } : null; }, [r, listas.riesgos]);
   // Si el campo está vacío (o lo llenó la IA), se llena solo con el nivel que sale del análisis.
@@ -98,15 +103,225 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
         setMidiendo(enCadena && sig >= 0 ? sig : null); // en cadena, la app pide medir la siguiente, en orden
       }} />
   );
+  const tablaRmr = (<>
+          {toggleZonas}
+          <div className="tabla-pts">
+            <div className="tp-cab" style={{ gridTemplateColumns: cols }}><span />{(mismoEnZonas ? ['Puntos'] : ZONAS.map(z => NOMBRE_ZONA[z])).map(t => <b key={t}>{t}</b>)}</div>
+            {PARAMETROS.map(par => (
+              <div key={par.id} className="tp-fila" style={{ gridTemplateColumns: cols }}>
+                <span className="tp-nom">{par.nombre}{par.id === 'rqd' && c.puntajeRqdSugerido != null && <em className="sugerido">Sugerido: {c.puntajeRqdSugerido}</em>}</span>
+                {(mismoEnZonas ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
+                  <select key={z} className={sug(`rmr.${par.id}`)} value={r.rmr[z][par.id] ?? ''} onChange={e => e.target.value !== '' && ponerRmr(z, par.id, Number(e.target.value))}>
+                    <option value="">—</option>
+                    {par.clases.map(cl => <option key={cl.etiqueta} value={cl.puntaje}>{cl.puntaje} · {cl.etiqueta}</option>)}
+                  </select>
+                ))}
+              </div>
+            ))}
+            <div className="tp-fila" style={{ gridTemplateColumns: cols }}>
+              <span className="tp-nom">Ajuste por orientación{c.ajusteIA && <em className="sugerido">Sugerido: {c.ajusteIA.ajuste}</em>}</span>
+              {(mismoEnZonas ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
+                <select key={z} className={sug('ajuste')} value={r.ajuste[z] ?? ''} onChange={e => e.target.value !== '' && ponerAjuste(z, Number(e.target.value))}>
+                  <option value="">—</option>
+                  {AJUSTES_ORIENTACION.map(a => <option key={a.etiqueta} value={a.puntaje}>{a.puntaje} · {a.etiqueta}</option>)}
+                </select>
+              ))}
+            </div>
+          </div>
+          {c.ajusteIA && <p className="tenue">Ajuste sugerido: {c.ajusteIA.calificacion} ({c.ajusteIA.ajuste}). {c.ajusteIA.explicacion}</p>}
+          <TablaRmr c={c} />
+  </>);
+  const bloqueQ = (<>
+          <section className="tarjeta">
+            <h3>Cálculo de RQD · RQD = 115 − 3.3·Jv</h3>
+            <div className="rejilla2">
+              <Campo t="N° fracturas por m³ (Jv)"><NumIn className={sug('jv')} valor={r.jv} on={v => set('jv', v)} /></Campo>
+              <Campo t="RQD (%)"><output className="resultado">{c.rqd ?? '—'}</output></Campo>
+            </div>
+          </section>
+          {toggleZonas}
+          {([['jn', 'Número de discontinuidades (Jn)', JN], ['jr', 'Número de rugosidad (Jr)', JR], ['ja', 'Número de alteración (Ja)', JA], ['jw', 'Agua subterránea (Jw)', JW]] as const).map(([k, t, ops]) => (
+            <SelectorQ key={k} titulo={t} opciones={ops} r={r} mismo={mismoEnZonas} k={k} on={ponerQ} />
+          ))}
+          <SelectorQ titulo="Factor de reducción de esfuerzos (SRF)" opciones={SRF.flatMap(g => g.opciones.map(o => ({ ...o, texto: `${g.grupo}: ${o.texto}` })))} r={r} mismo={mismoEnZonas} k="srf" on={ponerQ} />
+          <section className="tarjeta">
+            <h3>Q = (RQD/Jn)·(Jr/Ja)·(Jw/SRF)</h3>
+            <div className="tres">{ZONAS.map(z => <div key={z}><small>{NOMBRE_ZONA[z]}</small><b>{c.zonas[z].q ?? '—'}</b><small>{c.zonas[z].q != null ? claseQ(c.zonas[z].q!) : ''}</small></div>)}</div>
+            {ZONAS.map(z => c.zonas[z].control?.alerta && <p key={z} className="alerta">{NOMBRE_ZONA[z]}: {c.zonas[z].control!.alerta}</p>)}
+          </section>
+  </>);
+  const tarjetaEstructuras = (
+          <section className="tarjeta">
+            <h3>Estructuras (máx. 5)</h3>
+            <p className="tenue">SD sistema de diaclasas · F falla · V veta · C contacto. Dip y dip direction en grados.</p>
+            {r.familias.map((f, i) => (
+              <div key={i} className="fila">
+                <span className="n">{i + 1}</span>
+                <select value={f.abrev} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, abrev: e.target.value } : x))}>
+                  {ABREVS.map(a => <option key={a}>{a}</option>)}</select>
+                <NumIn placeholder="Dip" valor={f.dip} on={v => set('familias', r.familias.map((x, j) => j === i ? { ...x, dip: v } : x))} />
+                <NumIn placeholder="D/D" valor={f.dipdir} on={v => set('familias', r.familias.map((x, j) => j === i ? { ...x, dipdir: v } : x))} />
+                <button className="btn mini btn-med" onClick={() => { setEnCadena(false); setMidiendo(i); }}>🧭 Medir</button>
+                <button className="btn mini" onClick={() => quitarFamilia(i)}>×</button>
+              </div>
+            ))}
+            {r.familias.length < 5 && <button className="btn mini" onClick={() => set('familias', [...r.familias, { abrev: 'SD', dip: null, dipdir: null }])}>+ Familia</button>}
+            {r.familias.some(f => f.dip == null || f.dipdir == null) && <button className="btn primario" onClick={() => { setEnCadena(true); setMidiendo(r.familias.findIndex(f => f.dip == null || f.dipdir == null)); }}>🧭 Medir familias pendientes, en orden</button>}
+            <details className="ayuda"><summary>¿Cómo medir Dip y Dip Direction?</summary>
+              <ol>
+                <li>Limpie la cara de la discontinuidad y apoye el <b>dorso</b> del celular bien plano sobre ella.</li>
+                <li>Espere "ESTABLE" y toque Registrar; no mueva el celular durante 3 s.</li>
+                <li>Dip = inclinación del plano (0–90°). Dip direction = hacia dónde baja el plano (0–360°), no el rumbo.</li>
+                <li>Aléjese al menos 1 m de pernos, malla, rieles y equipos; si sale "Interferencia magnética", repita en otro punto de la misma cara.</li>
+                <li>Si no alcanza la cara, mida una paralela accesible de la misma familia.</li>
+              </ol>
+            </details>
+          </section>
+  );
+  const tarjetaVistas = (<>
+          {r.familias.some(f => f.dip != null && f.dipdir != null) && (() => {
+            const rz = { HI: c.zonas.HI.total, CORONA: c.zonas.CORONA.total, HD: c.zonas.HD.total };
+            const pl = vistaPlanta(r, rz), se = r.ancho && r.alto ? vistaSeccion(r, rz) : null;
+            return <section className="tarjeta vistas">
+              <h3>Vista planta y vista sección</h3>
+              <p className="tenue">Calculadas con el dip / dip direction de cada estructura, el azimut, la sección y la excavación real. Así salen en el PDF.</p>
+              <div className="rejilla2">
+                {pl ? <div dangerouslySetInnerHTML={{ __html: aSvg(pl) }} /> : <p className="tenue">Falta el azimut para la planta.</p>}
+                {se ? <div dangerouslySetInnerHTML={{ __html: aSvg(se) }} /> : <p className="tenue">Falta ancho y alto para la sección.</p>}
+              </div>
+              {se && se.notas.length > 0 && <ul className="tenue">{se.notas.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+              {se && <p className="tenue">Cuñas: análisis 2D en la sección del frente (como en la ficha). Para el factor de seguridad use Unwedge con estas orientaciones.</p>}
+            </section>;
+          })()}
+  </>);
+  const medidorAz = midiendoAz && (
+    <Medidor modo="az" titulo="Apunte el celular hacia el frente, en el eje de la labor" decl={listas.declinacion ?? -7} conv={listas.convergencia ?? 0}
+      onCancelar={() => setMidiendoAz(false)}
+      onListo={l => { if (l.az != null) set('azimut', Math.round(l.az) % 360); setMidiendoAz(false); }} />
+  );
+  // ===== Modo campo: 4 pasos =====
+  const elegirTipo = (t: TipoRoca) => setR(p => {
+    const q = { ...p, tipoGeologo: t };
+    const pl = plantillaTipo(t, q, historial);
+    return pl ? aplicarPlantilla(q, pl) : q;
+  });
+  const plant = r.tipoGeologo ? plantillaTipo(r.tipoGeologo, r, historial) : null;
+  const avisoTipo = r.tipoGeologo ? revisarTipo(r.tipoGeologo, r, historial) : null;
+  const tipoCalc = c.tipoFinal;
+  const choqueTipo = r.tipoGeologo && tipoCalc && tipoCalc !== r.tipoGeologo
+    ? `Con los parámetros actuales el RMR es ${c.rmrFinal} → tipo ${tipoCalc}, no ${r.tipoGeologo}. Revise el parámetro que cambió o el tipo.` : null;
+  const hayBase = historial.some(h => h.importado);
+  useEffect(() => {
+    if (modo !== 'campo' || paso !== 2) return;
+    setR(p => {
+      let n = p;
+      const cc = calcular(p);
+      if (!p.sostenimiento.length && cc.propuesta) n = { ...n, sostenimiento: [...cc.propuesta.lineas], sugeridos: [...new Set([...(n.sugeridos ?? []), 'sostenimiento'])] };
+      if (!p.condicion.trim() && cc.rmrFinal != null) n = { ...n, condicion: redactarCondicion(n, cc), sugeridos: [...new Set([...(n.sugeridos ?? []), 'condicion'])] };
+      return n;
+    });
+  }, [modo, paso]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tipoSel = TIPOS.find(t => t.tipo === (tipoCalc ?? r.tipoGeologo));
+  const PASOS = ['Datos', 'Foto', 'Resultado', 'Formato'];
+  const listoPaso = [!!(r.labor && r.azimut != null && r.tipoGeologo), listo.fotos && r.familias.some(f => f.dip != null), c.rmrFinal != null, listo.fir];
+  const irPaso = (i: number) => { setPaso(i); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const campo = (
+    <main className="contenido campo">
+      {paso === 0 && <>
+        <section className="tarjeta">
+          <h3>Labor</h3>
+          <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={v => set('labor', v)} /></Campo>
+          <div className="rejilla2">
+            <Campo t="Fecha"><input type="date" value={r.fecha} onChange={e => set('fecha', e.target.value)} /></Campo>
+            <Campo t="Turno"><Segmentos valor={r.turno} opciones={['Día', 'Noche']} on={v => set('turno', v as Reporte['turno'])} /></Campo>
+            <Campo t="Desde (PK)"><input inputMode="decimal" placeholder="0+924.7" value={r.desde} onChange={e => set('desde', e.target.value)} /></Campo>
+            <Campo t="Avance (m)"><NumIn valor={r.avance} on={v => set('avance', v)} /></Campo>
+            <Campo t="Ancho (m)"><NumIn valor={r.ancho} on={v => set('ancho', v)} /></Campo>
+            <Campo t="Alto (m)"><NumIn valor={r.alto} on={v => set('alto', v)} /></Campo>
+          </div>
+        </section>
+        <section className="tarjeta">
+          <h3>Azimut del avance</h3>
+          <div className="fila-az">
+            <NumIn className="az-grande" placeholder="330" valor={r.azimut} on={v => set('azimut', v)} />
+            <span className="az-u">° UTM</span>
+            <button className="btn" onClick={() => setMidiendoAz(true)}>🧭 Medir</button>
+          </div>
+          <p className="tenue">Si la foto es de otro celular o de WhatsApp, escríbalo aquí. Si la foto trae brújula, se llena solo.</p>
+        </section>
+        <section className="tarjeta">
+          <h3>Tipo de roca <small className="tenue">según el geólogo a cargo</small></h3>
+          <div className="tipos-roca">
+            {TIPOS.map(t => <button key={t.tipo} className={r.tipoGeologo === t.tipo ? 'sel' : ''} style={{ background: t.color, color: t.texto }} onClick={() => elegirTipo(t.tipo)}>
+              <b>{t.tipo}</b><small>{t.min}–{t.max}</small></button>)}
+          </div>
+          {r.tipoGeologo && (plant
+            ? <p className="ok">Listo: se llenaron RMR y Q con el mapeo típico de {plant.fuente}. <b>RMR {c.rmrFinal ?? '—'} · Q {c.zonas.CORONA.q ?? '—'}</b>. Si algo cambia en el frente, ajústelo en Resultado.</p>
+            : <p className="alerta">{hayBase ? `En su base no hay mapeos tipo ${r.tipoGeologo}${r.labor ? ` en ${r.labor}` : ''}.` : 'Importe su base de mapeos en ⚙️ para que se llene solo.'} Llene los parámetros en Resultado.</p>)}
+          {avisoTipo && <p className="alerta">🤖 {avisoTipo}</p>}
+        </section>
+      </>}
+      {paso === 1 && <>
+        <FotoIA simple r={r} setR={setR} historial={historial} decl={listas.declinacion ?? -7} conv={listas.convergencia ?? 0} onMedir={i => { setEnCadena(false); setMidiendo(i); }} />
+        {tarjetaEstructuras}
+      </>}
+      {paso === 2 && <>
+        <section className="tarjeta heroe" style={tipoSel ? { background: tipoSel.color, color: tipoSel.texto } : {}}>
+          <div className="heroe-fila">
+            <div><small>RMR de diseño</small><b>{c.rmrFinal ?? '—'}</b></div>
+            <div><small>Tipo de roca</small><b>{tipoCalc ? `ST-${tipoCalc}` : '—'}</b></div>
+            <div><small>Q (corona)</small><b>{c.zonas.CORONA.q ?? '—'}</b></div>
+          </div>
+          <small>RMR H.I. / Corona / H.D.: {ZONAS.map(z => c.zonas[z].total ?? '—').join(' / ')} · RQD {c.rqd ?? '—'}%</small>
+        </section>
+        {choqueTipo && <p className="alerta">{choqueTipo}</p>}
+        {avisoTipo && <p className="alerta">🤖 {avisoTipo}</p>}
+        {c.diseno?.alerta && <p className="alerta">{c.diseno.alerta}</p>}
+        {riesgoIA && <section className="tarjeta">
+          <h3>Nivel de riesgo</h3>
+          <Segmentos valor={r.nivelRiesgo} opciones={listas.riesgos} on={v => setR(p => ({ ...p, nivelRiesgo: v, sugeridos: (p.sugeridos ?? []).filter(x => x !== 'nivelRiesgo') }))} />
+          <p className="tenue">🤖 {riesgoIA.nivel.toUpperCase()} por: {riesgoIA.motivos.join('; ')}.</p>
+        </section>}
+        <details className="tarjeta ajuste"><summary>Ajustar parámetros RMR</summary>{tablaRmr}</details>
+        <details className="tarjeta ajuste"><summary>Ajustar Jv y Q</summary>{bloqueQ}</details>
+        <section className="tarjeta">
+          <h3>Sostenimiento {(r.sugeridos ?? []).includes('sostenimiento') && <span className="sugerido">Según Systra</span>}</h3>
+          {r.sostenimiento.map((l, i) => (
+            <div key={i} className="fila"><input value={l} onChange={e => set('sostenimiento', r.sostenimiento.map((x, j) => j === i ? e.target.value : x))} />
+              <button className="btn mini" onClick={() => set('sostenimiento', r.sostenimiento.filter((_, j) => j !== i))}>×</button></div>
+          ))}
+          <button className="btn mini" onClick={() => set('sostenimiento', [...r.sostenimiento, ''])}>+ Línea</button>
+        </section>
+        <section className="tarjeta">
+          <h3>Condición geomecánica</h3>
+          <textarea className={sug('condicion')} rows={5} value={r.condicion} onChange={e => set('condicion', e.target.value)} />
+        </section>
+        {tarjetaVistas}
+      </>}
+      {paso === 3 && <>
+        <section className="tarjeta">
+          <h3>Firmas</h3>
+          {r.firmas.map((f, i) => (
+            <div key={f.rol} className="bloque"><small>{f.rol}</small>
+              <input placeholder="Nombre" value={f.nombre} onChange={e => set('firmas', r.firmas.map((x, j) => j === i ? { ...x, nombre: e.target.value, fecha: x.fecha || r.fecha } : x))} /></div>
+          ))}
+        </section>
+        <Resumen r={r} c={c} />
+        <button className="btn" onClick={() => { setModo('detalle'); window.scrollTo({ top: 0 }); }}>Ver y editar todo el formato</button>
+      </>}
+    </main>
+  );
   return (<>
-    {medidor}
-    <div className="pantalla" style={midiendo != null ? { display: 'none' } : undefined}>
+    {medidor}{medidorAz}
+    <div className="pantalla" style={midiendo != null || midiendoAz ? { display: 'none' } : undefined}>
       <header className="barra">
         <button className="btn-atras" onClick={onSalir} aria-label="Volver a reportes">‹</button>
         <div className="barra-tit"><h1>{r.labor || 'Nuevo reporte'}</h1><span className="sub">{[r.desde && `PK ${r.desde}`, r.fecha, estado].filter(Boolean).join(' · ')}</span></div>
       </header>
-      <div className="progreso"><div style={{ width: `${(hechos / totalPasos) * 100}%` }} /><span>{hechos} de {totalPasos} listos</span></div>
-      <main className="contenido">
+      {modo === 'campo'
+        ? <nav className="pasos-campo">{PASOS.map((t, i) => <button key={t} className={`${paso === i ? 'activo' : ''}${listoPaso[i] ? ' hecho' : ''}`} onClick={() => irPaso(i)}><i>{listoPaso[i] ? '✓' : i + 1}</i>{t}</button>)}</nav>
+        : <div className="progreso"><div style={{ width: `${(hechos / totalPasos) * 100}%` }} /><span>{hechos} de {totalPasos} listos</span></div>}
+      {modo === 'campo' ? campo : <main className="contenido">
 
         <Seccion titulo="Datos de la labor" listo={listo.cab} resumen={[r.labor, r.desde, r.avance != null ? `${r.avance} m` : ""].filter(Boolean).join(" · ") || 'Se llena una sola vez'} abierta={abierta} setAbierta={setAbierta} id="cab">
           <p className="nota">Se llenan una sola vez y valen para todo el reporte: Frente, H.I., Corona y H.D.</p>
@@ -140,52 +355,11 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
         </section>
 
         <Seccion titulo="RMR (puntos)" resumen={resumenRmr(c)} abierta={abierta} setAbierta={setAbierta} id="rmr" listo={listo.rmr}>
-          {toggleZonas}
-          <div className="tabla-pts">
-            <div className="tp-cab" style={{ gridTemplateColumns: cols }}><span />{(mismoEnZonas ? ['Puntos'] : ZONAS.map(z => NOMBRE_ZONA[z])).map(t => <b key={t}>{t}</b>)}</div>
-            {PARAMETROS.map(par => (
-              <div key={par.id} className="tp-fila" style={{ gridTemplateColumns: cols }}>
-                <span className="tp-nom">{par.nombre}{par.id === 'rqd' && c.puntajeRqdSugerido != null && <em className="sugerido">Sugerido: {c.puntajeRqdSugerido}</em>}</span>
-                {(mismoEnZonas ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
-                  <select key={z} className={sug(`rmr.${par.id}`)} value={r.rmr[z][par.id] ?? ''} onChange={e => e.target.value !== '' && ponerRmr(z, par.id, Number(e.target.value))}>
-                    <option value="">—</option>
-                    {par.clases.map(cl => <option key={cl.etiqueta} value={cl.puntaje}>{cl.puntaje} · {cl.etiqueta}</option>)}
-                  </select>
-                ))}
-              </div>
-            ))}
-            <div className="tp-fila" style={{ gridTemplateColumns: cols }}>
-              <span className="tp-nom">Ajuste por orientación{c.ajusteIA && <em className="sugerido">Sugerido: {c.ajusteIA.ajuste}</em>}</span>
-              {(mismoEnZonas ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
-                <select key={z} className={sug('ajuste')} value={r.ajuste[z] ?? ''} onChange={e => e.target.value !== '' && ponerAjuste(z, Number(e.target.value))}>
-                  <option value="">—</option>
-                  {AJUSTES_ORIENTACION.map(a => <option key={a.etiqueta} value={a.puntaje}>{a.puntaje} · {a.etiqueta}</option>)}
-                </select>
-              ))}
-            </div>
-          </div>
-          {c.ajusteIA && <p className="tenue">Ajuste sugerido: {c.ajusteIA.calificacion} ({c.ajusteIA.ajuste}). {c.ajusteIA.explicacion}</p>}
-          <TablaRmr c={c} />
+          {tablaRmr}
         </Seccion>
 
         <Seccion titulo="RQD y Q de Barton" resumen={resumenQ(c)} abierta={abierta} setAbierta={setAbierta} id="q" listo={listo.q}>
-          <section className="tarjeta">
-            <h3>Cálculo de RQD · RQD = 115 − 3.3·Jv</h3>
-            <div className="rejilla2">
-              <Campo t="N° fracturas por m³ (Jv)"><NumIn className={sug('jv')} valor={r.jv} on={v => set('jv', v)} /></Campo>
-              <Campo t="RQD (%)"><output className="resultado">{c.rqd ?? '—'}</output></Campo>
-            </div>
-          </section>
-          {toggleZonas}
-          {([['jn', 'Número de discontinuidades (Jn)', JN], ['jr', 'Número de rugosidad (Jr)', JR], ['ja', 'Número de alteración (Ja)', JA], ['jw', 'Agua subterránea (Jw)', JW]] as const).map(([k, t, ops]) => (
-            <SelectorQ key={k} titulo={t} opciones={ops} r={r} mismo={mismoEnZonas} k={k} on={ponerQ} />
-          ))}
-          <SelectorQ titulo="Factor de reducción de esfuerzos (SRF)" opciones={SRF.flatMap(g => g.opciones.map(o => ({ ...o, texto: `${g.grupo}: ${o.texto}` })))} r={r} mismo={mismoEnZonas} k="srf" on={ponerQ} />
-          <section className="tarjeta">
-            <h3>Q = (RQD/Jn)·(Jr/Ja)·(Jw/SRF)</h3>
-            <div className="tres">{ZONAS.map(z => <div key={z}><small>{NOMBRE_ZONA[z]}</small><b>{c.zonas[z].q ?? '—'}</b><small>{c.zonas[z].q != null ? claseQ(c.zonas[z].q!) : ''}</small></div>)}</div>
-            {ZONAS.map(z => c.zonas[z].control?.alerta && <p key={z} className="alerta">{NOMBRE_ZONA[z]}: {c.zonas[z].control!.alerta}</p>)}
-          </section>
+          {bloqueQ}
         </Seccion>
 
         <Seccion titulo="Litología y estructuras" resumen={`${r.familias.filter(f => f.dip != null).length} familias`} abierta={abierta} setAbierta={setAbierta} id="est" listo={listo.est}>
@@ -194,32 +368,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
             {ZONAS.map(z => <Campo key={z} t={NOMBRE_ZONA[z]}><Lista valor={r.litologia[z]} opciones={listas.litologias}
               on={v => setR(p => ({ ...p, litologia: mismoEnZonas ? { HI: v, CORONA: v, HD: v } : { ...p.litologia, [z]: v } }))} /></Campo>)}
           </section>
-          <section className="tarjeta">
-            <h3>Estructuras (máx. 5)</h3>
-            <p className="tenue">SD sistema de diaclasas · F falla · V veta · C contacto. Dip y dip direction en grados.</p>
-            {r.familias.map((f, i) => (
-              <div key={i} className="fila">
-                <span className="n">{i + 1}</span>
-                <select value={f.abrev} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, abrev: e.target.value } : x))}>
-                  {ABREVS.map(a => <option key={a}>{a}</option>)}</select>
-                <NumIn placeholder="Dip" valor={f.dip} on={v => set('familias', r.familias.map((x, j) => j === i ? { ...x, dip: v } : x))} />
-                <NumIn placeholder="D/D" valor={f.dipdir} on={v => set('familias', r.familias.map((x, j) => j === i ? { ...x, dipdir: v } : x))} />
-                <button className="btn mini btn-med" onClick={() => { setEnCadena(false); setMidiendo(i); }}>🧭 Medir</button>
-                <button className="btn mini" onClick={() => quitarFamilia(i)}>×</button>
-              </div>
-            ))}
-            {r.familias.length < 5 && <button className="btn mini" onClick={() => set('familias', [...r.familias, { abrev: 'SD', dip: null, dipdir: null }])}>+ Familia</button>}
-            {r.familias.some(f => f.dip == null || f.dipdir == null) && <button className="btn primario" onClick={() => { setEnCadena(true); setMidiendo(r.familias.findIndex(f => f.dip == null || f.dipdir == null)); }}>🧭 Medir familias pendientes, en orden</button>}
-            <details className="ayuda"><summary>¿Cómo medir Dip y Dip Direction?</summary>
-              <ol>
-                <li>Limpie la cara de la discontinuidad y apoye el <b>dorso</b> del celular bien plano sobre ella.</li>
-                <li>Espere "ESTABLE" y toque Registrar; no mueva el celular durante 3 s.</li>
-                <li>Dip = inclinación del plano (0–90°). Dip direction = hacia dónde baja el plano (0–360°), no el rumbo.</li>
-                <li>Aléjese al menos 1 m de pernos, malla, rieles y equipos; si sale "Interferencia magnética", repita en otro punto de la misma cara.</li>
-                <li>Si no alcanza la cara, mida una paralela accesible de la misma familia.</li>
-              </ol>
-            </details>
-          </section>
+          {tarjetaEstructuras}
           <section className="tarjeta">
             <h3>Excavación real</h3>
             <p className="tenue">Diferencia entre el contorno real y el de diseño, medida en el frente (m): positivo = sobreexcavación, negativo = subexcavación. Se dibuja en la sección y entra en el análisis de cuñas.</p>
@@ -232,20 +381,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
                 <NumIn placeholder="0.05" valor={f.potencia} on={v => set('familias', r.familias.map((x, j) => j === i ? { ...x, potencia: v } : x))} /></label>)}
             </div>}
           </section>
-          {r.familias.some(f => f.dip != null && f.dipdir != null) && (() => {
-            const rz = { HI: c.zonas.HI.total, CORONA: c.zonas.CORONA.total, HD: c.zonas.HD.total };
-            const pl = vistaPlanta(r, rz), se = r.ancho && r.alto ? vistaSeccion(r, rz) : null;
-            return <section className="tarjeta">
-              <h3>Vista planta y vista sección</h3>
-              <p className="tenue">Calculadas con el dip / dip direction de cada estructura, el azimut, la sección y la excavación real. Así salen en el PDF.</p>
-              <div className="rejilla2">
-                {pl ? <div dangerouslySetInnerHTML={{ __html: aSvg(pl) }} /> : <p className="tenue">Falta el azimut para la planta.</p>}
-                {se ? <div dangerouslySetInnerHTML={{ __html: aSvg(se) }} /> : <p className="tenue">Falta ancho y alto para la sección.</p>}
-              </div>
-              {se && se.notas.length > 0 && <ul className="tenue">{se.notas.map((n, i) => <li key={i}>{n}</li>)}</ul>}
-              {se && <p className="tenue">Cuñas: análisis 2D en la sección del frente (como en la ficha). Para el factor de seguridad use Unwedge con estas orientaciones.</p>}
-            </section>;
-          })()}
+          {tarjetaVistas}
         </Seccion>
 
         <Seccion titulo="Condición y verificación" resumen={r.condicion ? "lleno" : ""} abierta={abierta} setAbierta={setAbierta} id="cond" listo={listo.cond}>
@@ -317,13 +453,18 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
           {avisos.length ? <ul className="consejos">{avisos.map(a => <li key={a}>{a}</li>)}</ul> : <p className="ok">Nada que observar por ahora.</p>}
         </Seccion>
         <Seccion titulo="Revisar y descargar" resumen="PDF · Excel" abierta={abierta} setAbierta={setAbierta} id="res"><Resumen r={r} c={c} /></Seccion>
-      </main>
-      <nav className="barra-abajo">
+        {!r.importado && <button className="btn" onClick={() => { setModo('campo'); window.scrollTo({ top: 0 }); }}>Volver al modo campo (4 pasos)</button>}
+      </main>}
+      {modo === 'campo' ? <nav className="pie-campo">
+        <button className="btn" disabled={paso === 0} onClick={() => irPaso(paso - 1)}>‹ Atrás</button>
+        {paso < 3 ? <button className="btn primario" onClick={() => irPaso(paso + 1)}>{['Siguiente: foto', 'Ver resultado', 'Ir al formato'][paso]} ›</button>
+          : <button className="btn primario" onClick={onSalir}>Terminar</button>}
+      </nav> : <nav className="barra-abajo">
         <button onClick={() => document.getElementById('sec-fotos')?.scrollIntoView({ behavior: 'smooth' })}><span>📷</span>Fotos</button>
         <button onClick={() => ir('rmr')}><span>🪨</span>RMR</button>
         <button onClick={() => ir('est')}><span>🧭</span>Medir</button>
         <button className="principal" onClick={() => ir('res')}><span>⬇</span>Descargar</button>
-      </nav>
+      </nav>}
     </div>
   </>
   );

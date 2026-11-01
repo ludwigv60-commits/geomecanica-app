@@ -19,7 +19,7 @@ import { colorFamilia, rotulos, simplificar, textoFamilia } from '../ia/anotacio
 export const COLORES = ['#ffd400', '#00e5ff', '#ff4fd8', '#7CFF4F', '#ff8a00'];
 const MAX = 800;
 
-type Props = { r: Reporte; setR: (f: (p: Reporte) => Reporte) => void; historial: Reporte[]; decl: number; conv: number; onMedir: (i: number) => void };
+type Props = { r: Reporte; setR: (f: (p: Reporte) => Reporte) => void; historial: Reporte[]; decl: number; conv: number; onMedir: (i: number) => void; simple?: boolean };
 const NOMBRE_TIPO: Record<string, string> = { SD: 'Diaclasa', F: 'Falla', V: 'Veta', C: 'Contacto' };
 type Modo = 'ver' | 'dibujar' | 'borrar';
 
@@ -35,7 +35,7 @@ const reducida = (img: HTMLImageElement) => {
 /** La IA solo marca las estructuras grandes (>1 m): Jv, RQD y espaciamiento dependen de las fracturas finas y no se sacan de ella. */
 const FINAS = new Set(['jv', 'rmr.rqd', 'rmr.espaciamiento']);
 
-export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
+export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Props) {
   const fotos = r.fotos ?? [];
   const [zona, setZona] = useState<ZonaFoto>('FRENTE');
   const [selId, setSelId] = useState<string | null>(fotos[0]?.id ?? null);
@@ -145,7 +145,9 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
       // Con confianza baja NO se llena nada solo: un Jv mal leído daría un RQD y un RMR falsamente altos.
       return med && ia?.nivel !== 'baja' ? aplicar(n, proponer(n, historial, med).filter(q => q.fuente === 'foto' && !FINAS.has(q.clave))) : n;
     });
-    setEstado(nFam
+    setEstado(nFam && simple
+      ? `🤖 La IA marcó ${nFam} estructura(s) grande(s) (confianza ${ia!.nivel}). Borre lo que no sea, dibuje lo que falte y mida cada una con 🧭 abajo.`
+      : nFam
       ? `Sugerido por IA · confianza ${ia!.nivel}: ${nFam} estructura(s), numeradas de la más a la menos importante (trazas más largas).${extra}${med ? (ia?.nivel === 'baja' ? ' Confianza baja: NO se llenaron parámetros.' : ' Se llenaron en morado persistencia y Jn; Jv, RQD y espaciamiento salen del historial o de su conteo, porque la IA solo marca estructuras grandes (más de 1 m).') : ''} Revise: borre lo que no sea fractura y mida cada estructura con 🧭 (dip/dd para cuñas).`
       : `La IA no encontró trazas claras en la roca.${extra} Dibújelas con el dedo.`);
   };
@@ -242,6 +244,12 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
   const stats = useMemo(() => (base?.trazas ? estadisticas(base.trazas.segmentos.map(s => ({ ...s })), base.trazas.w, base.trazas.h) : null), [base]);
   const medidas = useMemo(() => (stats && anchoFoto ? medidasFoto(stats, anchoFoto) : null), [stats, anchoFoto]);
   const baja = base?.trazas?.ia?.nivel === 'baja';
+  // Modo campo: al cargar una foto, la IA la analiza sola (una vez por foto).
+  const auto = useRef(new Set<string>());
+  useEffect(() => {
+    if (!simple || !img || !sel || sel.trazas?.ia || auto.current.has(sel.id) || !util(sel)) return;
+    auto.current.add(sel.id); analizarFoto();
+  }, [simple, img, sel?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const soloGrandes = base?.trazas?.ia?.metodo === 'red';
   const props = useMemo(() => proponer(r, historial, baja ? null : medidas).filter(q => !(soloGrandes && q.fuente === 'foto' && FINAS.has(q.clave))), [r, historial, medidas, baja, soloGrandes]);
 
@@ -311,23 +319,28 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
         <canvas ref={lienzo} className="foto-lienzo" style={{ width: '100%', transform: `translate(${vistaZ.tx}px, ${vistaZ.ty}px) scale(${vistaZ.z})`, transformOrigin: '0 0' }}
           onPointerDown={abajo} onPointerMove={mover} onPointerUp={arriba} onPointerCancel={e => { soltar(e); inicio.current = null; setArrastre(null); }} />
       </div>}
-      {img && <p className="tenue">Dos dedos: acercar y mover la foto. Un dedo: dibuja (✏️), borra (🧽) o mueve la foto con zoom (👆).</p>}
+      {img && !simple && <p className="tenue">Dos dedos: acercar y mover la foto. Un dedo: dibuja (✏️), borra (🧽) o mueve la foto con zoom (👆).</p>}
       {sel && <p className="tenue">
         {zona === 'FRENTE' && (sel.az != null ? `Azimut de esta foto: ${sel.az}° UTM. ` : 'Sin azimut (foto de galería). ')}
         {zona === 'FRENTE' && r.azimut != null && <>Azimut de la labor: <b>{r.azimut}°</b>. </>}
         <button className="btn mini" onClick={() => quitarFoto(sel.id)}>Quitar foto</button>
       </p>}
+      {simple ? <div className="fotos-dos">
+        <button className="btn primario foto-btn" onClick={() => setCamara(true)}>📷 Tomar foto</button>
+        <label className="btn foto-gal">🖼️ Galería<input type="file" accept="image/*" hidden onChange={e => { galeria(e.target.files?.[0]); e.target.value = ''; }} /></label>
+      </div> : <>
       <button className="btn primario foto-btn" onClick={() => setCamara(true)}>📷 Foto {ZONAS_FOTO.find(z => z.id === zona)!.nombre}{zona === 'FRENTE' ? ' + azimut' : ''}</button>
       <p className="tenue">{deZona.length < 2 ? 'Recomendado: 2 a 3 fotos por zona desde ángulos distintos. ' : ''}De pie, celular vertical, con buena luz y sin polvo.</p>
       <label className="btn mini" style={{ textAlign: 'center' }}>Elegir foto de la galería
         <input type="file" accept="image/*" hidden onChange={e => { galeria(e.target.files?.[0]); e.target.value = ''; }} /></label>
+      </>}
       {faltan.length > 0 && fotos.length > 0 && <p className="tenue">Falta al menos una foto de: {faltan.map(z => z.nombre).join(', ')}.</p>}
       {img && <>
         <button className="btn" onClick={analizarFoto}>🤖 Buscar trazas con IA</button>
-        {sel?.trazas?.ia && <p className="tenue"><span className="sugerido">Sugerido por IA</span> Confianza <b className={`conf-${sel.trazas.ia.nivel}`}>{sel.trazas.ia.nivel}</b>
+        {sel?.trazas?.ia && !simple && <p className="tenue"><span className="sugerido">Sugerido por IA</span> Confianza <b className={`conf-${sel.trazas.ia.nivel}`}>{sel.trazas.ia.nivel}</b>
           {sel.trazas.ia.metodo === 'red' ? ` (${Math.round(sel.trazas.ia.confianza * 100)} %)` : ' (método simple)'}. La IA marca trazas visibles y su orientación en la foto; el buzamiento y la dirección de cada familia se miden con 🧭.</p>}
         {estado && <p className={estado.startsWith('FOTO NO APTA') ? 'alerta' : 'tenue'}>{estado}</p>}
-        <div className="herramientas">
+        {!simple && <div className="herramientas">
           <p className="tenue"><b>1.</b> Elija qué va a dibujar:</p>
           <div className="tipos">
             {ABREVS.map(a => <button key={a} className="tipo" style={{ borderColor: colorTipo(a) }} onClick={() => nuevaEstructura(a)}>
@@ -353,9 +366,9 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
               onClick={() => { if (confirmaTodo) { setSegs(() => []); setConfirmaTodo(false); } else { setConfirmaTodo(true); setTimeout(() => setConfirmaTodo(false), 3000); } }}>
               {confirmaTodo ? '¿Borrar todas? Toque otra vez' : '🗑 Borrar todas las trazas'}</button>
           </div>
-        </div>
+        </div>}
       </>}
-      {stats && <>
+      {stats && !simple && <>
         <p className="tenue">Para la propuesta se usa la foto del frente con más trazas. {stats.familias.map(f => `Familia ${f.id + 1}: ${f.segmentos} trazas${f.espaciamientoPx && medidas ? `, espaciamiento ≈ ${(f.espaciamientoPx / medidas.escala).toFixed(2)} m` : ''}`).join(' · ')}</p>
         <label className="campo"><span>Ancho real que abarca esa foto (m)</span>
           <NumIn valor={anchoFoto} on={setAnchoFoto} /></label>
@@ -365,7 +378,7 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
           catch (e) { setEstado('No se pudo preparar el paquete.'); console.warn(e); }
         }}>📦 Enviar {fotosConTrazas(r).length} foto(s) con trazas para entrenar la IA</button>
       </>}
-      {props.length > 0 && <div className="propuestas">
+      {props.length > 0 && !simple && <div className="propuestas">
         <h3>Propuesta de la IA <span className="sugerido">Sugerido por IA</span></h3>
         {baja && <p className="alerta">La detección de trazas de esta foto tiene confianza baja: los parámetros de la foto (Jv, RQD, espaciamiento) no se proponen. Corrija las trazas o llénelos usted.</p>}
         <ul>{props.map(p => <li key={p.clave}><b>{p.fuente === 'foto' ? 'Foto' : 'Historial'}:</b> {p.texto}</li>)}</ul>

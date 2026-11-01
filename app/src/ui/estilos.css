@@ -192,3 +192,45 @@ input, select, textarea { border-radius:12px; }
 .zoom-btns small { margin-left:auto; opacity:.85; }
 .foto-marco { position:relative; width:100%; overflow:hidden; border-radius:8px; background:#000; }
 .foto-marco .foto-lienzo { display:block; border-radius:0 !important; will-change:transform; }
+
+/* ===== Modo campo (4 pasos) ===== */
+.pasos-campo { position:sticky; top:calc(env(safe-area-inset-top) + 62px); z-index:4; display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; padding:10px 12px; background:var(--carta); border-bottom:1px solid var(--borde); box-shadow:0 2px 8px #0f2a4710; }
+.pasos-campo button { display:flex; flex-direction:column; align-items:center; gap:4px; padding:4px 0; border:0; background:none; color:var(--tenue); font:inherit; font-size:12px; font-weight:700; }
+.pasos-campo i { font-style:normal; width:30px; height:30px; display:grid; place-items:center; border-radius:50%; background:var(--fondo); border:2px solid var(--borde); color:var(--tenue); font-size:14px; }
+.pasos-campo .hecho i { background:#1e7b3a; border-color:#1e7b3a; color:#fff; }
+.pasos-campo .activo { color:var(--txt); }
+.pasos-campo .activo i { background:var(--acento); border-color:var(--acento); color:#fff; box-shadow:0 0 0 4px #f28c2833; }
+.contenido.campo { padding-bottom:110px; }
+.contenido.campo .tarjeta { padding:16px; display:flex; flex-direction:column; gap:10px; }
+.contenido.campo .tarjeta h3 { font-size:17px; margin:0; display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.contenido.campo .tarjeta h3 small { font-weight:500; font-size:13px; }
+.pie-campo { position:fixed; left:0; right:0; bottom:0; z-index:6; display:grid; grid-template-columns:1fr 2fr; gap:10px; padding:10px 14px calc(env(safe-area-inset-bottom) + 10px); background:var(--carta); border-top:1px solid var(--borde); box-shadow:0 -4px 16px #0f2a4714; }
+.pie-campo .btn { min-height:54px; font-size:16px; }
+.pie-campo .btn.primario { background:var(--acento); border-color:var(--acento); box-shadow:0 4px 12px #f28c2855; }
+.fila-az { display:flex; align-items:center; gap:10px; }
+.fila-az .az-grande { flex:1; font-size:30px; font-weight:800; text-align:center; min-height:60px; font-variant-numeric:tabular-nums; }
+.az-u { font-weight:700; color:var(--tenue); }
+.fila-az .btn { min-height:60px; }
+.tipos-roca { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:6px; }
+.tipos-roca button { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; min-height:70px; padding:4px 2px; border:3px solid transparent; border-radius:14px; font:inherit; box-shadow:inset 0 0 0 1px #0002; opacity:.78; }
+.tipos-roca button b { font-size:17px; }
+.tipos-roca button small { font-size:10.5px; font-weight:600; opacity:.9; }
+.tipos-roca .sel { opacity:1; border-color:var(--txt); transform:scale(1.04); box-shadow:0 4px 12px #0004; }
+.heroe { border:0 !important; background:linear-gradient(135deg, #0F2A47, #1d4f80); color:#fff; }
+.heroe-fila { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; text-align:center; }
+.heroe-fila small, .heroe > small { font-size:12px; font-weight:600; opacity:.85; }
+.heroe-fila b { display:block; font-size:30px; line-height:1.1; font-variant-numeric:tabular-nums; }
+.heroe > small { text-align:center; }
+details.ajuste > summary { font-weight:700; font-size:16px; min-height:30px; display:flex; align-items:center; cursor:pointer; list-style:none; }
+details.ajuste > summary::before { content:'⚙️'; margin-right:8px; }
+details.ajuste > summary::after { content:'▸'; margin-left:auto; color:var(--tenue); }
+details.ajuste[open] > summary::after { content:'▾'; }
+.contenido.campo .ok, .contenido.campo .alerta { font-size:14px; border-radius:12px; }
+.contenido.campo .ok { border-left:4px solid #1e7b3a; }
+@media (max-width:360px) { .tipos-roca { grid-template-columns:repeat(3, 1fr); } }
+.contenido.campo .vistas .rejilla2 { grid-template-columns:1fr; }
+.contenido.campo .vistas svg { width:100%; height:auto; background:#fff; border-radius:10px; }
+.contenido.campo .fila .btn.mini { flex:0 0 44px; min-height:44px; height:44px; padding:0; }
+.fotos-dos { display:grid; grid-template-columns:2fr 1fr; gap:8px; }
+.fotos-dos .btn { min-height:60px; display:flex; align-items:center; justify-content:center; font-size:17px; }
+.foto-gal { cursor:pointer; }

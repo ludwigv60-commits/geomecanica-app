@@ -43,6 +43,7 @@ export interface Reporte {
   alto: number | null;
   azimut: number | null;    // cuadrícula UTM
   nivelRiesgo: string;
+  tipoGeologo?: 'I/II' | 'III-A' | 'III-B' | 'IV' | 'V'; // tipo de roca que indica el geólogo a cargo al iniciar
   rmr: Record<Zona, PuntajesZona>;
   ajuste: Record<Zona, number | null>;
   rmrDisenoManual: number | null;
@@ -76,12 +77,13 @@ export function siguienteCorrelativo(reportes: { correlativo: string }[]): strin
 }
 
 export function nuevoReporte(prev?: Reporte, correlativo = ''): Reporte {
-  const ahora = new Date().toISOString();
+  const d = new Date(), ahora = d.toISOString(), h = d.getHours();
+  const hoy = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   return {
     id: crypto.randomUUID(), creado: ahora, modificado: ahora, sincronizado: false,
     correlativo, labor: prev?.labor ?? '', supervisor: prev?.supervisor ?? '',
-    fecha: ahora.slice(0, 10), turno: '', desde: prev?.hasta ?? '', hasta: '', avance: null,
-    ancho: null, alto: null, azimut: null, nivelRiesgo: '',
+    fecha: hoy, turno: h >= 7 && h < 19 ? 'Día' : 'Noche', desde: prev?.hasta ?? '', hasta: '', avance: null,
+    ancho: prev?.ancho ?? null, alto: prev?.alto ?? null, azimut: null, nivelRiesgo: '',
     rmr: z3(() => ({})), ajuste: z3(() => null), rmrDisenoManual: null, jv: null,
     litologia: z3(() => ''), familias: [{ abrev: 'SD', dip: null, dipdir: null }],
     q: z3(() => ({})), condicion: '',
