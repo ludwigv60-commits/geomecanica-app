@@ -139,6 +139,37 @@ export function contornoVoladura(B: number, H: number, sobre: Partial<Record<Zon
 
 const longPerno = (txt: string) => /(\d+(?:[.,]\d+)?)\s*(pies|ft|')/i.test(txt) ? Number(RegExp.$1.replace(',', '.')) * 0.3048 : /(\d(?:[.,]\d+)?)\s*m\b/.test(txt) ? Number(RegExp.$1.replace(',', '.')) : null;
 
+/** Perno indicado en el texto de sostenimiento: tipo, largo, malla de espaciamiento y capacidad típica. */
+export interface PernoInfo { tipo: string; largo: number; pies: number | null; esp: number; intercalado: boolean; cap: number }
+export function pernoInfo(txt: string): PernoInfo | null {
+  const t = txt.toLowerCase(), largo = longPerno(txt);
+  if (largo == null || !/perno|split|helicoidal|bolt|swellex|cable/.test(t)) return null;
+  const tipo = /cable/.test(t) ? 'Cable bolting' : /split/.test(t) ? 'Split set' : /swellex/.test(t) ? 'Swellex' : 'Helicoidal';
+  // capacidad de carga típica por perno (t); referencial, se debe confirmar con pruebas de arranque en mina
+  const cap = tipo === 'Cable bolting' ? 25 : tipo === 'Split set' ? 6 : tipo === 'Swellex' ? 11 : 18;
+  const esp = Number(t.match(/(\d(?:[.,]\d+)?)\s*[x×]\s*\d/)?.[1]?.replace(',', '.')) || 1.5;
+  const pies = /(\d+(?:[.,]\d+)?)\s*(pies|ft|')/i.test(txt) ? Number(RegExp.$1.replace(',', '.')) : null;
+  return { tipo, largo, pies, esp, intercalado: /intercal|tresbolillo|alternad/.test(t), cap };
+}
+const enPies = (m: number) => { const p = Math.ceil(m / 0.3048); return [5, 6, 7, 8, 10, 12, 14, 16, 20, 25, 30].find(x => x >= p) ?? p; };
+
+/** Nivel de riesgo de una cuña con el sostenimiento indicado (equilibrio límite 2D, por metro de labor).
+ *  Corona: cae por gravedad; solo la sostienen los pernos que la atraviesan y se anclan ≥ 0.5 m detrás.
+ *  Hastial: desliza por el plano de deslizamiento (fricción 30°) y los pernos suman resistencia. */
+export interface Riesgo { nivel: 'ALTO' | 'MEDIO' | 'BAJO'; fs: number; motivo: string; accion: string }
+export function riesgoCuna(c: Cuna, perno: PernoInfo | null): Riesgo {
+  const anclado = perno != null && c.ancla != null && c.ancla >= 0.5;
+  const base = Math.hypot(c.pol[c.pol.length - 1]![0] - c.pol[0]![0], c.pol[c.pol.length - 1]![1] - c.pol[0]![1]) || 1;
+  const n = anclado ? Math.max(1, Math.floor(base / perno!.esp) + 1) / perno!.esp : 0;  // pernos efectivos por metro
+  const T = n * (perno?.cap ?? 0), psi = rad(c.incl ?? 90);
+  const fs = c.zona === 'CORONA' ? T / Math.max(c.peso, 0.01) : (c.peso * Math.cos(psi) * Math.tan(rad(30)) + T) / Math.max(c.peso * Math.sin(psi), 0.01);
+  const nivel = fs >= 2 ? 'BAJO' : fs >= 1.5 ? 'MEDIO' : 'ALTO';
+  const req = enPies(c.altura + 1.0);
+  const motivo = !perno ? 'sin pernos indicados' : !anclado ? `el perno ${perno.pies ?? perno.largo.toFixed(1) + ' m'}${perno.pies ? "'" : ''} no atraviesa la cuña` : `FS ${fs.toFixed(1)} con ${perno.tipo.toLowerCase()} ${perno.esp}×${perno.esp} m`;
+  const accion = nivel === 'BAJO' ? 'el sostenimiento indicado' : !anclado ? (req > 12 ? `cable bolting de ${req}' o más` : `pernos de ${req}' o más`) : `cerrar malla de pernos a ${Math.max(1, +(perno!.esp - 0.3).toFixed(1))}×${Math.max(1, +(perno!.esp - 0.3).toFixed(1))} m`;
+  return { nivel, fs, motivo, accion };
+}
+
 // ---------- PLANTA ----------
 export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | null {
   if (r.azimut == null) return null;
@@ -272,7 +303,7 @@ function leyenda(prims: Prim[], r: Reporte, rmr: RmrZonas, o: P, mpp: number) {
   if (cunas(r).length) items.push({ txt: 'Cuña potencial', dib: p => prims.push({ t: 'poly', pts: [p, [p[0] + sw, p[1]], [p[0] + sw / 2, p[1] + fila * 0.7]], cerrado: true, relleno: '#35506B', opac: 0.35, borde: '#0B1A2A', ancho: 0.5, trazos: [3, 1.2] }) });
   if (/shotcrete|lanzado/.test(sost)) linea('Shotcrete', { borde: '#8C8C8C', ancho: 1.1 });
   if (/malla/.test(sost)) items.push({ txt: 'Malla electrosoldada', dib: p => prims.push({ t: 'poly', pts: Array.from({ length: 7 }, (_, i) => [p[0] + (sw * i) / 6, p[1] + fila * (i % 2 ? 0.5 : 0.1)] as P), borde: '#1F4E9E', ancho: 0.35 }) });
-  if (/perno|split|helicoidal|bolt|swellex/.test(sost)) linea('Perno', { borde: '#000000', ancho: 0.75 });
+  if (/perno|split|helicoidal|bolt|swellex/.test(sost)) linea('Perno', { borde: '#000000', ancho: 1.2 });
   const alto = (items.length + 1.3) * fila, ancho = 92 * mpp;
   prims.push({ t: 'poly', pts: [o, [o[0] + ancho, o[1]], [o[0] + ancho, o[1] + alto], [o[0], o[1] + alto]], cerrado: true, relleno: '#FFFFFF', opac: 0.92, borde: '#7F7F7F', ancho: 0.4 });
   prims.push({ t: 'texto', p: [o[0] + 3 * mpp, o[1] + alto - fila * 0.85], s: 'LEYENDA', tam: 5.2, negrita: true, ancla: 'izq' });
@@ -296,7 +327,7 @@ function escala(prims: Prim[], p: P, largo: number) {
 }
 
 // ---------- SECCIÓN ----------
-export interface Cuna { zona: 'CORONA' | 'HI' | 'HD'; familias: [number, number]; pol: P[]; altura: number; area: number; peso: number; ancla: number | null }
+export interface Cuna { zona: 'CORONA' | 'HI' | 'HD'; familias: [number, number]; pol: P[]; altura: number; area: number; peso: number; ancla: number | null; incl?: number }
 
 /** Cuñas potenciales en la sección (2D): corona por dos familias que convergen hacia arriba; hastiales por un
  *  plano que aflora hacia la labor con buzamiento aparente > fricción (30°) y otro que lo libera. */
@@ -332,7 +363,7 @@ export function cunas(r: Reporte): Cuna[] {
       if (!A || s * A[0] <= B / 2 || A[1] < 0 || A[1] > hw) continue;
       const pol: P[] = [pie, A, cab];
       const ar = area(pol), prof = s * A[0] - B / 2;
-      const c: Cuna = { zona: lado, familias: [a.f.n, b.f.n], pol, altura: prof, area: ar, peso: ar * GAMMA, ancla: perno != null ? perno - prof : null };
+      const c: Cuna = { zona: lado, familias: [a.f.n, b.f.n], pol, altura: prof, area: ar, peso: ar * GAMMA, ancla: perno != null ? perno - prof : null, incl: a.ang };
       if (prof < B && (!m || c.area > m.area)) m = c;
     }
     if (m) out.push(m);
@@ -396,7 +427,8 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
       notas.push(`${z === 'CORONA' ? 'Corona' : z === 'HI' ? 'Hastial izquierdo' : 'Hastial derecho'}: ${v > 0 ? 'sobreexcavación' : 'subexcavación'} de ${Math.abs(v).toFixed(2)} m.`);
     }
   }
-  // cuñas potenciales
+  // cuñas potenciales con su nivel de riesgo
+  const pinfo = pernoInfo((r.sostenimiento ?? []).join(' '));
   for (const c of cunas(r)) {
     prims.splice(iHueco, 0, { t: 'poly', pts: c.pol, cerrado: true, relleno: '#35506B', opac: 0.35, borde: '#0B1A2A', ancho: 0.7, trazos: [3, 1.2] });
     const ce: P = [c.pol.reduce((a, p) => a + p[0], 0) / c.pol.length, c.pol.reduce((a, p) => a + p[1], 0) / c.pol.length];
@@ -407,11 +439,12 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
     prims.push({ t: 'poly', pts: flecha([lbl[0], lbl[1] + 0.22], meta, Math.min(B, H) * 0.035), cerrado: true, relleno: '#0B1A2A' });
     const nom = c.zona === 'CORONA' ? 'Cuña en corona' : `Cuña en ${c.zona === 'HD' ? 'H.D.' : 'H.I.'}`;
     const an = c.zona === 'CORONA' ? 'centro' : c.zona === 'HD' ? 'der' : 'izq';
-    prims.push({ t: 'texto', p: lbl, s: `${nom} (${c.familias.join('+')})`, tam: 5.2, negrita: true, color: '#0B1A2A', ancla: an, fondo: true });
-    const fuera = c.pol.some(p => p[1] > caja[3] || p[0] < caja[0] || p[0] > caja[2]);
-    prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.3], s: `${c.zona === 'CORONA' ? 'h' : 'prof.'} ${c.altura.toFixed(1)} m · ${c.peso.toFixed(1)} t/m${fuera ? ' (vértice fuera de vista)' : ''}`, tam: 4.8, color: '#0B1A2A', ancla: an, fondo: true });
-    notas.push(`${nom} formada por ${c.familias.map(n => rotulo(fams.find(f => f.n === n)!)).join(' y ')}: ${c.zona === 'CORONA' ? 'altura' : 'profundidad'} ${c.altura.toFixed(1)} m, área ${c.area.toFixed(1)} m², ${c.peso.toFixed(1)} t por metro de labor` +
-      (c.ancla != null ? (c.ancla >= 0.6 ? `; el perno queda anclado ${c.ancla.toFixed(1)} m detrás de la cuña.` : `; el perno solo pasa ${Math.max(c.ancla, 0).toFixed(1)} m detrás de la cuña: revise la longitud.`) : '.'));
+    const rg = riesgoCuna(c, pinfo), colR = rg.nivel === 'ALTO' ? '#C00000' : rg.nivel === 'MEDIO' ? '#B26B00' : '#2E7D32';
+    prims.push({ t: 'texto', p: lbl, s: `${nom} (${c.familias.join('+')}) · RIESGO ${rg.nivel}`, tam: 5.4, negrita: true, color: colR, ancla: an, fondo: true });
+        prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.3], s: `${c.zona === 'CORONA' ? 'h' : 'prof.'} ${c.altura.toFixed(1)} m · ${c.peso.toFixed(1)} t/m · ${rg.motivo}`, tam: 4.8, color: '#0B1A2A', ancla: an, fondo: true });
+    prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.58], s: `Usar ${rg.accion}`, tam: 4.8, negrita: true, color: colR, ancla: an, fondo: true });
+    notas.push(`${nom} formada por ${c.familias.map(n => rotulo(fams.find(f => f.n === n)!)).join(' y ')}: ${c.zona === 'CORONA' ? 'altura' : 'profundidad'} ${c.altura.toFixed(1)} m, área ${c.area.toFixed(1)} m², ${c.peso.toFixed(1)} t por metro de labor. ` +
+      `Riesgo ${rg.nivel} (FS ${rg.fs.toFixed(1)}): ${rg.motivo}. Recomendación: ${rg.accion}.` + (c.altura > 3 ? ' Es la cuña máxima teórica (persistencia ilimitada); verifique la persistencia real de las familias en el frente.' : ''));
   }
   // fallas, vetas y contactos: rectas largas que cruzan la sección (con su potencia)
   const especiales = fams.filter(f => f.abrev !== 'SD');
@@ -437,7 +470,7 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
     // rótulo sobre el tramo más largo, a un cuarto de su extremo y al costado de la banda
     const lar = [...seg].sort((x, y) => Math.hypot(y[1][0] - y[0][0], y[1][1] - y[0][1]) - Math.hypot(x[1][0] - x[0][0], x[1][1] - x[0][1]))[0];
     if (lar) {
-      const [p0, p1] = lar, fy = Math.abs(p1[1] - p0[1]) > 1e-6 ? Math.min(0.85, Math.max(0.15, (H * 0.55 - p0[1]) / (p1[1] - p0[1]))) : 0.5, q: P = [p0[0] + (p1[0] - p0[0]) * fy, p0[1] + (p1[1] - p0[1]) * fy], lado = q[0] < 0 ? 1 : -1;
+      const [p0, p1] = lar, fy = Math.abs(p1[1] - p0[1]) > 1e-6 ? Math.min(0.85, Math.max(0.15, (H * 0.42 - p0[1]) / (p1[1] - p0[1]))) : 0.5, q: P = [p0[0] + (p1[0] - p0[0]) * fy, p0[1] + (p1[1] - p0[1]) * fy], lado = q[0] < 0 ? 1 : -1;
       prims.push({ t: 'texto', p: [q[0] + lado * (0.15 + (f.potencia ?? 0)), q[1]], s: `${f.abrev}${f.n} ${Math.round(f.dip)}°/${dd3(f.dipdir)}°${f.potencia ? ` · pot. ${f.potencia} m` : ''}`, tam: 5.2, color: st.borde, negrita: true, ancla: lado > 0 ? 'izq' : 'der', fondo: true });
     }
   });
@@ -457,14 +490,24 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
   if (lp && /perno|split|helicoidal|bolt|swellex/.test(sost)) {
     // un perno cada ~1.3 m de contorno (o el espaciamiento indicado, p. ej. 1.5x1.5)
     const espP = Number(sost.match(/(\d(?:[.,]\d+)?)\s*[x×]\s*\d/)?.[1]?.replace(',', '.')) || 1.3;
-    let ultimo = -Infinity, sArc = 0;
+    let ultimo = -Infinity, sArc = 0; const puntas: P[] = [];
     for (let i = 1; i < real.length - 1; i++) {
       sArc += Math.hypot(real[i]![0] - real[i - 1]![0], real[i]![1] - real[i - 1]![1]);
       const p = real[i]!, nv = vol.normal[i]!; if (p[1] < H * 0.18 || sArc - ultimo < espP) continue;
       ultimo = sArc;
       const q: P = [p[0] + nv[0] * lp, p[1] + nv[1] * lp];
-      prims.push({ t: 'poly', pts: [p, q], borde: '#000000', ancho: 0.75 });
-      prims.push({ t: 'poly', pts: [[p[0] - nv[1] * 0.12, p[1] + nv[0] * 0.12], [p[0] + nv[1] * 0.12, p[1] - nv[0] * 0.12]], borde: '#000000', ancho: 1 });
+      prims.push({ t: 'poly', pts: [p, q], borde: '#000000', ancho: 1.2 });
+      puntas.push(q);
+      prims.push({ t: 'poly', pts: [[p[0] - nv[1] * 0.12, p[1] + nv[0] * 0.12], [p[0] + nv[1] * 0.12, p[1] - nv[0] * 0.12]], borde: '#000000', ancho: 1.5 });
+    }
+    // rótulo corto del perno, a un lado, con guía hasta la punta del perno más cercano
+    if (pinfo && puntas.length) {
+      const pos: P = [caja[2] - B * 0.03, caja[3] - (caja[3] - caja[1]) * 0.12];
+      const txtP = `${pinfo.tipo} ${pinfo.pies != null ? pinfo.pies + "'" : pinfo.largo.toFixed(1) + ' m'} · ${pinfo.esp}×${pinfo.esp} m${pinfo.intercalado ? ' intercalado' : ''}`;
+      const guia: P = [pos[0] - (txtP.length * 5 * 0.5 * B) / 152 / 2, pos[1] - 0.06];
+      const pt = puntas.reduce((m, q) => Math.hypot(q[0] - guia[0], q[1] - guia[1]) < Math.hypot(m[0] - guia[0], m[1] - guia[1]) ? q : m);
+      prims.push({ t: 'poly', pts: [pt, guia], borde: '#000000', ancho: 0.35 });
+      prims.push({ t: 'texto', p: pos, s: txtP, tam: 5, negrita: true, ancla: 'der', fondo: true });
     }
   }
   // leyenda de estructuras con buzamiento aparente
