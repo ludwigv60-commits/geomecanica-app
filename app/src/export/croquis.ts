@@ -92,6 +92,51 @@ export function seccionReal(B: number, H: number, sobre: Partial<Record<Zona, nu
   return pts.map((p, i) => i === 0 || i === n - 1 ? [p[0] + normal[i]![0] * d[i]!, p[1]] as P : [p[0] + normal[i]![0] * d[i]!, p[1] + normal[i]![1] * d[i]!] as P);
 }
 
+/** Generador pseudoaleatorio con semilla (el mismo reporte siempre se dibuja igual). */
+function azar(semilla: string): () => number {
+  let h = 2166136261; for (const ch of semilla) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return () => { h = (h + 0x6d2b79f5) | 0; let t = Math.imul(h ^ (h >>> 15), 1 | h); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+/** Contorno de voladura real: el teórico desplazado por la excavación medida en cada zona, con el perfil
+ *  anguloso de una voladura de verdad (cachos que quedan hacia adentro, realces y bloques que caen siguiendo
+ *  las diaclasas). La irregularidad es proporcional a lo medido; sin dato, solo una rugosidad de ±6 cm.
+ *  Devuelve también la normal en cada punto, para el shotcrete y los pernos. */
+export function contornoVoladura(B: number, H: number, sobre: Partial<Record<Zona, number | null>> = {}, semilla = 'x', dirs: P[] = []): { pts: P[]; normal: P[]; zona: Zona[] } {
+  const t = seccionTeorica(B, H), paso = Math.min(B, H) / 60;
+  // remuestreo fino por longitud de arco
+  const pts: P[] = [], normal: P[] = [], zona: Zona[] = [], arco: number[] = [];
+  let acc = 0;
+  for (let i = 0; i < t.pts.length - 1; i++) {
+    const a = t.pts[i]!, b = t.pts[i + 1]!, L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(L / paso));
+    for (let k = 0; k < n; k++) {
+      const f = k / n, na = t.normal[i]!, nb = t.normal[i + 1]!, nx = na[0] + (nb[0] - na[0]) * f, ny = na[1] + (nb[1] - na[1]) * f, nn = Math.hypot(nx, ny) || 1;
+      pts.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]); normal.push([nx / nn, ny / nn]); zona.push(t.zona[i]!); arco.push(acc + L * f);
+    }
+    acc += L;
+  }
+  pts.push(t.pts.at(-1)!); normal.push(t.normal.at(-1)!); zona.push(t.zona.at(-1)!); arco.push(acc);
+  const N = pts.length, d0 = zona.map(z => sobre[z] ?? 0);
+  const ven = 12, base = d0.map((_, i) => { let s = 0, k = 0; for (let j = -ven; j <= ven; j++) { const v = d0[i + j]; if (v != null) { s += v; k++; } } return s / k; });
+  // quiebres de los bloques cada 0.35–1.1 m (a escala de la labor)
+  const rnd = azar(semilla), esc = Math.min(B, H) / 5.5, quiebres: { s: number; a: number }[] = [{ s: 0, a: 0 }];
+  for (let s = (0.3 + rnd() * 0.5) * esc; s < acc - 0.2 * esc; s += (0.35 + rnd() * 0.75) * esc) {
+    const i = Math.min(N - 1, arco.findIndex(x => x >= s)), v = d0[i] ?? 0, A = Math.max(0.06, Math.abs(v) * 0.75);
+    // en sobreexcavación dominan los bloques caídos (afuera); en subexcavación, los cachos (adentro)
+    const r = rnd(), a = v >= 0 ? A * (r < 0.2 ? -0.45 * rnd() : r < 0.35 ? 0.9 + 0.5 * rnd() : -0.15 + rnd() * 0.85) : A * (r < 0.25 ? 0.35 * rnd() : -0.3 - rnd() * 0.9);
+    quiebres.push({ s, a });
+    // realce: un escalón que sigue una diaclasa (dos quiebres muy juntos con salto)
+    if (dirs.length && rnd() < 0.3) quiebres.push({ s: s + 0.08 * esc, a: a + (v >= 0 ? 1 : -1) * A * (0.35 + 0.4 * rnd()) });
+  }
+  quiebres.push({ s: acc, a: 0 });
+  const rug = arco.map(s => { let k = 0; while (k < quiebres.length - 2 && quiebres[k + 1]!.s < s) k++; const q0 = quiebres[k]!, q1 = quiebres[k + 1]!, f = (s - q0.s) / Math.max(1e-9, q1.s - q0.s); return q0.a + (q1.a - q0.a) * Math.min(1, Math.max(0, f)); });
+  const out = pts.map((p, i) => {
+    const y = p[1], pie = Math.min(1, y / (H * 0.12));  // al pie del hastial la voladura respeta el piso
+    const d = base[i]! * Math.max(pie, 0.4) + rug[i]! * pie;
+    return i === 0 || i === N - 1 ? [p[0] + normal[i]![0] * d, 0] as P : [p[0] + normal[i]![0] * d, p[1] + normal[i]![1] * d] as P;
+  });
+  return { pts: out, normal, zona };
+}
+
 const longPerno = (txt: string) => /(\d+(?:[.,]\d+)?)\s*(pies|ft|')/i.test(txt) ? Number(RegExp.$1.replace(',', '.')) * 0.3048 : /(\d(?:[.,]\d+)?)\s*m\b/.test(txt) ? Number(RegExp.$1.replace(',', '.')) : null;
 
 // ---------- PLANTA ----------
@@ -104,44 +149,138 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | nu
   const esquina = (c: P, t0: number): P[] => Array.from({ length: 7 }, (_, i) => { const t = t0 + (Math.PI / 2) * (i / 6); return en(c[0] + rr * Math.cos(t), c[1] + rr * Math.sin(t)); });
   // en coordenadas (s: avance, t: derecha): esquina izquierda centrada en (-rr, -B/2+rr), derecha en (-rr, B/2-rr)
   const frente: P[] = [en(-av, -B / 2), ...esquina([-rr, -B / 2 + rr], -Math.PI / 2), ...esquina([-rr, B / 2 - rr], 0), en(-av, B / 2)];
+  // voladura real en planta: hastiales y frente con bloques y cachos (amplitud según la excavación medida)
+  const rnd = azar(`${r.id}|${r.labor}|${r.fecha}|planta`), so = r.sobreexc ?? {};
+  const ampl = (z: Zona) => Math.max(0.07, Math.abs(so[z] ?? 0) * 0.8);
+  const quebrar = (pts: P[], fuera: (p: P) => P, base: number, A: number): P[] => {
+    const out: P[] = [pts[0]!]; const esc = B / 5.5;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]!, b = pts[i + 1]!, Lg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      for (let s0 = (0.25 + rnd() * 0.5) * esc; s0 < Lg; s0 += (0.35 + rnd() * 0.7) * esc) {
+        const f = s0 / Lg, q: P = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f], n = fuera(q), r0 = rnd();
+        const dd = base + A * (base >= 0 ? (r0 < 0.2 ? -0.45 * rnd() : -0.1 + rnd() * 1.1) : (r0 < 0.25 ? 0.3 * rnd() : -0.3 - rnd()));
+        out.push([q[0] + n[0] * dd, q[1] + n[1] * dd]);
+      }
+      out.push(b);
+    }
+    return out;
+  };
+  const izq: P = [-v[0], -v[1]], der: P = v, centroF = en(-av * 0.6, 0);
+  const paredI = quebrar([en(-L, -B / 2), en(-av, -B / 2)], () => izq, so.HI ?? 0, ampl('HI'));
+  const paredD = quebrar([en(-L, B / 2), en(-av, B / 2)], () => der, so.HD ?? 0, ampl('HD'));
+  const fr0 = quebrar(frente, q => { const d: P = [q[0] - centroF[0], q[1] - centroF[1]], n = Math.hypot(...d) || 1; return [d[0] / n, d[1] / n]; }, 0, 0.1);
+  const frenteR: P[] = [paredI.at(-1)!, ...fr0.slice(1, -1), paredD.at(-1)!];
   const prims: Prim[] = [
-    { t: 'poly', pts: frente, cerrado: true, relleno: colorTipo(rmr.CORONA), opac: 0.55 },
-    { t: 'poly', pts: [en(-L, -B / 2), en(-av, -B / 2)], borde: '#000000', ancho: 0.7 },
-    { t: 'poly', pts: [en(-L, B / 2), en(-av, B / 2)], borde: '#000000', ancho: 0.7 },
-    { t: 'poly', pts: frente.slice(1, -1), borde: '#000000', ancho: 1.3 },
+    { t: 'poly', pts: frenteR, cerrado: true, relleno: colorTipo(rmr.CORONA), opac: 0.55 },
+    { t: 'poly', pts: paredI, borde: '#000000', ancho: 0.7 },
+    { t: 'poly', pts: paredD, borde: '#000000', ancho: 0.7 },
+    { t: 'poly', pts: [en(-L, -B / 2), en(-av, -B / 2)], borde: GRIS, ancho: 0.35, trazos: [2, 1.5] },
+    { t: 'poly', pts: [en(-L, B / 2), en(-av, B / 2)], borde: GRIS, ancho: 0.35, trazos: [2, 1.5] },
+    { t: 'poly', pts: frenteR.slice(1, -1), borde: '#000000', ancho: 1.3 },
     { t: 'poly', pts: [en(-av, -B / 2), en(-av, B / 2)], borde: GRIS, ancho: 0.4, trazos: [2, 1.5] },
   ];
   const fams = familiasMedidas(r), R = B * 1.35;
-  fams.forEach((f, k) => {
-    const st = estilo(f), rumbo = rad(f.dipdir - 90), d: P = [Math.sin(rumbo), Math.cos(rumbo)];
+  const cx = en(-av * 0.5, 0), ext = Math.max(R * 1.25, L * 0.62);
+  const caja: Vista['caja'] = [cx[0] - ext, cx[1] - ext * 0.78, cx[0] + ext, cx[1] + ext * 0.78];
+  const w = caja[2] - caja[0], h = caja[3] - caja[1], mpp = w / 278;  // metros por punto en el PDF
+  // cajas ocupadas por textos y trazos ya puestos, para que los rótulos no se monten
+  type Caja = [number, number, number, number];
+  const ocupadas: Caja[] = [], trazos: [P, P][] = [];
+  const cajaTexto = (p: P, txt: string, tam: number, ancla: 'izq' | 'der' | 'centro'): Caja => {
+    const an = txt.length * tam * 0.6 * mpp, al = tam * mpp;
+    const x0 = ancla === 'izq' ? p[0] : ancla === 'der' ? p[0] - an : p[0] - an / 2;
+    return [x0 - mpp, p[1] - al * 0.3, x0 + an + mpp, p[1] + al * 0.95];
+  };
+  const choca = (c: Caja) => {
+    let n = 0;
+    if (c[0] < caja[0] || c[2] > caja[2] || c[1] < caja[1] || c[3] > caja[3]) n += 100;
+    for (const o of ocupadas) if (c[0] < o[2] && c[2] > o[0] && c[1] < o[3] && c[3] > o[1]) n += 10;
+    for (const [a, b] of trazos) for (let i = 0; i <= 24; i++) { const x = a[0] + ((b[0] - a[0]) * i) / 24, y = a[1] + ((b[1] - a[1]) * i) / 24; if (x > c[0] && x < c[2] && y > c[1] && y < c[3]) { n += 1; break; } }
+    return n;
+  };
+  ocupadas.push([caja[0], caja[3] - h * 0.2, caja[0] + w * 0.45, caja[3]], [caja[2] - w * 0.12, caja[3] - h * 0.25, caja[2], caja[3]], [caja[0], caja[1], caja[0] + w * 0.36, caja[1] + h * 0.47]);
+  frente.slice(1, -1).forEach((p, i, a) => { if (i) trazos.push([a[i - 1]!, p]); });
+  const lineas = fams.map((f, k) => {
+    const rumbo = rad(f.dipdir - 90), d: P = [Math.sin(rumbo), Math.cos(rumbo)];
     // cada estructura pasa por el último avance, repartidas a lo ancho para que no se tapen
     const fr = (k + 0.5) / Math.max(1, fams.length), o = en(-av * 0.5 - (fr - 0.5) * B * 0.9, B * (-0.32 + 0.64 * fr));
     const a: P = [o[0] - d[0] * R, o[1] - d[1] * R], b: P = [o[0] + d[0] * R, o[1] + d[1] * R];
+    trazos.push([a, b]);
+    return { f, d, o, a, b };
+  });
+  for (const { f, d, o, a, b } of lineas) {
+    const st = estilo(f);
     if (f.potencia && f.potencia > 0.05) { // falla o veta con potencia: banda
-      const w = Math.max(f.potencia, B * 0.03) / 2, nn: P = [-d[1], d[0]];
-      prims.push({ t: 'poly', pts: [[a[0] + nn[0] * w, a[1] + nn[1] * w], [b[0] + nn[0] * w, b[1] + nn[1] * w], [b[0] - nn[0] * w, b[1] - nn[1] * w], [a[0] - nn[0] * w, a[1] - nn[1] * w]], cerrado: true, relleno: f.abrev === 'V' ? '#BFE3C6' : '#F3D9B1', opac: 0.9, borde: st.borde, ancho: 0.4 });
+      const wd = Math.max(f.potencia, B * 0.03) / 2, nn: P = [-d[1], d[0]];
+      prims.push({ t: 'poly', pts: [[a[0] + nn[0] * wd, a[1] + nn[1] * wd], [b[0] + nn[0] * wd, b[1] + nn[1] * wd], [b[0] - nn[0] * wd, b[1] - nn[1] * wd], [a[0] - nn[0] * wd, a[1] - nn[1] * wd]], cerrado: true, relleno: f.abrev === 'V' ? '#BFE3C6' : '#F3D9B1', opac: 0.9, borde: st.borde, ancho: 0.4 });
     }
     prims.push({ t: 'poly', pts: [a, b], ...st });
     // símbolo de buzamiento: tick hacia la dirección de buzamiento + valor del dip
     const dd = rad(f.dipdir), tk: P = [Math.sin(dd) * B * 0.13, Math.cos(dd) * B * 0.13];
     prims.push({ t: 'poly', pts: [o, [o[0] + tk[0], o[1] + tk[1]]], borde: st.borde, ancho: Math.max(st.ancho, 0.9) });
-    prims.push({ t: 'texto', p: [o[0] + tk[0] * 1.9, o[1] + tk[1] * 1.9 - B * 0.03], s: String(Math.round(f.dip)), tam: 5.5, color: st.borde, ancla: 'centro' });
-    // número y rótulo al extremo
-    const ex = d[0] >= 0 ? b : a, sg = d[0] >= 0 ? 1 : -1;  // rótulo en el extremo derecho
-    prims.push({ t: 'texto', p: [ex[0] + sg * d[0] * B * 0.05, ex[1] + sg * d[1] * B * 0.05 - B * 0.03], s: `${f.n}`, tam: 7, negrita: true, color: st.borde, ancla: 'izq' });
-    prims.push({ t: 'texto', p: [ex[0] + sg * d[0] * B * 0.05 + B * 0.12, ex[1] + sg * d[1] * B * 0.05 - B * 0.03], s: rotulo(f).replace(/^\S+ /, `${f.abrev} `) + (f.potencia ? ` · ${f.potencia} m` : ''), tam: 5, color: st.borde, ancla: 'izq', fondo: true });
-  });
-  const cx = en(-av * 0.5, 0), ext = Math.max(R * 1.25, L * 0.62);
-  const caja: Vista['caja'] = [cx[0] - ext, cx[1] - ext * 0.78, cx[0] + ext, cx[1] + ext * 0.78];
-  const w = caja[2] - caja[0], h = caja[3] - caja[1];
+    trazos.push([o, [o[0] + tk[0], o[1] + tk[1]]]);
+    const pd: P = [o[0] + tk[0] * 1.9, o[1] + tk[1] * 1.9 - B * 0.03], sd = String(Math.round(f.dip));
+    prims.push({ t: 'texto', p: pd, s: sd, tam: 5.5, color: st.borde, ancla: 'centro', fondo: true });
+    ocupadas.push(cajaTexto(pd, sd, 5.5, 'centro'));
+  }
+  // número y rótulo: se prueba en ambos extremos y a varias distancias; gana el sitio más despejado
+  for (const { f, d, o } of lineas) {
+    const st = estilo(f), txt = rotulo(f).replace(/^\S+ /, `${f.abrev} `) + (f.potencia ? ` · ${f.potencia} m` : '');
+    let mejor: { p: P; an: 'izq' | 'der'; c: Caja; n: number } | null = null;
+    for (const t of [1, -1, 0.85, -0.85, 1.12, -1.12, 0.65, -0.65, 0.45, -0.45]) {
+      const e: P = [o[0] + d[0] * R * t, o[1] + d[1] * R * t], sg = (t > 0 ? d[0] : -d[0]) >= 0 ? 1 : -1, an = sg > 0 ? 'izq' as const : 'der' as const;
+      for (const dy of [0, 1.4, -1.4]) {
+        const p: P = [e[0] + sg * B * 0.04, e[1] + dy * 5 * mpp], c = cajaTexto(p, `${f.n}  ${txt}`, 5.6, an), n = choca(c) + Math.abs(dy) * 0.5;
+        if (!mejor || n < mejor.n) mejor = { p, an, c, n };
+      }
+      if (mejor && mejor.n === 0) break;
+    }
+    const { p, an, c } = mejor!;
+    ocupadas.push(c);
+    const numAncho = 8 * mpp;
+    if (an === 'izq') {
+      prims.push({ t: 'texto', p, s: `${f.n}`, tam: 7, negrita: true, color: st.borde, ancla: 'izq' });
+      prims.push({ t: 'texto', p: [p[0] + numAncho, p[1]], s: txt, tam: 5, color: st.borde, ancla: 'izq', fondo: true });
+    } else {
+      prims.push({ t: 'texto', p, s: `${f.n}`, tam: 7, negrita: true, color: st.borde, ancla: 'der' });
+      prims.push({ t: 'texto', p: [p[0] - numAncho, p[1]], s: txt, tam: 5, color: st.borde, ancla: 'der', fondo: true });
+    }
+  }
+  leyenda(prims, r, rmr, [caja[0] + w * 0.015, caja[1] + h * 0.02], mpp);
   if (norte) {
     const nx = caja[2] - w * 0.07, ny = caja[3] - h * 0.06;
     prims.push({ t: 'poly', pts: [[nx, ny - h * 0.13], [nx - w * 0.018, ny - h * 0.13], [nx, ny]], cerrado: true, relleno: '#000000' }, { t: 'poly', pts: [[nx, ny - h * 0.13], [nx + w * 0.018, ny - h * 0.13], [nx, ny]], cerrado: true, borde: '#000000', ancho: 0.5 });
     prims.push({ t: 'texto', p: [nx, ny + h * 0.015], s: 'N', tam: 6.5, negrita: true, ancla: 'centro' });
   }
   prims.push({ t: 'texto', p: [caja[0] + w * 0.03, caja[3] - h * 0.07], s: `${r.labor || 'Labor'} · Az ${Math.round(r.azimut)}°`, tam: 5.5, negrita: true, color: GRIS, ancla: 'izq' });
-  escala(prims, [caja[0] + w * 0.05, caja[1] + h * 0.06], w * 0.22);
+  escala(prims, [caja[0] + w * 0.04, caja[3] - h * 0.17], w * 0.22);
   return { prims, caja, notas: [] };
+}
+
+/** Leyenda compacta (planta): tipos de roca presentes, estructuras, contornos, cuñas y sostenimiento. */
+function leyenda(prims: Prim[], r: Reporte, rmr: RmrZonas, o: P, mpp: number) {
+  const fams = familiasMedidas(r), sost = (r.sostenimiento ?? []).join(' ').toLowerCase(), fila = 7.2 * mpp, sw = 11 * mpp;
+  const items: { dib: (p: P) => void; txt: string }[] = [];
+  const tipos = [...new Set((['HI', 'CORONA', 'HD'] as Zona[]).map(z => rmr[z]).filter((v): v is number => v != null).map(v => tipoRoca(v)))];
+  for (const t of tipos) items.push({ txt: `Roca tipo ${t}`, dib: p => prims.push({ t: 'poly', pts: [p, [p[0] + sw, p[1]], [p[0] + sw, p[1] + fila * 0.6], [p[0], p[1] + fila * 0.6]], cerrado: true, relleno: TIPOS.find(x => x.tipo === t)?.color ?? '#C9C9C9', opac: 0.55, borde: '#555555', ancho: 0.3 }) });
+  const linea = (txt: string, st: Partial<Prim & { t: 'poly' }>) => items.push({ txt, dib: p => prims.push({ t: 'poly', pts: [[p[0], p[1] + fila * 0.3], [p[0] + sw, p[1] + fila * 0.3]], ...st } as Prim) });
+  const tipoE: Record<string, string> = { SD: 'Diaclasa (SD)', F: 'Falla (F)', V: 'Veta (V)', C: 'Contacto (C)' };
+  for (const a of ['SD', 'F', 'V', 'C']) { const f = fams.find(x => x.abrev === a); if (f) linea(tipoE[a]!, { ...estilo(f) }); }
+  items.push({ txt: 'Buzamiento (dip)', dib: p => { prims.push({ t: 'poly', pts: [[p[0], p[1] + fila * 0.3], [p[0] + sw, p[1] + fila * 0.3]], borde: '#000000', ancho: 0.5 }, { t: 'poly', pts: [[p[0] + sw / 2, p[1] + fila * 0.3], [p[0] + sw / 2, p[1] - fila * 0.1]], borde: '#000000', ancho: 0.9 }); } });
+  linea('Contorno de diseño', { borde: '#555555', ancho: 0.45, trazos: [2.2, 1.6] });
+  linea('Contorno real (voladura)', { borde: '#000000', ancho: 0.9 });
+  if (cunas(r).length) items.push({ txt: 'Cuña potencial', dib: p => prims.push({ t: 'poly', pts: [p, [p[0] + sw, p[1]], [p[0] + sw / 2, p[1] + fila * 0.7]], cerrado: true, relleno: '#35506B', opac: 0.35, borde: '#0B1A2A', ancho: 0.5, trazos: [3, 1.2] }) });
+  if (/shotcrete|lanzado/.test(sost)) linea('Shotcrete', { borde: '#8C8C8C', ancho: 1.1 });
+  if (/malla/.test(sost)) items.push({ txt: 'Malla electrosoldada', dib: p => prims.push({ t: 'poly', pts: Array.from({ length: 7 }, (_, i) => [p[0] + (sw * i) / 6, p[1] + fila * (i % 2 ? 0.5 : 0.1)] as P), borde: '#1F4E9E', ancho: 0.35 }) });
+  if (/perno|split|helicoidal|bolt|swellex/.test(sost)) linea('Perno', { borde: '#000000', ancho: 0.75 });
+  const alto = (items.length + 1.3) * fila, ancho = 92 * mpp;
+  prims.push({ t: 'poly', pts: [o, [o[0] + ancho, o[1]], [o[0] + ancho, o[1] + alto], [o[0], o[1] + alto]], cerrado: true, relleno: '#FFFFFF', opac: 0.92, borde: '#7F7F7F', ancho: 0.4 });
+  prims.push({ t: 'texto', p: [o[0] + 3 * mpp, o[1] + alto - fila * 0.85], s: 'LEYENDA', tam: 5.2, negrita: true, ancla: 'izq' });
+  items.forEach((it, k) => {
+    const p: P = [o[0] + 3 * mpp, o[1] + alto - fila * (k + 1.85)];
+    it.dib(p);
+    prims.push({ t: 'texto', p: [p[0] + sw + 3 * mpp, p[1] + fila * 0.05], s: it.txt, tam: 4.8, ancla: 'izq' });
+  });
 }
 
 function flecha(a: P, b: P, t: number): P[] {
@@ -203,7 +342,9 @@ export function cunas(r: Reporte): Cuna[] {
 
 export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
   const B = r.ancho ?? 5, H = r.alto ?? 5, e = B * 0.55;
-  const teo = seccionTeorica(B, H).pts, real = seccionReal(B, H, r.sobreexc ?? {});
+  const az0 = r.azimut ?? 0, dirsAp = familiasMedidas(r).map(f => { const a = aparente(f.dip, f.dipdir, az0), t = rad(a.bajaDerecha ? -a.ang : a.ang); return [Math.cos(t), Math.sin(t)] as P; });
+  const semilla = `${r.id}|${r.labor}|${r.fecha}`, vol = contornoVoladura(B, H, r.sobreexc ?? {}, semilla, dirsAp);
+  const teo = seccionTeorica(B, H).pts, real = vol.pts;
   // ventana = recuadro del formato, con el contorno a la escala del contorno impreso (152 × 183.5 pt)
   const caja: Vista['caja'] = [(-130.5 / 152) * B, (-12.5 / 183.5) * H, (141.5 / 152) * B, (202.5 / 183.5) * H];
   void e;
@@ -216,6 +357,16 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
   const hw = H - Math.min(H * 0.45, B * 0.31);
   if (cI !== cC) prims.push({ t: 'poly', pts: [[caja[0], caja[1]], [-B / 2, caja[1]], [-B / 2, hw], [caja[0], hw + (caja[0] + B / 2) * -0.6]], cerrado: true, relleno: cI, opac: 0.5 });
   if (cD !== cC) prims.push({ t: 'poly', pts: [[caja[2], caja[1]], [B / 2, caja[1]], [B / 2, hw], [caja[2], hw + (caja[2] - B / 2) * 0.6]], cerrado: true, relleno: cD, opac: 0.5 });
+  // rótulo del tipo de roca de cada zona coloreada (no es litología: sale del RMR de la zona)
+  const etq = (v: number | null | undefined, zona: string) => v == null ? null : `${zona}Tipo ${tipoRoca(v)} · RMR ${Math.round(v)}`;
+  const tTop = caja[3] - (caja[3] - caja[1]) * 0.05, tBot = caja[1] + (caja[3] - caja[1]) * 0.03;
+  if (cI === cC && cD === cC) { const t = etq(rmr.CORONA ?? rmr.HI ?? rmr.HD, ''); if (t) prims.push({ t: 'texto', p: [caja[2] - B * 0.03, tTop], s: t, tam: 5, negrita: true, color: '#3A3A3A', ancla: 'der', fondo: true }); }
+  else {
+    const tc = etq(rmr.CORONA, 'Corona: '), ti = etq(rmr.HI, 'H.I.: '), td = etq(rmr.HD, 'H.D.: ');
+    if (tc) prims.push({ t: 'texto', p: [caja[2] - B * 0.03, tTop], s: tc, tam: 5, negrita: true, color: '#3A3A3A', ancla: 'der', fondo: true });
+    if (ti && cI !== cC) prims.push({ t: 'texto', p: [caja[0] + B * 0.03, tBot], s: ti, tam: 5, negrita: true, color: '#3A3A3A', ancla: 'izq', fondo: true });
+    if (td && cD !== cC) prims.push({ t: 'texto', p: [caja[2] - B * 0.03, tBot], s: td, tam: 5, negrita: true, color: '#3A3A3A', ancla: 'der', fondo: true });
+  }
   // red de trazas cortas de cada familia (buzamiento aparente), como el achurado de las fichas
   const az = r.azimut ?? 0, fams = familiasMedidas(r);
   const largo = Math.max(B, H) * 0.11, paso = Math.max(B, H) * 0.12;
@@ -229,26 +380,25 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
         if (dentro(c, real)) continue;
         const a: P = [c[0] - (d[0] * largo) / 2, c[1] - (d[1] * largo) / 2], b: P = [c[0] + (d[0] * largo) / 2, c[1] + (d[1] * largo) / 2];
         if (dentro(a, real) || dentro(b, real)) continue;
-        prims.push({ t: 'poly', pts: [a, b], borde: '#1A1A1A', ancho: 0.35 });
+        prims.push({ t: 'poly', pts: [a, b], borde: '#4A4A4A', ancho: 0.3 });
       }
     }
   });
   // sobreexcavación / subexcavación entre el contorno teórico y el real
   const so = r.sobreexc ?? {};
-  if ((['HI', 'CORONA', 'HD'] as Zona[]).some(z => (so[z] ?? 0) !== 0)) {
-    prims.push({ t: 'poly', pts: real, cerrado: true, relleno: '#FFFFFF' });
-    prims.push({ t: 'poly', pts: [...real, ...[...teo].reverse()], cerrado: true, relleno: '#7FA7CF', opac: 0.45 });
-    prims.push({ t: 'poly', pts: teo, cerrado: true, relleno: '#FFFFFF' });
+  const iHueco = prims.length;  // las cuñas se meten antes del hueco, así el hueco recorta su base
+  prims.push({ t: 'poly', pts: real, cerrado: true, relleno: '#FFFFFF' });
+  {
     for (const z of ['HI', 'CORONA', 'HD'] as Zona[]) {
       const v = so[z]; if (!v) continue;
       const p: P = z === 'CORONA' ? [0, H + Math.max(v, 0) + 0.25] : [(z === 'HD' ? 1 : -1) * (B / 2 + Math.max(v, 0) + 0.15), H * 0.32];
       prims.push({ t: 'texto', p, s: `${v > 0 ? 'Sobreexc.' : 'Subexc.'} ${Math.abs(v).toFixed(2)} m`, tam: 5, color: v > 0 ? '#1F4E79' : ROJO, ancla: z === 'HD' ? 'izq' : z === 'HI' ? 'der' : 'centro', fondo: true });
       notas.push(`${z === 'CORONA' ? 'Corona' : z === 'HI' ? 'Hastial izquierdo' : 'Hastial derecho'}: ${v > 0 ? 'sobreexcavación' : 'subexcavación'} de ${Math.abs(v).toFixed(2)} m.`);
     }
-  } else prims.push({ t: 'poly', pts: real, cerrado: true, relleno: '#FFFFFF' });
+  }
   // cuñas potenciales
   for (const c of cunas(r)) {
-    prims.push({ t: 'poly', pts: c.pol, cerrado: true, relleno: '#35506B', opac: 0.3, borde: '#0B1A2A', ancho: 0.7, trazos: [3, 1.2] });
+    prims.splice(iHueco, 0, { t: 'poly', pts: c.pol, cerrado: true, relleno: '#35506B', opac: 0.35, borde: '#0B1A2A', ancho: 0.7, trazos: [3, 1.2] });
     const ce: P = [c.pol.reduce((a, p) => a + p[0], 0) / c.pol.length, c.pol.reduce((a, p) => a + p[1], 0) / c.pol.length];
     // rótulo dentro de la labor (zona blanca, legible); flecha hasta la cuña
     const lbl: P = c.zona === 'CORONA' ? [0, hw + (H - hw) * 0.15] : [(c.zona === 'HD' ? 1 : -1) * B * 0.12, H * 0.45 - (c.zona === 'HD' ? 0.5 : 0)];
@@ -296,21 +446,25 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
   prims.push({ t: 'poly', pts: real, borde: '#000000', ancho: 0.9 });
   prims.push({ t: 'poly', pts: [real[0]!, real.at(-1)!], borde: '#000000', ancho: 0.6 });
   // sostenimiento
-  const sost = (r.sostenimiento ?? []).join(' ').toLowerCase(), interior = seccionReal(B, H, Object.fromEntries((['HI', 'CORONA', 'HD'] as Zona[]).map(z => [z, (r.sobreexc?.[z] ?? 0) - Math.min(B, H) * 0.025])));
+  const sost = (r.sostenimiento ?? []).join(' ').toLowerCase(), esp = Math.min(B, H) * 0.025, interior: P[] = real.map((p, i) => i === 0 || i === real.length - 1 ? [p[0] - vol.normal[i]![0] * esp, 0] as P : [p[0] - vol.normal[i]![0] * esp, p[1] - vol.normal[i]![1] * esp] as P);
   if (/shotcrete|lanzado/.test(sost)) prims.push({ t: 'poly', pts: interior, borde: '#8C8C8C', ancho: 1.1 });
   if (/malla/.test(sost)) {
     const soloCorona = /corona/.test(sost) && !/hastial|secci[oó]n completa|toda/.test(sost.match(/malla[^.;\n]*/)?.[0] ?? '');
-    const zig: P[] = interior.filter(p => p[1] > (soloCorona ? hw : H * 0.15)).map((p, i) => { const q = interior[Math.min(interior.indexOf(p) + 1, interior.length - 1)]!; const tt: P = [q[0] - p[0], q[1] - p[1]], n = Math.hypot(...tt) || 1; const s = (i % 2 ? 1 : -1) * Math.min(B, H) * 0.012; return [p[0] - (tt[1] / n) * s, p[1] + (tt[0] / n) * s]; });
-    prims.push({ t: 'poly', pts: zig, borde: '#1F4E9E', ancho: 0.45 });
+    const zig: P[] = interior.filter((p, i) => i % 2 === 0 && p[1] > (soloCorona ? hw : H * 0.15)).map((p, i) => { const q = interior[Math.min(interior.indexOf(p) + 1, interior.length - 1)]!; const tt: P = [q[0] - p[0], q[1] - p[1]], n = Math.hypot(...tt) || 1; const s = (i % 2 ? 1 : -1) * Math.min(B, H) * 0.012; return [p[0] - (tt[1] / n) * s, p[1] + (tt[0] / n) * s]; });
+    prims.push({ t: 'poly', pts: zig, borde: '#1F4E9E', ancho: 0.35 });
   }
   const lp = longPerno(sost);
   if (lp && /perno|split|helicoidal|bolt|swellex/.test(sost)) {
-    const { pts, normal } = seccionTeorica(B, H), n = pts.length;
-    for (let i = 3; i < n - 3; i += 4) {
-      const p = real[i]!, nv = normal[i]!; if (p[1] < H * 0.18) continue;
+    // un perno cada ~1.3 m de contorno (o el espaciamiento indicado, p. ej. 1.5x1.5)
+    const espP = Number(sost.match(/(\d(?:[.,]\d+)?)\s*[x×]\s*\d/)?.[1]?.replace(',', '.')) || 1.3;
+    let ultimo = -Infinity, sArc = 0;
+    for (let i = 1; i < real.length - 1; i++) {
+      sArc += Math.hypot(real[i]![0] - real[i - 1]![0], real[i]![1] - real[i - 1]![1]);
+      const p = real[i]!, nv = vol.normal[i]!; if (p[1] < H * 0.18 || sArc - ultimo < espP) continue;
+      ultimo = sArc;
       const q: P = [p[0] + nv[0] * lp, p[1] + nv[1] * lp];
-      prims.push({ t: 'poly', pts: [p, q], borde: '#3A3A3A', ancho: 0.55 });
-      prims.push({ t: 'poly', pts: [[p[0] - nv[1] * 0.12, p[1] + nv[0] * 0.12], [p[0] + nv[1] * 0.12, p[1] - nv[0] * 0.12]], borde: '#3A3A3A', ancho: 0.8 });
+      prims.push({ t: 'poly', pts: [p, q], borde: '#000000', ancho: 0.75 });
+      prims.push({ t: 'poly', pts: [[p[0] - nv[1] * 0.12, p[1] + nv[0] * 0.12], [p[0] + nv[1] * 0.12, p[1] - nv[0] * 0.12]], borde: '#000000', ancho: 1 });
     }
   }
   // leyenda de estructuras con buzamiento aparente
