@@ -9,6 +9,7 @@ import { aplicar, medidasFoto, proponer } from '../ia/sugerencias';
 import { evaluar, mejorar, mensajeCalidad } from '../ia/calidad';
 import { aprender, esLabor } from '../ia/labor';
 import { detectarConRed } from '../ia/modelo-trazas';
+import { angulosPrevios } from '../ia/lineas';
 import { fotosConTrazas, paqueteEntrenamiento } from '../ia/datos-entrenamiento';
 import { entregar } from '../export/compartir';
 import { rumboExif } from '../ia/exif';
@@ -106,7 +107,7 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
     await new Promise(r => setTimeout(r, 30));
     let segs: NonNullable<FotoZona['trazas']>['segmentos'] = [], ia: NonNullable<FotoZona['trazas']>['ia'], nFam = 0, extra = '';
     try {
-      const t = await detectarConRed(img);
+      const t = await detectarConRed(img, angulosPrevios(r, historial));
       const kx = dims.w / t.w, ky = dims.h / t.h;
       segs = t.segmentos.map((s, i) => ({ s, z: t.zonaSeg[i] })).filter(({ s }) => s.familia >= 0 && s.familia < 5)
         .map(({ s }) => segmentoDe(s.x1 * kx, s.y1 * ky, s.x2 * kx, s.y2 * ky, s.familia));

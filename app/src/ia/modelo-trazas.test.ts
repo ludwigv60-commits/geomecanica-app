@@ -49,3 +49,13 @@ describe('Zonas de la labor en una sola foto', () => {
     expect(zona[75 * w + 50]).toBe(0);   // piso
   });
 });
+
+import { anguloEnFrente } from './lineas';
+describe('Ángulo aparente de un plano en el frente', () => {
+  it('vertical paralelo al avance → traza vertical; horizontal → horizontal; 45° hacia la derecha → baja a la derecha', () => {
+    expect(anguloEnFrente(90, 90, 0)).toBeCloseTo(90, 3);
+    expect(anguloEnFrente(0, 0, 0)! % 180).toBeCloseTo(0, 3);
+    expect(anguloEnFrente(45, 90, 0)).toBeCloseTo(135, 3);
+    expect(anguloEnFrente(45, 270, 0)).toBeCloseTo(45, 3);
+  });
+});

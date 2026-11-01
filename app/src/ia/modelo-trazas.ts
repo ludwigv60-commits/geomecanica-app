@@ -1,15 +1,19 @@
 // Trazas con red neuronal entrenada (TrazasNet: U-Net con MobileNetV3, ~1 M parámetros, 4 MB).
 // Entrenada con GeoCrack (CC0, Harvard Dataverse doi:10.7910/DVN/E4OXHQ): 12 mil recortes de afloramientos
 // reales con las trazas marcadas por geólogos. La red da, para cada píxel, la probabilidad de ser traza;
-// luego: umbral → esqueleto (Zhang-Suen) → rectas (Hough, igual que el método clásico) → familias.
+// luego: rectas largas (Hough ponderado con orientación local, ver lineas.ts) → familias. Con el modelo
+// privado entrenado con las fotos del usuario y guiado por los ángulos del mapeo anterior de la labor.
 // Corre en el celular sin señal (onnxruntime-web). Todo es PROPUESTA: el ingeniero valida.
-import { agrupar, estadisticas, segmentos, type ResultadoTrazas } from './trazas';
+import { agrupar, estadisticas, segmentoDe, type ResultadoTrazas } from './trazas';
+import { lineasPrincipales } from './lineas';
 
 export interface Mapa { w: number; h: number; p: Float32Array } // probabilidad 0..1 por píxel
 export interface ResultadoRed extends ResultadoTrazas { confianza: number; nivel: 'alta' | 'media' | 'baja'; mapa: Mapa }
 
 /** Lado mayor con que se analiza la foto (múltiplo de 16). */
 export const LADO = 640;
+/** La red de trazas se entrenó con fotos de 384 px de lado mayor: se analiza a ese tamaño. */
+export const LADO_RED = 384;
 
 /** Adelgaza una máscara binaria a líneas de 1 píxel (Zhang-Suen). Modifica y devuelve `m`. */
 export function esqueleto(m: Uint8Array, w: number, h: number): Uint8Array {
@@ -62,14 +66,11 @@ export function porImportancia(r: ResultadoTrazas): ResultadoTrazas {
 }
 
 /** Del mapa de probabilidad a trazas y familias, con un índice de confianza honesto (0–1). */
-export interface Opciones { umbral?: number; hueco?: number; largoMin?: number; zona?: Uint8Array | null }
+export interface Opciones { zona?: Uint8Array | null; prior?: number[] | null; maxLineas?: number; largoMin?: number }
 export function desdeMapa(mapa: Mapa, o: Opciones = {}): ResultadoRed {
-  const { w, h, p } = mapa, umbral = o.umbral ?? 0.5;
-  const bin = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) bin[i] = p[i]! >= umbral && (!o.zona || o.zona[i]) ? 1 : 0;
-  limpiar(bin, w, h, Math.round(Math.min(w, h) * 0.03));
-  esqueleto(bin, w, h);
-  const segs = segmentos(bin, w, h, { largoMin: o.largoMin ?? Math.max(18, Math.round(Math.min(w, h) * 0.06)), hueco: o.hueco ?? 6, maxRectas: 150 });
+  const { w, h, p } = mapa;
+  const segs = lineasPrincipales(p, w, h, { zona: o.zona, prior: o.prior, maxLineas: o.maxLineas, largoMin: o.largoMin })
+    .map(l => { const { familia: _, ...sg } = segmentoDe(l.x1, l.y1, l.x2, l.y2, -1); return sg; });
   const r = porImportancia(agrupar(segs, w, h, 5));
   // Confianza: (a) qué tan segura está la red sobre las trazas encontradas, (b) qué parte del largo
   // total cae en familias definidas (no aleatorio), (c) hay suficiente evidencia (largo de trazas).
@@ -144,16 +145,16 @@ export async function zonasLabor(img: CanvasImageSource & { width: number; heigh
 
 /** Corre la red en el celular. Devuelve trazas en coordenadas de una imagen w×h (lado mayor LADO). */
 export type Deteccion = ResultadoRed & { roca: number; zonaSeg: number[]; frente: { x0: number; x1: number; y0: number; y1: number } | null; zonaFr: Record<string, number> };
-export async function detectarConRed(img: CanvasImageSource & { width: number; height: number }): Promise<Deteccion> {
+export async function detectarConRed(img: CanvasImageSource & { width: number; height: number }, prior?: number[] | null): Promise<Deteccion> {
   const { ort, sesion } = await import('./onnx');
   const [o, s] = await Promise.all([ort(), sesion('trazas.onnx')]);
-  const { x, w, h } = preparar(img);
+  const { x, w, h } = preparar(img, LADO_RED);
   const r = await s.run({ img: new o.Tensor('float32', x, [1, 3, h, w]) });
   const p = Float32Array.from(r.prob!.data as Float32Array);
   // Solo se cuentan trazas sobre roca (no shotcrete ni piso). Si la red de zonas falla, se usa toda la foto.
   const z = await zonasLabor(img, w, h).catch(() => null);
   const usarZona = z && z.fr.roca > 0.15;
-  const t = desdeMapa({ w, h, p }, { zona: usarZona ? z.zona : null });
+  const t = desdeMapa({ w, h, p }, { zona: usarZona ? z.zona : null, prior });
   // Zona de cada traza (por su punto medio) y cuánto de cada zona se ve en la foto.
   const zonaSeg = t.segmentos.map(sg => (usarZona ? z.zona[Math.round((sg.y1 + sg.y2) / 2) * w + Math.round((sg.x1 + sg.x2) / 2)] ?? 0 : 1));
   const zonaFr: Record<string, number> = {};
