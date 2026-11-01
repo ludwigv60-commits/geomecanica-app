@@ -173,3 +173,5 @@ input, select, textarea { border-radius:12px; }
 .li-txt .chip { display:inline-block; margin-top:4px; }
 .foto-btn { width:100%; }
 .conf-alta { color: #1b8a3a; } .conf-media { color: #b7791f; } .conf-baja { color: #c53030; }
+
+.rejilla3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }

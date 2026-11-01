@@ -206,14 +206,32 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
               </ol>
             </details>
           </section>
-          {r.familias.some(f => f.dip != null && f.dipdir != null) && <section className="tarjeta">
-            <h3>Vista planta y vista sección</h3>
-            <p className="tenue">Calculadas con el dip / dip direction de cada familia, el azimut y la sección de la labor. Así salen en el PDF.</p>
-            <div className="rejilla2">
-              {(() => { const v = vistaPlanta(r, c.rmrFinal ?? null); return v ? <div dangerouslySetInnerHTML={{ __html: aSvg(v) }} /> : <p className="tenue">Falta el azimut para la planta.</p>; })()}
-              {r.ancho && r.alto ? <div dangerouslySetInnerHTML={{ __html: aSvg(vistaSeccion(r, c.rmrFinal ?? null)) }} /> : <p className="tenue">Falta ancho y alto para la sección.</p>}
+          <section className="tarjeta">
+            <h3>Excavación real</h3>
+            <p className="tenue">Diferencia entre el contorno real y el de diseño, medida en el frente (m): positivo = sobreexcavación, negativo = subexcavación. Se dibuja en la sección y entra en el análisis de cuñas.</p>
+            <div className="rejilla3">
+              {ZONAS.map(z => <label key={z} className="campo"><span>{NOMBRE_ZONA[z]}</span>
+                <NumConSigno valor={r.sobreexc?.[z] ?? null} on={v => set('sobreexc', { ...(r.sobreexc ?? {}), [z]: v })} /></label>)}
             </div>
-          </section>}
+            {r.familias.some(f => f.abrev === 'F' || f.abrev === 'V') && <div className="rejilla3">
+              {r.familias.map((f, i) => (f.abrev === 'F' || f.abrev === 'V') && <label key={i} className="campo"><span>Potencia {f.abrev}{i + 1} (m)</span>
+                <input inputMode="decimal" placeholder="0.05" value={f.potencia ?? ''} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, potencia: num(e.target.value) } : x))} /></label>)}
+            </div>}
+          </section>
+          {r.familias.some(f => f.dip != null && f.dipdir != null) && (() => {
+            const rz = { HI: c.zonas.HI.total, CORONA: c.zonas.CORONA.total, HD: c.zonas.HD.total };
+            const pl = vistaPlanta(r, rz), se = r.ancho && r.alto ? vistaSeccion(r, rz) : null;
+            return <section className="tarjeta">
+              <h3>Vista planta y vista sección</h3>
+              <p className="tenue">Calculadas con el dip / dip direction de cada estructura, el azimut, la sección y la excavación real. Así salen en el PDF.</p>
+              <div className="rejilla2">
+                {pl ? <div dangerouslySetInnerHTML={{ __html: aSvg(pl) }} /> : <p className="tenue">Falta el azimut para la planta.</p>}
+                {se ? <div dangerouslySetInnerHTML={{ __html: aSvg(se) }} /> : <p className="tenue">Falta ancho y alto para la sección.</p>}
+              </div>
+              {se && se.notas.length > 0 && <ul className="tenue">{se.notas.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+              {se && <p className="tenue">Cuñas: análisis 2D en la sección del frente (como en la ficha). Para el factor de seguridad use Unwedge con estas orientaciones.</p>}
+            </section>;
+          })()}
         </Seccion>
 
         <Seccion titulo="Condición y verificación" resumen={r.condicion ? "lleno" : ""} abierta={abierta} setAbierta={setAbierta} id="cond" listo={listo.cond}>
@@ -299,6 +317,12 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
 
 function Campo({ t, children }: { t: string; children: React.ReactNode }) {
   return <label className="campo"><span>{t}</span>{children}</label>;
+}
+/** Número que puede ser negativo: guarda el texto mientras se escribe ("-", "-0.") y entrega el número válido. */
+function NumConSigno({ valor, on }: { valor: number | null; on: (v: number | null) => void }) {
+  const [t, setT] = useState(valor == null ? '' : String(valor));
+  useEffect(() => { if (valor == null ? t !== '' && !/^[-+]?[.,]?$/.test(t) : Number(t.replace(',', '.')) !== valor) setT(valor == null ? '' : String(valor)); }, [valor]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <input inputMode="text" placeholder="0.00" value={t} onChange={e => { const s = e.target.value; setT(s); const n = Number(s.replace(',', '.')); on(s.trim() === '' || !Number.isFinite(n) ? null : n); }} />;
 }
 function Lista({ valor, opciones, on }: { valor: string; opciones: string[]; on: (v: string) => void }) {
   const id = useMemo(() => 'l' + Math.random().toString(36).slice(2), []);

@@ -18,7 +18,7 @@ export interface FotoZona {
   trazas?: Trazas;
 }
 
-export interface Familia { abrev: string; dip: number | null; dipdir: number | null }
+export interface Familia { abrev: string; dip: number | null; dipdir: number | null; potencia?: number | null } // potencia (m) de fallas y vetas
 
 export interface Reporte {
   id: string;
@@ -28,6 +28,7 @@ export interface Reporte {
   foto?: string;           // foto del frente (JPEG reducido)
   sugeridos?: string[];
   importado?: boolean;     // viene de la BD de mapeos (historial, solo lectura)
+  sobreexc?: Partial<Record<Zona, number | null>>; // m medidos: + sobreexcavación, − subexcavación
   trazasFoto?: Trazas;     // (versión anterior, se migra a fotos)
   fotos?: FotoZona[];    // campos llenados por la IA y aún no confirmados
   correlativo: string;

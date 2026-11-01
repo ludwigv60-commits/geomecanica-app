@@ -16,8 +16,8 @@ describe('planta y sección', () => {
   });
   it('dibuja con los datos del reporte', () => {
     const r = { ...nuevoReporte(), azimut: 330, ancho: 5.7, alto: 5.4, familias: [{ abrev: 'SD', dip: 75, dipdir: 45 }, { abrev: 'F', dip: 85, dipdir: 230 }] };
-    expect(vistaPlanta(r, 51)!.prims.filter(p => p.t === 'texto').map(p => (p as { s: string }).s)).toContain('2');
-    expect(vistaSeccion(r, 51).prims.some(p => p.t === 'poly' && p.borde === '#FF0000')).toBe(true);
-    expect(vistaPlanta({ ...r, azimut: null }, 51)).toBeNull();
+    expect(vistaPlanta(r, { CORONA: 51 })!.prims.filter(p => p.t === 'texto').map(p => (p as { s: string }).s)).toContain('2');
+    expect(vistaSeccion(r, { CORONA: 51 }).prims.some(p => p.t === 'poly' && p.borde === '#C00000')).toBe(true);
+    expect(vistaPlanta({ ...r, azimut: null }, { CORONA: 51 })).toBeNull();
   });
 });
