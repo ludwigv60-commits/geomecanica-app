@@ -140,7 +140,8 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
       const n = {
         ...p,
         familias: p.familias.length >= nNec ? p.familias : [...p.familias, ...Array.from({ length: nNec - p.familias.length }, () => ({ abrev: 'SD', dip: null, dipdir: null }))],
-        fotos: (p.fotos ?? []).map(x => (x.id === sel.id ? { ...x, trazas: { w: dims.w, h: dims.h, ia, segmentos: segs } } : x)),
+        // Las trazas dibujadas a mano se conservan tal cual; la IA solo reemplaza las suyas.
+        fotos: (p.fotos ?? []).map(x => (x.id === sel.id ? { ...x, trazas: { w: dims.w, h: dims.h, ia, segmentos: [...(x.trazas?.segmentos ?? []).filter(s => s.mano).map(s => (x.trazas!.w === dims.w ? s : escalar(s, dims.w / x.trazas!.w))), ...segs] } } : x)),
       };
       // Con confianza baja NO se llena nada solo: un Jv mal leído daría un RQD y un RMR falsamente altos.
       return med && ia?.nivel !== 'baja' ? aplicar(n, proponer(n, historial, med).filter(q => q.fuente === 'foto' && !FINAS.has(q.clave))) : n;
@@ -180,7 +181,7 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
     return [((e.clientX - b.left) / b.width) * dims!.w, ((e.clientY - b.top) / b.height) * dims!.h];
   };
   const setSegs = (f: (s: NonNullable<FotoZona['trazas']>['segmentos']) => NonNullable<FotoZona['trazas']>['segmentos']) =>
-    sel && dims && editarFoto(sel.id, x => ({ ...x, trazas: { w: dims.w, h: dims.h, segmentos: f(x.trazas?.segmentos ?? []) } }));
+    sel && dims && editarFoto(sel.id, x => ({ ...x, trazas: { ...x.trazas, w: x.trazas?.w ?? dims.w, h: x.trazas?.h ?? dims.h, revisada: true, segmentos: f(x.trazas?.segmentos ?? []) } }));
   const rel = (e: React.PointerEvent): [number, number] => { const b = marco.current!.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
   const abajo = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!dims) return;
@@ -233,7 +234,7 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
     if (Math.hypot(x2 - x1, y2 - y1) > 12) {
       const pts = simplificar([...trazo.current, [x2, y2]]);
       const sg = segmentoDe(x1, y1, x2, y2, fam);
-      setSegs(ss => [...ss, pts ? { ...sg, pts, largo: pts.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - pts[i]![0], p[1] - pts[i]![1]), 0) } : sg]);
+      setSegs(ss => [...ss, pts ? { ...sg, pts, mano: true, largo: pts.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - pts[i]![0], p[1] - pts[i]![1]), 0) } : { ...sg, mano: true }]);
     }
   };
 
@@ -247,7 +248,7 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
   // Modo campo: al cargar una foto, la IA la analiza sola (una vez por foto).
   const auto = useRef(new Set<string>());
   useEffect(() => {
-    if (!simple || !img || !sel || sel.trazas?.ia || auto.current.has(sel.id) || !util(sel)) return;
+    if (!simple || !img || !sel || sel.trazas || auto.current.has(sel.id) || !util(sel)) return;
     auto.current.add(sel.id); analizarFoto();
   }, [simple, img, sel?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const soloGrandes = base?.trazas?.ia?.metodo === 'red';
@@ -387,6 +388,11 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
       </div>}
     </section>
   );
+}
+
+/** Cambia de escala una traza (si la foto se guardó con otro tamaño). */
+function escalar<S extends { x1: number; y1: number; x2: number; y2: number; largo: number; pts?: [number, number][] }>(s: S, k: number): S {
+  return { ...s, x1: s.x1 * k, y1: s.y1 * k, x2: s.x2 * k, y2: s.y2 * k, largo: s.largo * k, pts: s.pts?.map(([x, y]) => [x * k, y * k] as [number, number]) };
 }
 
 /** Azimut de la labor = promedio circular de las fotos del frente casi horizontales. */
