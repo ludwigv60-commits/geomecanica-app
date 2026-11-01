@@ -5,6 +5,8 @@ import type { Reporte } from '../model';
 import { casillas } from './datos';
 import MAPA from './mapa-celdas.json';
 import { colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
+import { aPuntos, vistaPlanta, vistaSeccion } from './croquis';
+import { calcular } from '../calc';
 
 const TINTA = rgb(0.05, 0.2, 0.62); // azul lapicero, como en los reportes llenados a mano
 const celdas = MAPA.celdas as unknown as Record<string, [number, number, number, number]>;
@@ -75,6 +77,7 @@ export async function generarPdf(r: Reporte, plantilla: ArrayBuffer | Uint8Array
     const [x0, y0, x1, y1] = rect;
     page.drawEllipse({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, xScale: Math.max(6, (x1 - x0) / 2 - 1.5), yScale: Math.max(3.2, (y1 - y0) / 2 + 0.6), borderColor: TINTA, borderWidth: 0.9 });
   }
+  croquis(page, font, r);
   await anexoFotos(doc, font, r);
   doc.setTitle(`Indicación Geomecánica ${r.labor} ${r.desde}`);
   doc.setProducer('App Geomecánica (PRT-JS-CLD-16)');
@@ -123,5 +126,24 @@ async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
       }
     }
     slot++;
+  }
+}
+
+/** Vista planta y vista sección calculadas, en los recuadros del formato. */
+function croquis(page: PDFPage, font: PDFFont, r: Reporte) {
+  const H = page.getHeight(), rmr = calcular(r).rmrFinal ?? null;
+  const dibujar = (v: ReturnType<typeof aPuntos>) => {
+    for (const p of v.polys) {
+      const d = p.pts.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(2)} ${q[1].toFixed(2)}`).join(' ') + (p.cerrado ? ' Z' : '');
+      page.drawSvgPath(d, { x: 0, y: H, ...(p.relleno ? { color: hex(p.relleno), opacity: p.opac ?? 1 } : {}), ...(p.borde ? { borderColor: hex(p.borde), borderWidth: (p.ancho ?? 1) * 0.6 } : {}) });
+    }
+    for (const t of v.textos) page.drawText(limpiar(t.s), { x: t.p[0], y: H - t.p[1], size: (t.tam ?? 8) * 0.85, font, color: hex(t.color ?? '#000000') });
+  };
+  // Recuadros medidos en la plantilla (puntos, y hacia abajo): planta x 20–300, sección x 300–574, y 398–615.
+  const pl = vistaPlanta(r, rmr, false);
+  if (pl) dibujar(aPuntos(pl, [21, 399, 299, 614]));
+  if (r.ancho && r.alto && r.familias.some(f => f.dip != null && f.dipdir != null)) {
+    // La sección impresa tiene un contorno a trazos de x 355.5–507.5 y y 418–601.5: se dibuja encima, a esa escala.
+    dibujar(aPuntos(vistaSeccion(r, rmr), [301, 399, 573, 614], { kx: 152 / r.ancho, ky: 183.5 / r.alto, ox: 431.5, oy: 601.5 }));
   }
 }

@@ -9,6 +9,7 @@ import { consejos } from '../ia/sugerencias';
 import { redactarCondicion } from '../ia/redaccion';
 import { textoFamilia } from '../ia/anotacion';
 import { entregar, nombreArchivo, MIME_PDF, MIME_XLSX } from '../export/compartir';
+import { aSvg, vistaPlanta, vistaSeccion } from '../export/croquis';
 
 
 type Props = { inicial: Reporte; listas: Listas; historial: Reporte[]; onGuardar: (r: Reporte) => Promise<void>; onSalir: () => void };
@@ -205,6 +206,14 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
               </ol>
             </details>
           </section>
+          {r.familias.some(f => f.dip != null && f.dipdir != null) && <section className="tarjeta">
+            <h3>Vista planta y vista sección</h3>
+            <p className="tenue">Calculadas con el dip / dip direction de cada familia, el azimut y la sección de la labor. Así salen en el PDF.</p>
+            <div className="rejilla2">
+              {(() => { const v = vistaPlanta(r, c.rmrFinal ?? null); return v ? <div dangerouslySetInnerHTML={{ __html: aSvg(v) }} /> : <p className="tenue">Falta el azimut para la planta.</p>; })()}
+              {r.ancho && r.alto ? <div dangerouslySetInnerHTML={{ __html: aSvg(vistaSeccion(r, c.rmrFinal ?? null)) }} /> : <p className="tenue">Falta ancho y alto para la sección.</p>}
+            </div>
+          </section>}
         </Seccion>
 
         <Seccion titulo="Condición y verificación" resumen={r.condicion ? "lleno" : ""} abierta={abierta} setAbierta={setAbierta} id="cond" listo={listo.cond}>
