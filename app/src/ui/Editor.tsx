@@ -1,7 +1,9 @@
 import { NumIn } from './NumIn';
 import { enLista, riesgoPropuesto } from '../ia/riesgo';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ABREVS, ITEMS_VERIF, migrar, type Listas, type Reporte, type Verif } from '../model';
+import { ABREVS, ITEMS_VERIF, migrar, type Familia, type Listas, type Reporte, type Verif } from '../model';
+import { rqdDesdeJv } from '../core/rqd';
+import { completar, jvDeFamilias } from '../ia/autollenado';
 import { AJUSTES_ORIENTACION, NOMBRE_ZONA, PARAMETROS, TIPOS, ZONAS, type ParamId, type Zona } from '../core/rmr';
 import { JA, JN, JR, JW, SRF, claseQ, type OpcionQ } from '../core/q';
 import { calcular } from '../calc';
@@ -16,9 +18,10 @@ import { aplicarPlantilla, plantillaTipo, revisarTipo } from '../ia/plantilla-ro
 import type { TipoRoca } from '../core/rmr';
 
 
-type Props = { inicial: Reporte; listas: Listas; historial: Reporte[]; onGuardar: (r: Reporte) => Promise<void>; onSalir: () => void };
+type Props = { inicial: Reporte; listas: Listas; historial: Reporte[]; onGuardar: (r: Reporte) => Promise<void>; onSalir: () => void; onBase?: () => void };
 
-export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props) {
+export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase }: Props) {
+  const [msgBase, setMsgBase] = useState<string | null>(null);
   const [midiendo, setMidiendo] = useState<number | null>(null);
   const [enCadena, setEnCadena] = useState(false); // medir pendientes en orden
   const [r, setR] = useState<Reporte>(() => migrar(inicial));
@@ -37,6 +40,12 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
     if (deIA && r.nivelRiesgo !== o) setR(p => ({ ...p, nivelRiesgo: o, sugeridos: [...new Set([...(p.sugeridos ?? []), 'nivelRiesgo'])] }));
   }, [riesgoIA?.opcion]); // eslint-disable-line react-hooks/exhaustive-deps
   const avisos = useMemo(() => consejos(r, c, historial), [r, c, historial]);
+  const jvFam = jvDeFamilias(r.familias);
+  // Autollenado: Hasta = Desde + Avance; Jv, RQD, espaciamiento y Jn desde las familias (si están vacíos o los llenó la app).
+  useEffect(() => {
+    if (r.importado) return;
+    setR(p => completar(p, { soloDerivados: true }));
+  }, [r.desde, r.avance, JSON.stringify(r.familias)]); // eslint-disable-line react-hooks/exhaustive-deps
   const primera = useRef(true);
 
   // Autoguardado: cada cambio se escribe en el celular a los 400 ms.
@@ -153,18 +162,29 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
   const tarjetaEstructuras = (
           <section className="tarjeta">
             <h3>Estructuras (máx. 5)</h3>
-            <p className="tenue">SD sistema de diaclasas · F falla · V veta · C contacto. Dip y dip direction en grados.</p>
-            {r.familias.map((f, i) => (
-              <div key={i} className="fila">
-                <span className="n">{i + 1}</span>
-                <select value={f.abrev} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, abrev: e.target.value } : x))}>
-                  {ABREVS.map(a => <option key={a}>{a}</option>)}</select>
-                <NumIn placeholder="Dip" valor={f.dip} on={v => set('familias', r.familias.map((x, j) => j === i ? { ...x, dip: v } : x))} />
-                <NumIn placeholder="D/D" valor={f.dipdir} on={v => set('familias', r.familias.map((x, j) => j === i ? { ...x, dipdir: v } : x))} />
-                <button className="btn mini btn-med" onClick={() => { setEnCadena(false); setMidiendo(i); }}>🧭 Medir</button>
-                <button className="btn mini" onClick={() => quitarFamilia(i)}>×</button>
-              </div>
-            ))}
+            <p className="tenue">SD sistema de diaclasas · F falla · V veta · C contacto. Espaciado = distancia entre diaclasas de la misma familia; persistencia = largo de la traza. Con eso se calcula Jv y el tamaño real de las cuñas.</p>
+            {r.familias.map((f, i) => {
+              const pon = (k: keyof Familia, v: unknown) => set('familias', r.familias.map((x, j) => j === i ? { ...x, [k]: v } : x));
+              return (
+              <div key={i} className="estr-fila">
+                <div className="fila">
+                  <span className="n">{i + 1}</span>
+                  <select value={f.abrev} onChange={e => pon('abrev', e.target.value)}>{ABREVS.map(a => <option key={a}>{a}</option>)}</select>
+                  <label className="mini-campo"><small>Dip</small><NumIn placeholder="°" valor={f.dip} on={v => pon('dip', v)} /></label>
+                  <label className="mini-campo"><small>Dip dir.</small><NumIn placeholder="°" valor={f.dipdir} on={v => pon('dipdir', v)} /></label>
+                </div>
+                <div className="fila">
+                  <span className="n" />
+                  {f.abrev === 'F' || f.abrev === 'V'
+                    ? <label className="mini-campo"><small>Potencia (m)</small><NumIn placeholder="0.05" valor={f.potencia} on={v => pon('potencia', v)} /></label>
+                    : <label className="mini-campo"><small>Espaciado (m)</small><NumIn placeholder="0.30" valor={f.espaciamiento} on={v => pon('espaciamiento', v)} /></label>}
+                  <label className="mini-campo"><small>Persist. (m)</small><NumIn placeholder="3" valor={f.persistencia} on={v => pon('persistencia', v)} /></label>
+                  <button className="btn mini btn-med" onClick={() => { setEnCadena(false); setMidiendo(i); }}>🧭</button>
+                  <button className="btn mini" onClick={() => quitarFamilia(i)}>×</button>
+                </div>
+              </div>);
+            })}
+            {jvFam != null && <p className="tenue">Con los espaciados: Jv = Σ 1/s = <b>{jvFam}</b> fract./m³ → RQD {rqdDesdeJv(jvFam)} %.</p>}
             {r.familias.length < 5 && <button className="btn mini" onClick={() => set('familias', [...r.familias, { abrev: 'SD', dip: null, dipdir: null }])}>+ Familia</button>}
             {r.familias.some(f => f.dip == null || f.dipdir == null) && <button className="btn primario" onClick={() => { setEnCadena(true); setMidiendo(r.familias.findIndex(f => f.dip == null || f.dipdir == null)); }}>🧭 Medir familias pendientes, en orden</button>}
             <details className="ayuda"><summary>¿Cómo medir Dip y Dip Direction?</summary>
@@ -203,7 +223,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
   const elegirTipo = (t: TipoRoca) => setR(p => {
     const q = { ...p, tipoGeologo: t };
     const pl = plantillaTipo(t, q, historial);
-    return pl ? aplicarPlantilla(q, pl) : q;
+    return completar(pl ? aplicarPlantilla(q, pl) : q);
   });
   const plant = r.tipoGeologo ? plantillaTipo(r.tipoGeologo, r, historial) : null;
   const avisoTipo = r.tipoGeologo ? revisarTipo(r.tipoGeologo, r, historial) : null;
@@ -213,13 +233,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
   const hayBase = historial.some(h => h.importado);
   useEffect(() => {
     if (modo !== 'campo' || paso !== 2) return;
-    setR(p => {
-      let n = p;
-      const cc = calcular(p);
-      if (!p.sostenimiento.length && cc.propuesta) n = { ...n, sostenimiento: [...cc.propuesta.lineas], sugeridos: [...new Set([...(n.sugeridos ?? []), 'sostenimiento'])] };
-      if (!p.condicion.trim() && cc.rmrFinal != null) n = { ...n, condicion: redactarCondicion(n, cc), sugeridos: [...new Set([...(n.sugeridos ?? []), 'condicion'])] };
-      return n;
-    });
+    setR(p => completar(p, { rehacer: true }));
   }, [modo, paso]); // eslint-disable-line react-hooks/exhaustive-deps
   const tipoSel = TIPOS.find(t => t.tipo === (tipoCalc ?? r.tipoGeologo));
   const PASOS = ['Datos', 'Foto', 'Resultado', 'Formato'];
@@ -236,9 +250,12 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
             <Campo t="Turno"><Segmentos valor={r.turno} opciones={['Día', 'Noche']} on={v => set('turno', v as Reporte['turno'])} /></Campo>
             <Campo t="Desde (PK)"><input inputMode="decimal" placeholder="0+924.7" value={r.desde} onChange={e => set('desde', e.target.value)} /></Campo>
             <Campo t="Avance (m)"><NumIn valor={r.avance} on={v => set('avance', v)} /></Campo>
+            <Campo t="Hasta (PK)"><input className={sug('hasta')} inputMode="decimal" placeholder="Desde + avance" value={r.hasta} onChange={e => set('hasta', e.target.value)} /></Campo>
+            <Campo t="Litología"><Lista valor={r.litologia.CORONA} opciones={listas.litologias} on={v => setR(p => ({ ...p, litologia: { HI: v, CORONA: v, HD: v } }))} /></Campo>
             <Campo t="Ancho (m)"><NumIn valor={r.ancho} on={v => set('ancho', v)} /></Campo>
             <Campo t="Alto (m)"><NumIn valor={r.alto} on={v => set('alto', v)} /></Campo>
           </div>
+          <p className="tenue">Litología, RMR y Q valen para H.I., Corona y H.D.; si una zona es distinta, cámbiela en Resultado.</p>
         </section>
         <section className="tarjeta">
           <h3>Azimut del avance</h3>
@@ -257,7 +274,16 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
           </div>
           {r.tipoGeologo && (plant
             ? <p className="ok">Listo: se llenaron RMR y Q con el mapeo típico de {plant.fuente}. <b>RMR {c.rmrFinal ?? '—'} · Q {c.zonas.CORONA.q ?? '—'}</b>. Si algo cambia en el frente, ajústelo en Resultado.</p>
-            : <p className="alerta">{hayBase ? `En su base no hay mapeos tipo ${r.tipoGeologo}${r.labor ? ` en ${r.labor}` : ''}.` : 'Importe su base de mapeos en ⚙️ para que se llene solo.'} Llene los parámetros en Resultado.</p>)}
+            : hayBase && <p className="alerta">En su base no hay mapeos tipo {r.tipoGeologo}{r.labor ? ` en ${r.labor}` : ''}. Llene los parámetros en Resultado.</p>)}
+          {!hayBase && <div className="cargar-base">
+            <p><b>Cargue sus mapeos una sola vez</b> y al elegir el tipo de roca se llena todo el RMR y el Q. Quedan solo en este celular.</p>
+            <label className="btn primario">📦 Cargar datos de Justa<input type="file" accept=".json,.xlsx,application/json" hidden onChange={async e => {
+              const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
+              setMsgBase('Cargando…');
+              try { setMsgBase((await import('../ia/paquete').then(m => m.cargarDatos(f)))); onBase?.(); } catch (err) { setMsgBase(`No se pudo: ${(err as Error).message}`); }
+            }} /></label>
+          </div>}
+          {msgBase && <p className="tenue">{msgBase}</p>}
           {avisoTipo && <p className="alerta">🤖 {avisoTipo}</p>}
         </section>
       </>}

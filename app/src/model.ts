@@ -18,7 +18,7 @@ export interface FotoZona {
   trazas?: Trazas;
 }
 
-export interface Familia { abrev: string; dip: number | null; dipdir: number | null; potencia?: number | null } // potencia (m) de fallas y vetas
+export interface Familia { abrev: string; dip: number | null; dipdir: number | null; potencia?: number | null; espaciamiento?: number | null; persistencia?: number | null } // potencia (m) de F/V; espaciamiento (m) entre diaclasas de la familia; persistencia (m) = largo de la traza
 
 export interface Reporte {
   id: string;

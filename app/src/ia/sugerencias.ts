@@ -13,9 +13,9 @@ export interface Propuesta {
   fuente: 'foto' | 'historial' | 'calculo';
 }
 
-const pEsp = (m: number) => (m > 2 ? 20 : m >= 0.6 ? 15 : m >= 0.2 ? 10 : m >= 0.06 ? 8 : 5);
-const pPers = (m: number) => (m < 1 ? 6 : m < 3 ? 4 : m < 10 ? 2 : m <= 20 ? 1 : 0);
-const jnDe = (n: number, aleat: boolean) => (n <= 0 ? (aleat ? 1 : 0.5) : n === 1 ? (aleat ? 3 : 2) : n === 2 ? (aleat ? 6 : 4) : n === 3 ? (aleat ? 12 : 9) : 15);
+export const pEsp = (m: number) => (m > 2 ? 20 : m >= 0.6 ? 15 : m >= 0.2 ? 10 : m >= 0.06 ? 8 : 5);
+export const pPers = (m: number) => (m < 1 ? 6 : m < 3 ? 4 : m < 10 ? 2 : m <= 20 ? 1 : 0);
+export const jnDe = (n: number, aleat: boolean) => (n <= 0 ? (aleat ? 1 : 0.5) : n === 1 ? (aleat ? 3 : 2) : n === 2 ? (aleat ? 6 : 4) : n === 3 ? (aleat ? 12 : 9) : 15);
 
 export interface MedidasFoto { jv: number; espaciamientos: { familia: number; m: number }[]; persistenciaM: number; familias: number; aleatorias: boolean; escala: number }
 

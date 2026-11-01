@@ -234,3 +234,12 @@ details.ajuste[open] > summary::after { content:'▾'; }
 .fotos-dos { display:grid; grid-template-columns:2fr 1fr; gap:8px; }
 .fotos-dos .btn { min-height:60px; display:flex; align-items:center; justify-content:center; font-size:17px; }
 .foto-gal { cursor:pointer; }
+.estr-fila { border:1px solid var(--borde); border-radius:12px; padding:4px 8px; }
+.estr-fila .fila { margin:4px 0; align-items:flex-end; }
+.mini-campo { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.mini-campo small { font-size:11px; font-weight:700; color:var(--tenue); }
+.mini-campo input { min-height:40px; padding:6px 8px; }
+.estr-fila select { flex:0 0 72px; min-height:40px; }
+.cargar-base { display:flex; flex-direction:column; gap:8px; padding:12px; border-radius:12px; background:#F28C2814; border:1px dashed var(--acento); }
+.cargar-base p { margin:0; font-size:14px; }
+.cargar-base .btn { text-align:center; display:flex; align-items:center; justify-content:center; min-height:52px; }

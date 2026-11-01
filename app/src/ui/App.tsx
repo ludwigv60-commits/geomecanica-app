@@ -31,7 +31,7 @@ export function App() {
   if (vista.v === 'editor') return (
     <Editor inicial={vista.r} listas={listas} historial={[...reportes, ...bd]}
       onGuardar={async r => { await guardarReporte(r); await recargar(); }}
-      onSalir={() => { recargar(); setVista({ v: 'lista' }); }} />
+      onSalir={() => { recargar(); setVista({ v: 'lista' }); }} onBase={recargarBd} />
   );
   if (vista.v === 'listas') return (
     <EditorListas listas={listas} historialBD={bd.length} onHistorial={recargarBd} onGuardar={async l => { await guardarListas(l); setListas(l); setVista({ v: 'lista' }); }}
