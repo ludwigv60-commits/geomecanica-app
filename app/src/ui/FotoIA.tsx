@@ -32,6 +32,9 @@ const reducida = (img: HTMLImageElement) => {
   return { w, h, datos: ctx.getImageData(0, 0, w, h).data };
 };
 
+/** La IA solo marca las estructuras grandes (>1 m): Jv, RQD y espaciamiento dependen de las fracturas finas y no se sacan de ella. */
+const FINAS = new Set(['jv', 'rmr.rqd', 'rmr.espaciamiento']);
+
 export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
   const fotos = r.fotos ?? [];
   const [zona, setZona] = useState<ZonaFoto>('FRENTE');
@@ -140,10 +143,10 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
         fotos: (p.fotos ?? []).map(x => (x.id === sel.id ? { ...x, trazas: { w: dims.w, h: dims.h, ia, segmentos: segs } } : x)),
       };
       // Con confianza baja NO se llena nada solo: un Jv mal leído daría un RQD y un RMR falsamente altos.
-      return med && ia?.nivel !== 'baja' ? aplicar(n, proponer(n, historial, med).filter(q => q.fuente === 'foto')) : n;
+      return med && ia?.nivel !== 'baja' ? aplicar(n, proponer(n, historial, med).filter(q => q.fuente === 'foto' && !FINAS.has(q.clave))) : n;
     });
     setEstado(nFam
-      ? `Sugerido por IA · confianza ${ia!.nivel}: ${nFam} estructura(s), numeradas de la más a la menos importante (trazas más largas).${extra}${med ? (ia?.nivel === 'baja' ? ` Confianza baja: NO se llenaron parámetros (Jv ≈ ${med.jv} no es confiable).` : ` Jv ≈ ${med.jv}; se llenaron en morado los campos vacíos.`) : ' Para calcular Jv y espaciamiento falta el ancho de la labor.'} Revise: borre lo que no sea fractura y mida cada estructura con 🧭 (dip/dd para cuñas).`
+      ? `Sugerido por IA · confianza ${ia!.nivel}: ${nFam} estructura(s), numeradas de la más a la menos importante (trazas más largas).${extra}${med ? (ia?.nivel === 'baja' ? ' Confianza baja: NO se llenaron parámetros.' : ' Se llenaron en morado persistencia y Jn; Jv, RQD y espaciamiento salen del historial o de su conteo, porque la IA solo marca estructuras grandes (más de 1 m).') : ''} Revise: borre lo que no sea fractura y mida cada estructura con 🧭 (dip/dd para cuñas).`
       : `La IA no encontró trazas claras en la roca.${extra} Dibújelas con el dedo.`);
   };
 
@@ -239,7 +242,8 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
   const stats = useMemo(() => (base?.trazas ? estadisticas(base.trazas.segmentos.map(s => ({ ...s })), base.trazas.w, base.trazas.h) : null), [base]);
   const medidas = useMemo(() => (stats && anchoFoto ? medidasFoto(stats, anchoFoto) : null), [stats, anchoFoto]);
   const baja = base?.trazas?.ia?.nivel === 'baja';
-  const props = useMemo(() => proponer(r, historial, baja ? null : medidas), [r, historial, medidas, baja]);
+  const soloGrandes = base?.trazas?.ia?.metodo === 'red';
+  const props = useMemo(() => proponer(r, historial, baja ? null : medidas).filter(q => !(soloGrandes && q.fuente === 'foto' && FINAS.has(q.clave))), [r, historial, medidas, baja, soloGrandes]);
 
   const galeria = async (file?: File) => {
     if (!file) return;
