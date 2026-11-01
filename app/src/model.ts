@@ -27,6 +27,7 @@ export interface Reporte {
   sincronizado: boolean;
   foto?: string;           // foto del frente (JPEG reducido)
   sugeridos?: string[];
+  importado?: boolean;     // viene de la BD de mapeos (historial, solo lectura)
   trazasFoto?: Trazas;     // (versión anterior, se migra a fotos)
   fotos?: FotoZona[];    // campos llenados por la IA y aún no confirmados
   correlativo: string;

@@ -4,6 +4,7 @@ import { rqdDesdeJv } from '../core/rqd';
 import type { Reporte } from '../model';
 import type { Calculo } from '../calc';
 import type { ResultadoTrazas } from './trazas';
+import { claveLabor } from './historial-bd';
 
 export interface Propuesta {
   clave: string;              // 'rmr.ucs', 'q.jn', 'jv', 'litologia', 'ajuste'
@@ -43,9 +44,12 @@ function moda<T>(vals: T[]): { v: T; n: number } | null {
 
 export function proponer(r: Reporte, historial: Reporte[], foto: MedidasFoto | null): Propuesta[] {
   const out: Propuesta[] = [];
-  const previos = historial.filter(h => h.id !== r.id);
-  const misma = previos.filter(h => h.labor && h.labor === r.labor);
-  const base = (misma.length >= 2 ? misma : previos).slice(0, 15);
+  // del más reciente al más antiguo; misma labor aunque se escriba distinto ("Rampa Norte" = "RP NORTE")
+  const previos = historial.filter(h => h.id !== r.id && (!r.fecha || !h.fecha || h.fecha <= r.fecha))
+    .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || b.modificado.localeCompare(a.modificado));
+  const misma = r.labor ? previos.filter(h => h.labor && claveLabor(h.labor) === claveLabor(r.labor)) : [];
+  // Con 724 mapeos de Justa, los últimos 5 de la misma labor predicen mejor que más reportes.
+  const base = (misma.length >= 2 ? misma.slice(0, 5) : previos.slice(0, 15));
   const fuenteHist = misma.length >= 2 ? `tus últimos ${base.length} reportes de ${r.labor}` : `tus últimos ${base.length} reportes`;
 
   if (foto) {
@@ -75,6 +79,12 @@ export function proponer(r: Reporte, historial: Reporte[], foto: MedidasFoto | n
     if (!ya.has('q.jn')) { const m = moda(base.map(h => h.q.CORONA.jn)); if (m) out.push({ clave: 'q.jn', valor: m.v as number, fuente: 'historial', texto: `Jn = ${m.v} en ${m.n} de ${fuenteHist}.` }); }
     const lit = moda(base.map(h => h.litologia.CORONA));
     if (lit) out.push({ clave: 'litologia', valor: lit.v, fuente: 'historial', texto: `Litología ${lit.v} en ${lit.n} de ${fuenteHist}.` });
+    // Familias: si aún no se midió ninguna, proponer las del último mapeo de la misma labor.
+    const ult = misma.find(h => h.familias.some(f => f.dip != null && f.dipdir != null));
+    if (ult && !r.familias.some(f => f.dip != null || f.dipdir != null)) {
+      const fams = ult.familias.filter(f => f.dip != null && f.dipdir != null).slice(0, 5);
+      out.push({ clave: 'familias', valor: JSON.stringify(fams), fuente: 'historial', texto: `Familias del mapeo anterior de ${r.labor} (${ult.fecha}): ${fams.map(f => `${f.abrev} ${f.dip}°/${String(f.dipdir).padStart(3, '0')}°`).join(', ')}. Mídalas con la brújula para confirmar.` });
+    }
     const aj = moda(base.map(h => h.ajuste.CORONA));
     if (aj) out.push({ clave: 'ajuste', valor: aj.v as number, fuente: 'historial', texto: `Ajuste ${aj.v} en ${aj.n} de ${fuenteHist}.` });
   }
@@ -87,6 +97,10 @@ export function aplicar(r: Reporte, props: Propuesta[]): Reporte {
   const marcadas = new Set(n.sugeridos ?? []);
   const vacio = (z: Zona, f: (z: Zona) => unknown) => ZONAS.every(zz => f(zz) == null || f(zz) === '') || f(z) == null;
   for (const p of props) {
+    if (p.clave === 'familias') {
+      if (!n.familias.some(f => f.dip != null || f.dipdir != null)) { n.familias = JSON.parse(p.valor as string); marcadas.add('familias'); }
+      continue;
+    }
     if (p.clave === 'jv') { if (n.jv == null) { n.jv = p.valor as number; marcadas.add('jv'); } continue; }
     if (p.clave === 'litologia') { for (const z of ZONAS) if (!n.litologia[z]) { n.litologia[z] = p.valor as string; marcadas.add('litologia'); } continue; }
     if (p.clave === 'ajuste') { for (const z of ZONAS) if (n.ajuste[z] == null) { n.ajuste[z] = p.valor as number; marcadas.add('ajuste'); } continue; }
@@ -119,7 +133,8 @@ export function consejos(r: Reporte, c: Calculo, historial: Reporte[]): string[]
   }
   if (c.diseno?.alerta) out.push(c.diseno.alerta);
   // Tendencia frente a los reportes anteriores de la misma labor.
-  const prev = historial.filter(h => h.id !== r.id && h.labor === r.labor && h.labor);
+  const prev = historial.filter(h => h.id !== r.id && h.labor && r.labor && claveLabor(h.labor) === claveLabor(r.labor))
+    .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
   const rmrPrev = prev.map(h => h.rmrDisenoManual ?? Math.min(...ZONAS.map(z => totalDe(h, z) ?? 999))).filter(v => v < 999).slice(0, 5);
   if (c.rmrFinal != null && rmrPrev.length >= 2) {
     const prom = rmrPrev.reduce((a, b) => a + b, 0) / rmrPrev.length;

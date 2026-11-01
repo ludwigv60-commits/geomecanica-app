@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { nuevoReporte, siguienteCorrelativo, LISTAS_INICIALES, type Listas, type Reporte } from '../model';
-import { borrarReporte, guardarListas, guardarReporte, leerListas, listarReportes, pedirPersistencia } from '../store';
+import { borrarReporte, guardarListas, guardarReporte, leerConfig, leerListas, listarReportes, pedirPersistencia } from '../store';
 import { Editor } from './Editor';
 import { EditorListas } from './EditorListas';
 import { TIPOS, tipoRoca } from '../core/rmr';
@@ -14,10 +14,12 @@ export function App() {
   const [listas, setListas] = useState<Listas>(LISTAS_INICIALES);
   const [aviso, setAviso] = useState<string | null>(null);
   const [confirmar, setConfirmar] = useState<string | null>(null);
+  const [bd, setBd] = useState<Reporte[]>([]);   // historial importado de la BD de mapeos
+  const recargarBd = () => leerConfig<Reporte[]>('historialBD').then(l => setBd(l ?? [])).catch(() => {});
 
   const recargar = () => listarReportes().then(setReportes);
   useEffect(() => {
-    recargar(); leerListas().then(setListas); pedirPersistencia();
+    recargar(); recargarBd(); leerListas().then(setListas); pedirPersistencia();
     // Deja listo en el celular todo lo necesario para exportar sin señal.
     const t = setTimeout(() => {
       import('../export/xlsx').catch(() => {}); import('../export/pdf').catch(() => {});
@@ -27,12 +29,12 @@ export function App() {
   }, []);
 
   if (vista.v === 'editor') return (
-    <Editor inicial={vista.r} listas={listas} historial={reportes}
+    <Editor inicial={vista.r} listas={listas} historial={[...reportes, ...bd]}
       onGuardar={async r => { await guardarReporte(r); await recargar(); }}
       onSalir={() => { recargar(); setVista({ v: 'lista' }); }} />
   );
   if (vista.v === 'listas') return (
-    <EditorListas listas={listas} onGuardar={async l => { await guardarListas(l); setListas(l); setVista({ v: 'lista' }); }}
+    <EditorListas listas={listas} historialBD={bd.length} onHistorial={recargarBd} onGuardar={async l => { await guardarListas(l); setListas(l); setVista({ v: 'lista' }); }}
       onCancelar={() => setVista({ v: 'lista' })} />
   );
 
