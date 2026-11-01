@@ -147,8 +147,21 @@ export function Medidor({ modo, titulo, decl, conv, foto, conAzimut = true, onLi
             <span className={estable ? 'chip ok' : 'chip'}>{estable ? 'ESTABLE' : 'Quieto…'}</span>
             {interf && <span className="chip mal">Interferencia magnética</span>}
           </div>
+          {modo === 'pl' && vista?.a != null && vista.a < 15 && <p className="alerta">Plano casi horizontal ({vista.a.toFixed(0)}°): el dip dir es poco confiable. Con este dip, 1° de inclinación de costado mueve el dip dir unos {Math.min(90, Math.round(1 / Math.sin(Math.max(1, vista.a) * Math.PI / 180)))}°. Apoye bien el celular y anote el dip dir solo como referencia.</p>}
+          {modo === 'pl' && vista?.a != null && vista.a > 82 && <p className="alerta">Plano casi vertical ({vista.a.toFixed(0)}°): si el celular pasa de un lado a otro de la vertical, el dip dir salta 180°. Mantenga la pantalla siempre hacia el mismo lado; el promedio ya corrige ese salto.</p>}
           <button className="btn primario grande" disabled={midiendo} onClick={registrar}>{midiendo ? 'Midiendo… no mueva el celular' : 'Registrar (3 s)'}</button>
           <p className="tenue">Declinación {decl}°, convergencia {conv}°. Aléjese de pernos, malla y equipos.</p>
+          {modo === 'pl' && <details className="ayuda">
+            <summary>¿Cómo se calcula el dip y el dip direction?</summary>
+            <ol>
+              <li>El celular, apoyado por la espalda sobre la cara de la estructura, queda paralelo al plano. La perpendicular a la pantalla es la <b>normal del plano</b>.</li>
+              <li>Los sensores (giroscopio + acelerómetro + brújula) dan la orientación del celular en el espacio: hacia dónde apunta la normal respecto a la vertical y al norte.</li>
+              <li><b>Dip</b> = ángulo entre la normal y la vertical (0° plano horizontal, 90° vertical). Lo da la gravedad, por eso es estable.</li>
+              <li><b>Dip direction</b> = rumbo hacia donde apunta la normal vista en planta (hacia donde "cae" el plano). Lo da la brújula: rumbo magnético {decl >= 0 ? '+' : '−'} {Math.abs(decl)}° de declinación − {conv}° de convergencia = rumbo UTM.</li>
+              <li>Se promedian 3 s de lecturas como vectores (no ángulos sueltos).</li>
+            </ol>
+            <p><b>Si mueve solo el dip sin girar el celular, el dip dir debe quedar igual.</b> Varía mucho cuando: el plano es casi horizontal (dip &lt; 15°: la normal casi vertical no tiene una dirección clara), el celular cruza la vertical (salta 180°), o hay acero o magnetita cerca (pernos, malla, equipos; la app avisa "Interferencia"). Prueba rápida: apoye el celular en una mesa inclinada, gírela sin mover su dirección de caída y verifique que el dip dir no cambia.</p>
+          </details>}
         </>}
         {msg && <p className="alerta">{msg}</p>}
       </main>

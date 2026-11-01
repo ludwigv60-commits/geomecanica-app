@@ -1,3 +1,4 @@
+import { NumIn } from './NumIn';
 import { useState } from 'react';
 import type { Listas } from '../model';
 import { guardarConfig } from '../store';
@@ -46,8 +47,8 @@ export function EditorListas({ listas, historialBD = 0, onHistorial, onGuardar, 
         <section className="tarjeta">
           <h3>Brújula</h3>
           <div className="rejilla2">
-            <label className="campo"><span>Declinación magnética (°)</span><input inputMode="decimal" value={l.declinacion ?? ''} onChange={e => setL({ ...l, declinacion: Number(e.target.value.replace(',', '.')) })} /></label>
-            <label className="campo"><span>Convergencia UTM (°)</span><input inputMode="decimal" value={l.convergencia ?? ''} onChange={e => setL({ ...l, convergencia: Number(e.target.value.replace(',', '.')) })} /></label>
+            <label className="campo"><span>Declinación magnética (°)</span><NumIn signo valor={l.declinacion} on={v => setL({ ...l, declinacion: v ?? 0 })} /></label>
+            <label className="campo"><span>Convergencia UTM (°)</span><NumIn signo valor={l.convergencia} on={v => setL({ ...l, convergencia: v ?? 0 })} /></label>
           </div>
         </section>
       </main>

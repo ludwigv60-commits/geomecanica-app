@@ -1,5 +1,6 @@
 // Fotos por zona (Frente, H.I., Corona, H.D.) desde varios ángulos, con azimut e inclinación de la cámara,
 // control de calidad, mejora con poca luz, trazas (IA o a mano) y propuestas de la IA. Módulos 5, 6, 8 y 11.
+import { NumIn } from './NumIn';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ABREVS, ZONAS_FOTO, type FotoZona, type Reporte, type ZonaFoto } from '../model';
 import { Medidor } from './Medidor';
@@ -10,6 +11,8 @@ import { aprender, esLabor } from '../ia/labor';
 import { detectarConRed } from '../ia/modelo-trazas';
 import { fotosConTrazas, paqueteEntrenamiento } from '../ia/datos-entrenamiento';
 import { entregar } from '../export/compartir';
+import { rumboExif } from '../ia/exif';
+import { toGrid } from '../brujula/orient';
 import { colorFamilia, rotulos, simplificar, textoFamilia } from '../ia/anotacion';
 
 export const COLORES = ['#ffd400', '#00e5ff', '#ff4fd8', '#7CFF4F', '#ff8a00'];
@@ -43,10 +46,23 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
   const trazo = useRef<[number, number][]>([]);
   const [arrastre, setArrastre] = useState<[number, number, number, number] | null>(null);
   const [confirmaTodo, setConfirmaTodo] = useState(false);
+  // Zoom con dos dedos (o botones) para dibujar estructuras finas; con un dedo se dibuja o se mueve la foto.
+  const [vistaZ, setVistaZ] = useState({ z: 1, tx: 0, ty: 0 });
+  const marco = useRef<HTMLDivElement>(null);
+  const dedos = useRef(new Map<number, [number, number]>());
+  const pinza = useRef<{ d0: number; z0: number; m0: [number, number]; t0: [number, number] } | null>(null);
+  const paneo = useRef<{ p0: [number, number]; t0: [number, number] } | null>(null);
+  const limitar = (z: number, tx: number, ty: number) => {
+    const b = marco.current?.getBoundingClientRect(); if (!b) return { z, tx, ty };
+    z = Math.min(6, Math.max(1, z));
+    return { z, tx: Math.min(0, Math.max(b.width - b.width * z, tx)), ty: Math.min(0, Math.max(b.height - b.height * z, ty)) };
+  };
+  const zoomBoton = (f: number) => setVistaZ(v => { const b = marco.current?.getBoundingClientRect(); const cx = (b?.width ?? 0) / 2, cy = (b?.height ?? 0) / 2; const z = Math.min(6, Math.max(1, v.z * f)); return limitar(z, cx - ((cx - v.tx) / v.z) * z, cy - ((cy - v.ty) / v.z) * z); });
 
   const deZona = fotos.filter(f => f.zona === zona);
   const sel = fotos.find(f => f.id === selId && f.zona === zona) ?? deZona[0] ?? null;
   useEffect(() => { if (sel) cargar(sel.data).then(setImg); else setImg(null); setEstado(null); }, [sel?.id]);
+  useEffect(() => { setVistaZ({ z: 1, tx: 0, ty: 0 }); }, [sel?.id]);
   useEffect(() => { if (anchoFoto == null && r.ancho != null) setAnchoFoto(r.ancho); }, [r.ancho]);
 
   const dims = img ? { w: Math.round(img.width * Math.min(1, MAX / Math.max(img.width, img.height))), h: Math.round(img.height * Math.min(1, MAX / Math.max(img.width, img.height))) } : null;
@@ -159,9 +175,18 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
   };
   const setSegs = (f: (s: NonNullable<FotoZona['trazas']>['segmentos']) => NonNullable<FotoZona['trazas']>['segmentos']) =>
     sel && dims && editarFoto(sel.id, x => ({ ...x, trazas: { w: dims.w, h: dims.h, segmentos: f(x.trazas?.segmentos ?? []) } }));
+  const rel = (e: React.PointerEvent): [number, number] => { const b = marco.current!.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
   const abajo = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!dims || modo === 'ver') return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    if (!dims) return;
+    dedos.current.set(e.pointerId, rel(e));
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* opcional */ }
+    if (dedos.current.size === 2) {  // dos dedos: zoom y desplazamiento; se cancela la traza en curso
+      inicio.current = null; setArrastre(null); paneo.current = null;
+      const [a, b] = [...dedos.current.values()] as [[number, number], [number, number]];
+      pinza.current = { d0: Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, z0: vistaZ.z, m0: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], t0: [vistaZ.tx, vistaZ.ty] };
+      return;
+    }
+    if (modo === 'ver') { if (vistaZ.z > 1) paneo.current = { p0: rel(e), t0: [vistaZ.tx, vistaZ.ty] }; return; }
     const p = punto(e);
     if (modo === 'borrar') {
       const b = e.currentTarget.getBoundingClientRect();
@@ -182,8 +207,20 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
     setFam(i); setModo('dibujar');
   };
   const deshacer = () => setSegs(ss => ss.slice(0, -1));
-  const mover = (e: React.PointerEvent<HTMLCanvasElement>) => { if (inicio.current) { const p = punto(e); trazo.current.push(p); setArrastre([...inicio.current, ...p]); } };
+  const mover = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (dedos.current.has(e.pointerId)) dedos.current.set(e.pointerId, rel(e));
+    if (pinza.current && dedos.current.size >= 2) {
+      const [a, b] = [...dedos.current.values()] as [[number, number], [number, number]], pz = pinza.current;
+      const z = Math.min(6, Math.max(1, pz.z0 * Math.hypot(b[0] - a[0], b[1] - a[1]) / pz.d0)), m: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const c: [number, number] = [(pz.m0[0] - pz.t0[0]) / pz.z0, (pz.m0[1] - pz.t0[1]) / pz.z0];
+      setVistaZ(limitar(z, m[0] - c[0] * z, m[1] - c[1] * z)); return;
+    }
+    if (paneo.current) { const q = rel(e); setVistaZ(v => limitar(v.z, paneo.current!.t0[0] + q[0] - paneo.current!.p0[0], paneo.current!.t0[1] + q[1] - paneo.current!.p0[1])); return; }
+    if (inicio.current) { const p = punto(e); trazo.current.push(p); setArrastre([...inicio.current, ...p]); }
+  };
+  const soltar = (e: React.PointerEvent<HTMLCanvasElement>) => { dedos.current.delete(e.pointerId); if (dedos.current.size < 2) pinza.current = null; if (!dedos.current.size) paneo.current = null; };
   const arriba = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    soltar(e);
     if (!inicio.current) return;
     const [x1, y1] = inicio.current, [x2, y2] = punto(e);
     inicio.current = null; setArrastre(null);
@@ -205,11 +242,15 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
 
   const galeria = async (file?: File) => {
     if (!file) return;
+    // Si la foto trae el rumbo de la cámara (EXIF), se usa como azimut: verdadero → UTM, magnético → + declinación.
+    let az: number | undefined;
+    try { const ru = rumboExif(await file.arrayBuffer()); if (ru) az = Math.round(toGrid(ru.dir, ru.ref === 'M' ? decl : 0, conv) * 10) / 10; } catch { /* sin EXIF */ }
     const i = await cargar(URL.createObjectURL(file));
     const k = Math.min(1, 1600 / Math.max(i.width, i.height));
     const cv = Object.assign(document.createElement('canvas'), { width: Math.round(i.width * k), height: Math.round(i.height * k) });
     cv.getContext('2d')!.drawImage(i, 0, 0, cv.width, cv.height);
-    await agregar(cv.toDataURL('image/jpeg', 0.85));
+    await agregar(cv.toDataURL('image/jpeg', 0.85), az, az != null ? 0 : undefined);
+    if (zona === 'FRENTE') setEstado(az != null ? `Azimut tomado de la foto (rumbo de la cámara guardado por el celular): ${az}° UTM. Revíselo: vale si la foto se tomó mirando de frente por el eje de la labor.` : 'Esta foto no trae el rumbo de la cámara. Para llenar el azimut solo, tome la foto con 📷 desde la app o active en el iPhone: Ajustes › Privacidad › Localización › Cámara.');
   };
 
   if (camara) return (
@@ -238,8 +279,34 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
           <button className="btn" onClick={() => confirmarLabor(sel.id)}>Sí es labor (la IA aprende)</button></div>
       </div>}
       {sel?.calidad && !sel.calidad.apta && <p className="alerta">FOTO NO APTA – {sel.calidad.motivos.join('; ')}. Tome una nueva.</p>}
-      {img && <canvas ref={lienzo} className="foto-lienzo" style={{ width: '100%', borderRadius: 8, touchAction: modo === 'ver' ? 'auto' : 'none' }}
-        onPointerDown={abajo} onPointerMove={mover} onPointerUp={arriba} onPointerCancel={() => { inicio.current = null; setArrastre(null); }} />}
+      {img && <div className="barra-dibujo">
+        <div className="segmentos">
+          <button className={modo === 'ver' ? 'sel' : ''} onClick={() => setModo('ver')}>👆 Mover</button>
+          <button className={modo === 'dibujar' ? 'sel' : ''} disabled={!r.familias.length} onClick={() => setModo('dibujar')}>✏️ Dibujar</button>
+          <button className={modo === 'borrar' ? 'sel' : ''} onClick={() => setModo('borrar')}>🧽 Borrar</button>
+          <button disabled={!sel?.trazas?.segmentos.length} onClick={deshacer}>↶</button>
+        </div>
+        <div className="chips-estr">
+          {r.familias.map((f, i) => (
+            <button key={i} className={modo === 'dibujar' && fam === i ? 'chip-estr sel' : 'chip-estr'} style={{ borderColor: colorFamilia(r.familias, i) }} onClick={() => { setFam(i); setModo('dibujar'); }}>
+              <i style={{ background: colorFamilia(r.familias, i) }} />{textoFamilia(r.familias, i)}</button>
+          ))}
+          {ABREVS.map(a => <button key={a} className="chip-estr nueva" style={{ borderColor: colorTipo(a) }} onClick={() => nuevaEstructura(a)}>+ {a}</button>)}
+        </div>
+        <div className="zoom-btns">
+          <button onClick={() => zoomBoton(1 / 1.5)} disabled={vistaZ.z <= 1}>－</button>
+          <span>{vistaZ.z > 1 ? `${vistaZ.z.toFixed(1)}×` : 'Zoom'}</span>
+          <button onClick={() => zoomBoton(1.5)} disabled={vistaZ.z >= 6}>＋</button>
+          {vistaZ.z > 1 && <button onClick={() => setVistaZ({ z: 1, tx: 0, ty: 0 })}>1:1</button>}
+          {modo === 'dibujar' && r.familias[fam] && <small>Dibujando <b>{textoFamilia(r.familias, fam)}</b></small>}
+          {modo === 'borrar' && <small>Toque la traza a borrar</small>}
+        </div>
+      </div>}
+      {img && dims && <div ref={marco} className="foto-marco" style={{ aspectRatio: `${dims.w} / ${dims.h}`, touchAction: modo === 'ver' && vistaZ.z <= 1 ? 'pan-y' : 'none' }}>
+        <canvas ref={lienzo} className="foto-lienzo" style={{ width: '100%', transform: `translate(${vistaZ.tx}px, ${vistaZ.ty}px) scale(${vistaZ.z})`, transformOrigin: '0 0' }}
+          onPointerDown={abajo} onPointerMove={mover} onPointerUp={arriba} onPointerCancel={e => { soltar(e); inicio.current = null; setArrastre(null); }} />
+      </div>}
+      {img && <p className="tenue">Dos dedos: acercar y mover la foto. Un dedo: dibuja (✏️), borra (🧽) o mueve la foto con zoom (👆).</p>}
       {sel && <p className="tenue">
         {zona === 'FRENTE' && (sel.az != null ? `Azimut de esta foto: ${sel.az}° UTM. ` : 'Sin azimut (foto de galería). ')}
         {zona === 'FRENTE' && r.azimut != null && <>Azimut de la labor: <b>{r.azimut}°</b>. </>}
@@ -275,13 +342,6 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
             </div>
             <p className="tenue"><b>3.</b> Toque <b>🧭 Medir</b> y apoye el celular en esa estructura: el rótulo (ej. D1:55°/350°) aparece solo sobre la traza.</p>
           </>}
-          <div className="segmentos">
-            <button className={modo === 'ver' ? 'sel' : ''} onClick={() => setModo('ver')}>👆 Mover</button>
-            <button className={modo === 'dibujar' ? 'sel' : ''} disabled={!r.familias.length} onClick={() => setModo('dibujar')}>✏️ Dibujar</button>
-            <button className={modo === 'borrar' ? 'sel' : ''} onClick={() => setModo('borrar')}>🧽 Borrar</button>
-          </div>
-          {modo === 'dibujar' && r.familias[fam] && <p className="aviso-modo">Dibujando: <b>{textoFamilia(r.familias, fam)}</b> ({NOMBRE_TIPO[r.familias[fam]!.abrev]})</p>}
-          {modo === 'borrar' && <p className="aviso-modo">Toque la traza que quiere borrar.</p>}
           <div className="fila-btn">
             <button className="btn mini" disabled={!sel?.trazas?.segmentos.length} onClick={deshacer}>↶ Deshacer última traza</button>
             <button className={`btn mini ${confirmaTodo ? 'peligro' : ''}`} disabled={!sel?.trazas?.segmentos.length}
@@ -293,7 +353,7 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir }: Props) {
       {stats && <>
         <p className="tenue">Para la propuesta se usa la foto del frente con más trazas. {stats.familias.map(f => `Familia ${f.id + 1}: ${f.segmentos} trazas${f.espaciamientoPx && medidas ? `, espaciamiento ≈ ${(f.espaciamientoPx / medidas.escala).toFixed(2)} m` : ''}`).join(' · ')}</p>
         <label className="campo"><span>Ancho real que abarca esa foto (m)</span>
-          <input inputMode="decimal" value={anchoFoto ?? ''} onChange={e => setAnchoFoto(e.target.value ? Number(e.target.value.replace(',', '.')) : null)} /></label>
+          <NumIn valor={anchoFoto} on={setAnchoFoto} /></label>
         <button className="btn mini" onClick={async () => {
           setEstado('Preparando fotos y trazas para entrenar la IA…');
           try { const z = await paqueteEntrenamiento(r); await entregar(z, `entrenar_IA_${(r.labor || 'labor').replace(/[^\w.+-]+/g, '_')}_${r.fecha || ''}.zip`, 'application/zip'); setEstado('Listo. Súbalo al proyecto: con 50–100 fotos así la IA aprende su criterio.'); }

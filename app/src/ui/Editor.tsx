@@ -1,3 +1,5 @@
+import { NumIn } from './NumIn';
+import { enLista, riesgoPropuesto } from '../ia/riesgo';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ABREVS, ITEMS_VERIF, migrar, type Listas, type Reporte, type Verif } from '../model';
 import { AJUSTES_ORIENTACION, NOMBRE_ZONA, PARAMETROS, TIPOS, ZONAS, type ParamId, type Zona } from '../core/rmr';
@@ -22,6 +24,13 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
   const [mismoEnZonas, setMismo] = useState(true);
   const [estado, setEstado] = useState('Guardado');
   const c = useMemo(() => calcular(r), [r]);
+  const riesgoIA = useMemo(() => { const x = riesgoPropuesto(r); return x ? { ...x, opcion: enLista(x.nivel, listas.riesgos) } : null; }, [r, listas.riesgos]);
+  // Si el campo está vacío (o lo llenó la IA), se llena solo con el nivel que sale del análisis.
+  useEffect(() => {
+    const o = riesgoIA?.opcion; if (!o || r.importado) return;
+    const deIA = !r.nivelRiesgo || (r.sugeridos ?? []).includes('nivelRiesgo');
+    if (deIA && r.nivelRiesgo !== o) setR(p => ({ ...p, nivelRiesgo: o, sugeridos: [...new Set([...(p.sugeridos ?? []), 'nivelRiesgo'])] }));
+  }, [riesgoIA?.opcion]); // eslint-disable-line react-hooks/exhaustive-deps
   const avisos = useMemo(() => consejos(r, c, historial), [r, c, historial]);
   const primera = useRef(true);
 
@@ -109,12 +118,17 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
             <Campo t="Turno"><Segmentos valor={r.turno} opciones={['Día', 'Noche']} on={v => set('turno', v as Reporte['turno'])} /></Campo>
             <Campo t="Desde (PK)"><input inputMode="decimal" placeholder="0+924.7" value={r.desde} onChange={e => set('desde', e.target.value)} /></Campo>
             <Campo t="Hasta (PK)"><input inputMode="decimal" placeholder="0+928.7" value={r.hasta} onChange={e => set('hasta', e.target.value)} /></Campo>
-            <Campo t="Avance (m), de topografía"><input inputMode="decimal" value={r.avance ?? ''} onChange={e => set('avance', num(e.target.value))} /></Campo>
-            <Campo t="Azimut (°) UTM"><input inputMode="decimal" value={r.azimut ?? ''} onChange={e => set('azimut', num(e.target.value))} /></Campo>
-            <Campo t="Ancho (m)"><input inputMode="decimal" value={r.ancho ?? ''} onChange={e => set('ancho', num(e.target.value))} /></Campo>
-            <Campo t="Alto (m)"><input inputMode="decimal" value={r.alto ?? ''} onChange={e => set('alto', num(e.target.value))} /></Campo>
+            <Campo t="Avance (m), de topografía"><NumIn valor={r.avance} on={v => set('avance', v)} /></Campo>
+            <Campo t="Azimut (°) UTM"><NumIn valor={r.azimut} on={v => set('azimut', v)} /></Campo>
+            <Campo t="Ancho (m)"><NumIn valor={r.ancho} on={v => set('ancho', v)} /></Campo>
+            <Campo t="Alto (m)"><NumIn valor={r.alto} on={v => set('alto', v)} /></Campo>
           </div>
-          <Campo t="Nivel de riesgo"><Segmentos valor={r.nivelRiesgo} opciones={listas.riesgos} on={v => set('nivelRiesgo', v)} /></Campo>
+          <Campo t="Nivel de riesgo"><Segmentos valor={r.nivelRiesgo} opciones={listas.riesgos} on={v => setR(p => ({ ...p, nivelRiesgo: v, sugeridos: (p.sugeridos ?? []).filter(x => x !== 'nivelRiesgo') }))} /></Campo>
+          {riesgoIA && <div className={`propuesta-riesgo ${r.nivelRiesgo && r.nivelRiesgo !== riesgoIA.opcion ? 'difiere' : ''}`}>
+            <p><span className="sugerido">Sugerido por IA</span> Riesgo <b>{riesgoIA.nivel.toUpperCase()}</b> por: {riesgoIA.motivos.join('; ')}.</p>
+            {r.nivelRiesgo && r.nivelRiesgo !== riesgoIA.opcion && <p className="tenue">Usted marcó {r.nivelRiesgo}. Revise si hay algo que la app no ve (condición del frente, desatado, sismicidad).</p>}
+            {riesgoIA.opcion && r.nivelRiesgo !== riesgoIA.opcion && <button className="btn mini" onClick={() => setR(p => ({ ...p, nivelRiesgo: riesgoIA.opcion!, sugeridos: [...new Set([...(p.sugeridos ?? []), 'nivelRiesgo'])] }))}>Usar {riesgoIA.opcion}</button>}
+          </div>}
         </Seccion>
 
         <section className="seccion abierta" id="sec-fotos">
@@ -158,7 +172,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
           <section className="tarjeta">
             <h3>Cálculo de RQD · RQD = 115 − 3.3·Jv</h3>
             <div className="rejilla2">
-              <Campo t="N° fracturas por m³ (Jv)"><input className={sug('jv')} inputMode="decimal" value={r.jv ?? ''} onChange={e => set('jv', num(e.target.value))} /></Campo>
+              <Campo t="N° fracturas por m³ (Jv)"><NumIn className={sug('jv')} valor={r.jv} on={v => set('jv', v)} /></Campo>
               <Campo t="RQD (%)"><output className="resultado">{c.rqd ?? '—'}</output></Campo>
             </div>
           </section>
@@ -188,8 +202,8 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
                 <span className="n">{i + 1}</span>
                 <select value={f.abrev} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, abrev: e.target.value } : x))}>
                   {ABREVS.map(a => <option key={a}>{a}</option>)}</select>
-                <input inputMode="decimal" placeholder="Dip" value={f.dip ?? ''} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, dip: num(e.target.value) } : x))} />
-                <input inputMode="decimal" placeholder="D/D" value={f.dipdir ?? ''} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, dipdir: num(e.target.value) } : x))} />
+                <NumIn placeholder="Dip" valor={f.dip} on={v => set('familias', r.familias.map((x, j) => j === i ? { ...x, dip: v } : x))} />
+                <NumIn placeholder="D/D" valor={f.dipdir} on={v => set('familias', r.familias.map((x, j) => j === i ? { ...x, dipdir: v } : x))} />
                 <button className="btn mini btn-med" onClick={() => { setEnCadena(false); setMidiendo(i); }}>🧭 Medir</button>
                 <button className="btn mini" onClick={() => quitarFamilia(i)}>×</button>
               </div>
@@ -215,7 +229,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir }: Props
             </div>
             {r.familias.some(f => f.abrev === 'F' || f.abrev === 'V') && <div className="rejilla3">
               {r.familias.map((f, i) => (f.abrev === 'F' || f.abrev === 'V') && <label key={i} className="campo"><span>Potencia {f.abrev}{i + 1} (m)</span>
-                <input inputMode="decimal" placeholder="0.05" value={f.potencia ?? ''} onChange={e => set('familias', r.familias.map((x, j) => j === i ? { ...x, potencia: num(e.target.value) } : x))} /></label>)}
+                <NumIn placeholder="0.05" valor={f.potencia} on={v => set('familias', r.familias.map((x, j) => j === i ? { ...x, potencia: v } : x))} /></label>)}
             </div>}
           </section>
           {r.familias.some(f => f.dip != null && f.dipdir != null) && (() => {
@@ -341,7 +355,7 @@ function SelectorQ({ titulo, opciones, r, mismo, k, on }: { titulo: string; opci
             <option value="">—</option>
             {opciones.map((o, i) => <option key={i} value={o.valor}>{o.valor} · {o.texto}{o.rango ? ` (${o.rango[0]}–${o.rango[1]})` : ''}</option>)}
           </select>
-          <input className="corto" inputMode="decimal" value={r.q[z][k] ?? ''} onChange={e => e.target.value !== '' && on(z, k, Number(e.target.value.replace(',', '.')))} />
+          <NumIn className="corto" valor={r.q[z][k]} on={v => v != null && on(z, k, v)} />
         </div>
       ))}
     </section>

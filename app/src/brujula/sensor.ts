@@ -102,6 +102,19 @@ export function resumir(ms: Muestra[], modo: Modo, decl: number, conv: number, m
     const c = circStats(ms.map(m => m.az!));
     return { modo, az: toGrid(c.mean, decl, conv), plunge: linStats(ms.map(m => m.plunge!)).mean, sd: c.sd, n: ms.length, interferencia, metodo };
   }
-  const d = linStats(ms.map(m => m.dip!)), dd = circStats(ms.map(m => m.dd!));
-  return { modo, dip: d.mean, dd: toGrid(dd.mean, decl, conv), sd: Math.max(d.sd, dd.sd), n: ms.length, interferencia, metodo };
+  const p = promedioPlano(ms.map(m => [m.dip!, m.dd!] as [number, number]));
+  return { modo, dip: p.dip, dd: toGrid(p.dd, decl, conv), sd: p.sd, n: ms.length, interferencia, metodo };
+}
+
+/** Promedio de planos con sus normales (vectores), no de los ángulos por separado.
+ *  Así un plano casi vertical que oscila de 89° a 91° (su dip dir salta 180°) no se promedia mal. */
+export function promedioPlano(ps: [number, number][]): { dip: number; dd: number; sd: number } {
+  const R = Math.PI / 180, ns = ps.map(([dip, dd]) => [Math.sin(dip * R) * Math.sin(dd * R), Math.sin(dip * R) * Math.cos(dd * R), Math.cos(dip * R)]);
+  const ref = ns[0] ?? [0, 0, 1], m = [0, 0, 0];
+  for (const n of ns) { const s = n[0]! * ref[0]! + n[1]! * ref[1]! + n[2]! * ref[2]! < 0 ? -1 : 1; for (let k = 0; k < 3; k++) m[k]! += s * n[k]!; }
+  let L = Math.hypot(m[0]!, m[1]!, m[2]!) || 1; let v = m.map(x => x / L);
+  if (v[2]! < 0) v = v.map(x => -x);
+  const Rbar = Math.min(1, L / Math.max(1, ns.length));
+  L = Rbar;
+  return { dip: Math.acos(Math.min(1, v[2]!)) / R, dd: norm360(Math.atan2(v[0]!, v[1]!) / R), sd: L > 0 ? Math.sqrt(-2 * Math.log(L)) / R : 180 };
 }
