@@ -490,7 +490,7 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
     // riesgo propio de la cuña (sin sostener) y riesgo residual con el sostenimiento indicado
     const psi = rad(c.incl ?? 90), fs0 = c.zona === 'CORONA' ? 0 : Math.cos(psi) * Math.tan(rad(30)) / Math.max(Math.sin(psi), 0.01);
     const n0 = c.zona === 'CORONA' ? (c.peso >= 1 ? 'ALTO' : 'MEDIO') : fs0 < 1.5 ? 'ALTO' : fs0 < 2 ? 'MEDIO' : 'BAJO';
-    prims.push({ t: 'texto', p: lbl, s: `${nom} (${c.familias.join('+')}) · sin sostener: RIESGO ${n0}`, tam: 5.4, negrita: true, color: col(n0), ancla: an, fondo: true });
+    prims.push({ t: 'texto', p: lbl, s: `${nom} (${c.familias.map(n => { const f = fams.find(x => x.n === n); return f ? f.abrev + n : n; }).join(' + ')}) · sin sostener: RIESGO ${n0}`, tam: 5.4, negrita: true, color: col(n0), ancla: an, fondo: true });
     prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.3], s: `${c.zona === 'CORONA' ? 'h' : 'prof.'} ${c.altura.toFixed(1)} m · ${c.peso.toFixed(1)} t/m · ${rg.motivo.split(';')[0]}`, tam: 4.8, color: '#0B1A2A', ancla: an, fondo: true });
     prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.58], s: `Con sostenimiento: FS ${rg.fs.toFixed(1)} · RIESGO ${rg.nivel}${rg.nivel === 'BAJO' ? '' : ` · ${rg.accion}`}`, tam: 4.8, negrita: true, color: col(rg.nivel), ancla: an, fondo: true });
     notas.push(`${nom} formada por ${c.familias.map(n => rotulo(fams.find(f => f.n === n)!)).join(' y ')}: ${c.zona === 'CORONA' ? 'altura' : 'profundidad'} ${c.altura.toFixed(1)} m, área ${c.area.toFixed(1)} m², ${c.peso.toFixed(1)} t por metro de labor. ` +
