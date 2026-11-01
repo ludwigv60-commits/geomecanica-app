@@ -120,7 +120,7 @@ export function contornoVoladura(B: number, H: number, sobre: Partial<Record<Zon
   // quiebres de los bloques cada 0.35–1.1 m (a escala de la labor)
   const rnd = azar(semilla), esc = Math.min(B, H) / 5.5, quiebres: { s: number; a: number }[] = [{ s: 0, a: 0 }];
   for (let s = (0.3 + rnd() * 0.5) * esc; s < acc - 0.2 * esc; s += (0.35 + rnd() * 0.75) * esc) {
-    const i = Math.min(N - 1, arco.findIndex(x => x >= s)), v = d0[i] ?? 0, A = Math.max(0.06, Math.abs(v) * 0.75);
+    const i = Math.min(N - 1, arco.findIndex(x => x >= s)), v = d0[i] ?? 0, A = Math.max(0.06, Math.abs(v) * 0.5);
     // en sobreexcavación dominan los bloques caídos (afuera); en subexcavación, los cachos (adentro)
     const r = rnd(), a = v >= 0 ? A * (r < 0.2 ? -0.45 * rnd() : r < 0.35 ? 0.9 + 0.5 * rnd() : -0.15 + rnd() * 0.85) : A * (r < 0.25 ? 0.35 * rnd() : -0.3 - rnd() * 0.9);
     quiebres.push({ s, a });
@@ -153,21 +153,57 @@ export function pernoInfo(txt: string): PernoInfo | null {
 }
 const enPies = (m: number) => { const p = Math.ceil(m / 0.3048); return [5, 6, 7, 8, 10, 12, 14, 16, 20, 25, 30].find(x => x >= p) ?? p; };
 
+/** Espesor total de shotcrete estructural indicado (m): suma las pulgadas/cm de shotcrete, sin el de sacrificio. */
+export function espesorShotcrete(txt: string): number {
+  let e = 0;
+  for (const l of txt.split(/\n|;|\+|•|·/)) {
+    if (!/shotcrete|lanzado/i.test(l) || /sacrifici/i.test(l)) continue;
+    const m = l.match(/(\d+(?:[.,]\d+)?)\s*("|''|pulg|in\b|cm)/i); if (!m) continue;
+    const v = Number(m[1]!.replace(',', '.')); e += /cm/i.test(m[2]!) ? v / 100 : v * 0.0254;
+  }
+  return e;
+}
+
 /** Nivel de riesgo de una cuña con el sostenimiento indicado (equilibrio límite 2D, por metro de labor).
- *  Corona: cae por gravedad; solo la sostienen los pernos que la atraviesan y se anclan ≥ 0.5 m detrás.
- *  Hastial: desliza por el plano de deslizamiento (fricción 30°) y los pernos suman resistencia. */
-export interface Riesgo { nivel: 'ALTO' | 'MEDIO' | 'BAJO'; fs: number; motivo: string; accion: string }
-export function riesgoCuna(c: Cuna, perno: PernoInfo | null): Riesgo {
-  const anclado = perno != null && c.ancla != null && c.ancla >= 0.5;
-  const base = Math.hypot(c.pol[c.pol.length - 1]![0] - c.pol[0]![0], c.pol[c.pol.length - 1]![1] - c.pol[0]![1]) || 1;
-  const n = anclado ? Math.max(1, Math.floor(base / perno!.esp) + 1) / perno!.esp : 0;  // pernos efectivos por metro
-  const T = n * (perno?.cap ?? 0), psi = rad(c.incl ?? 90);
-  const fs = c.zona === 'CORONA' ? T / Math.max(c.peso, 0.01) : (c.peso * Math.cos(psi) * Math.tan(rad(30)) + T) / Math.max(c.peso * Math.sin(psi), 0.01);
+ *  - Pernos: se reparten a lo largo de la base de la cuña con su espaciamiento; cada perno cuenta solo si
+ *    cruza la cara de la cuña y queda anclado ≥ 0.5 m detrás (los de los bordes suelen pasar, los del centro no).
+ *  - Shotcrete: resiste por corte en los dos bordes de la cuña (τ = 0.35 MPa, valor conservador a edad temprana).
+ *  - Corona: cae por su peso. Hastial: desliza por el plano de deslizamiento con fricción de 30°.
+ *  FS ≥ 2 bajo, 1.5–2 medio, < 1.5 alto. */
+export interface Riesgo { nivel: 'ALTO' | 'MEDIO' | 'BAJO'; fs: number; fsPernos: number; pernosUtiles: number; pernosBase: number; motivo: string; accion: string }
+export function riesgoCuna(c: Cuna, perno: PernoInfo | null, shot = 0): Riesgo {
+  const W = Math.max(c.peso, 0.01), psi = rad(c.incl ?? 90), TAU = 35;  // t/m²
+  const caras: [P, P][] = c.zona === 'CORONA' ? [[c.pol[0]!, c.pol[1]!], [c.pol[1]!, c.pol[2]!]] : [[c.pol[0]!, c.pol[1]!], [c.pol[1]!, c.pol[2]!]];
+  let utiles = 0, total = 0;
+  if (perno && c.base && c.base.length > 1) {
+    const arco = [0]; for (let i = 1; i < c.base.length; i++) arco.push(arco[i - 1]! + Math.hypot(c.base[i]!.p[0] - c.base[i - 1]!.p[0], c.base[i]!.p[1] - c.base[i - 1]!.p[1]));
+    const L = arco.at(-1)!;
+    for (let s = perno.esp / 2; s < L; s += perno.esp) {
+      const k = Math.max(1, arco.findIndex(x => x >= s)), f = (s - arco[k - 1]!) / Math.max(1e-9, arco[k]! - arco[k - 1]!);
+      const a = c.base[k - 1]!, b = c.base[k]!, o: P = [a.p[0] + (b.p[0] - a.p[0]) * f, a.p[1] + (b.p[1] - a.p[1]) * f], n: P = [a.n[0] + (b.n[0] - a.n[0]) * f, a.n[1] + (b.n[1] - a.n[1]) * f];
+      let t = Infinity;
+      for (const [p, q] of caras) { const x = cruceRayo(o, n, p, q); if (x != null && x < t) t = x; }
+      total++; if (t !== Infinity && perno.largo - t >= 0.5) utiles++;
+    }
+  }
+  const T = perno ? (utiles * perno.cap) / perno.esp : 0, S = 2 * shot * TAU;
+  const fsCon = (R: number) => c.zona === 'CORONA' ? R / W : (W * Math.cos(psi) * Math.tan(rad(30)) + R) / Math.max(W * Math.sin(psi), 0.01);
+  const fsPernos = fsCon(T), fs = fsCon(T + S);
   const nivel = fs >= 2 ? 'BAJO' : fs >= 1.5 ? 'MEDIO' : 'ALTO';
-  const req = enPies(c.altura + 1.0);
-  const motivo = !perno ? 'sin pernos indicados' : !anclado ? `el perno ${perno.pies ?? perno.largo.toFixed(1) + ' m'}${perno.pies ? "'" : ''} no atraviesa la cuña` : `FS ${fs.toFixed(1)} con ${perno.tipo.toLowerCase()} ${perno.esp}×${perno.esp} m`;
-  const accion = nivel === 'BAJO' ? 'el sostenimiento indicado' : !anclado ? (req > 12 ? `cable bolting de ${req}' o más` : `pernos de ${req}' o más`) : `cerrar malla de pernos a ${Math.max(1, +(perno!.esp - 0.3).toFixed(1))}×${Math.max(1, +(perno!.esp - 0.3).toFixed(1))} m`;
-  return { nivel, fs, motivo, accion };
+  const req = enPies(c.altura + 0.5);
+  const pp = perno ? `${perno.pies != null ? perno.pies + "'" : perno.largo.toFixed(1) + ' m'}` : '';
+  const motivo = !perno ? `sin pernos; FS ${fs.toFixed(1)} solo con shotcrete` : `${utiles} de ${total} pernos de ${pp} anclan detrás de la cuña; FS ${fs.toFixed(1)}`;
+  const accion = nivel === 'BAJO' ? 'mantener el sostenimiento indicado'
+    : perno && utiles < total ? (req > 12 ? `usar cable bolting de ${req}'` : `usar pernos de ${req}'`)
+    : perno ? `cerrar pernos a ${Math.max(1, +(perno.esp - 0.2).toFixed(1))}×${Math.max(1, +(perno.esp - 0.2).toFixed(1))} m` : 'colocar pernos';
+  return { nivel, fs, fsPernos, pernosUtiles: utiles, pernosBase: total, motivo, accion };
+}
+/** Distancia a lo largo del rayo o + t·n hasta el segmento p–q (o null si no lo corta). */
+function cruceRayo(o: P, n: P, p: P, q: P): number | null {
+  const d: P = [q[0] - p[0], q[1] - p[1]], den = n[0] * d[1] - n[1] * d[0];
+  if (Math.abs(den) < 1e-9) return null;
+  const w: P = [p[0] - o[0], p[1] - o[1]], t = (w[0] * d[1] - w[1] * d[0]) / den, u = (w[0] * n[1] - w[1] * n[0]) / den;
+  return t > 0 && u >= -1e-6 && u <= 1 + 1e-6 ? t : null;
 }
 
 // ---------- PLANTA ----------
@@ -207,7 +243,7 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | nu
     { t: 'poly', pts: paredD, borde: '#000000', ancho: 0.7 },
     { t: 'poly', pts: [en(-L, -B / 2), en(-av, -B / 2)], borde: GRIS, ancho: 0.35, trazos: [2, 1.5] },
     { t: 'poly', pts: [en(-L, B / 2), en(-av, B / 2)], borde: GRIS, ancho: 0.35, trazos: [2, 1.5] },
-    { t: 'poly', pts: frenteR.slice(1, -1), borde: '#000000', ancho: 1.3 },
+    { t: 'poly', pts: frenteR, borde: '#000000', ancho: 1.3 },
     { t: 'poly', pts: [en(-av, -B / 2), en(-av, B / 2)], borde: GRIS, ancho: 0.4, trazos: [2, 1.5] },
   ];
   const fams = familiasMedidas(r), R = B * 1.35;
@@ -250,7 +286,12 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | nu
     const dd = rad(f.dipdir), tk: P = [Math.sin(dd) * B * 0.13, Math.cos(dd) * B * 0.13];
     prims.push({ t: 'poly', pts: [o, [o[0] + tk[0], o[1] + tk[1]]], borde: st.borde, ancho: Math.max(st.ancho, 0.9) });
     trazos.push([o, [o[0] + tk[0], o[1] + tk[1]]]);
-    const pd: P = [o[0] + tk[0] * 1.9, o[1] + tk[1] * 1.9 - B * 0.03], sd = String(Math.round(f.dip));
+    const sd = String(Math.round(f.dip));
+    let pd: P = [o[0] + tk[0] * 1.9, o[1] + tk[1] * 1.9 - B * 0.03], mejorD = Infinity;
+    for (const m of [1.9, 2.6, 3.3, 1.5]) for (const dx of [0, 1, -1]) {
+      const c: P = [o[0] + tk[0] * m + dx * B * 0.08, o[1] + tk[1] * m - B * 0.03], n = choca(cajaTexto(c, sd, 5.5, 'centro')) * 1 + Math.abs(dx) * 0.3 + (m - 1.9) * 0.2;
+      if (n < mejorD) { mejorD = n; pd = c; }
+    }
     prims.push({ t: 'texto', p: pd, s: sd, tam: 5.5, color: st.borde, ancla: 'centro', fondo: true });
     ocupadas.push(cajaTexto(pd, sd, 5.5, 'centro'));
   }
@@ -295,6 +336,7 @@ function leyenda(prims: Prim[], r: Reporte, rmr: RmrZonas, o: P, mpp: number) {
   const tipos = [...new Set((['HI', 'CORONA', 'HD'] as Zona[]).map(z => rmr[z]).filter((v): v is number => v != null).map(v => tipoRoca(v)))];
   for (const t of tipos) items.push({ txt: `Roca tipo ${t}`, dib: p => prims.push({ t: 'poly', pts: [p, [p[0] + sw, p[1]], [p[0] + sw, p[1] + fila * 0.6], [p[0], p[1] + fila * 0.6]], cerrado: true, relleno: TIPOS.find(x => x.tipo === t)?.color ?? '#C9C9C9', opac: 0.55, borde: '#555555', ancho: 0.3 }) });
   const linea = (txt: string, st: Partial<Prim & { t: 'poly' }>) => items.push({ txt, dib: p => prims.push({ t: 'poly', pts: [[p[0], p[1] + fila * 0.3], [p[0] + sw, p[1] + fila * 0.3]], ...st } as Prim) });
+  items.push({ txt: `Último avance${r.avance ? ` (${r.avance} m)` : ''}`, dib: p => prims.push({ t: 'poly', pts: [p, [p[0] + sw, p[1]], [p[0] + sw, p[1] + fila * 0.6], [p[0], p[1] + fila * 0.6]], cerrado: true, relleno: colorTipo(rmr.CORONA), opac: 0.55, borde: '#000000', ancho: 0.9 }) });
   const tipoE: Record<string, string> = { SD: 'Diaclasa (SD)', F: 'Falla (F)', V: 'Veta (V)', C: 'Contacto (C)' };
   for (const a of ['SD', 'F', 'V', 'C']) { const f = fams.find(x => x.abrev === a); if (f) linea(tipoE[a]!, { ...estilo(f) }); }
   items.push({ txt: 'Buzamiento (dip)', dib: p => { prims.push({ t: 'poly', pts: [[p[0], p[1] + fila * 0.3], [p[0] + sw, p[1] + fila * 0.3]], borde: '#000000', ancho: 0.5 }, { t: 'poly', pts: [[p[0] + sw / 2, p[1] + fila * 0.3], [p[0] + sw / 2, p[1] - fila * 0.1]], borde: '#000000', ancho: 0.9 }); } });
@@ -327,7 +369,7 @@ function escala(prims: Prim[], p: P, largo: number) {
 }
 
 // ---------- SECCIÓN ----------
-export interface Cuna { zona: 'CORONA' | 'HI' | 'HD'; familias: [number, number]; pol: P[]; altura: number; area: number; peso: number; ancla: number | null; incl?: number }
+export interface Cuna { zona: 'CORONA' | 'HI' | 'HD'; familias: [number, number]; pol: P[]; altura: number; area: number; peso: number; ancla: number | null; incl?: number; base?: { p: P; n: P }[] }
 
 /** Cuñas potenciales en la sección (2D): corona por dos familias que convergen hacia arriba; hastiales por un
  *  plano que aflora hacia la labor con buzamiento aparente > fricción (30°) y otro que lo libera. */
@@ -340,14 +382,15 @@ export function cunas(r: Reporte): Cuna[] {
   const out: Cuna[] = [];
   const hw = H - Math.min(H * 0.45, B * 0.31);
   const iz = real.findIndex(p => p[1] >= hw - 1e-6), de = real.length - 1 - [...real].reverse().findIndex(p => p[1] >= hw - 1e-6);
-  const SL = real[iz]!, SR = real[de]!, techo = Math.max(...real.map(p => p[1]));
+  const SL = real[iz]!, SR = real[de]!, techo = Math.max(...real.map(p => p[1])), nor = seccionTeorica(B, H).normal;
+  const baseDe = (i0: number, i1: number) => real.slice(i0, i1 + 1).map((p, k) => ({ p, n: nor[i0 + k]! }));
   // Corona: cara izquierda baja a la izquierda (sube hacia la derecha), cara derecha baja a la derecha.
   let mejor: Cuna | null = null;
   for (const a of ap) for (const b of ap) {
     if (a === b || a.bajaDerecha || !b.bajaDerecha || a.ang < 12 || b.ang < 12) continue;
     const A = cruce(SL, dir(a, 'der'), SR, dir(b, 'izq')); if (!A || A[1] <= techo + 0.05) continue;
     const pol: P[] = [SL, A, SR, ...real.slice(iz, de + 1).reverse()];
-    const ar = area(pol), c: Cuna = { zona: 'CORONA', familias: [a.f.n, b.f.n], pol, altura: A[1] - techo, area: ar, peso: ar * GAMMA, ancla: perno != null ? perno - (A[1] - techo) : null };
+    const ar = area(pol), c: Cuna = { zona: 'CORONA', familias: [a.f.n, b.f.n], pol, altura: A[1] - techo, area: ar, peso: ar * GAMMA, ancla: perno != null ? perno - (A[1] - techo) : null, base: baseDe(iz, de) };
     if (c.altura < Math.max(B, H) * 1.6 && (!mejor || c.area > mejor.area)) mejor = c;
   }
   if (mejor) out.push(mejor);
@@ -363,7 +406,7 @@ export function cunas(r: Reporte): Cuna[] {
       if (!A || s * A[0] <= B / 2 || A[1] < 0 || A[1] > hw) continue;
       const pol: P[] = [pie, A, cab];
       const ar = area(pol), prof = s * A[0] - B / 2;
-      const c: Cuna = { zona: lado, familias: [a.f.n, b.f.n], pol, altura: prof, area: ar, peso: ar * GAMMA, ancla: perno != null ? perno - prof : null, incl: a.ang };
+      const c: Cuna = { zona: lado, familias: [a.f.n, b.f.n], pol, altura: prof, area: ar, peso: ar * GAMMA, ancla: perno != null ? perno - prof : null, incl: a.ang, base: lado === 'HD' ? baseDe(de, real.length - 1) : baseDe(0, iz) };
       if (prof < B && (!m || c.area > m.area)) m = c;
     }
     if (m) out.push(m);
@@ -376,15 +419,18 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
   const az0 = r.azimut ?? 0, dirsAp = familiasMedidas(r).map(f => { const a = aparente(f.dip, f.dipdir, az0), t = rad(a.bajaDerecha ? -a.ang : a.ang); return [Math.cos(t), Math.sin(t)] as P; });
   const semilla = `${r.id}|${r.labor}|${r.fecha}`, vol = contornoVoladura(B, H, r.sobreexc ?? {}, semilla, dirsAp);
   const teo = seccionTeorica(B, H).pts, real = vol.pts;
-  // ventana = recuadro del formato, con el contorno a la escala del contorno impreso (152 × 183.5 pt)
-  const caja: Vista['caja'] = [(-130.5 / 152) * B, (-12.5 / 183.5) * H, (141.5 / 152) * B, (202.5 / 183.5) * H];
+  // ventana con la proporción del recuadro del formato (272 × 215 pt); se agranda si la sobreexcavación no entra
+  const techoReal = Math.max(...real.map(p => p[1])), lado = Math.max(...real.map(p => Math.abs(p[0])));
+  const apice = Math.max(0, ...cunas(r).filter(c => c.zona === 'CORONA').map(c => c.pol[1]![1]).filter(y => y < H * 1.5));
+  const alto = Math.max(H * 1.17, techoReal + 0.55 + H * 0.07, apice + 0.35 + H * 0.07, (2 * lado + B * 0.5) * 215 / 272), y0 = -alto * 0.06;
+  const caja: Vista['caja'] = [-(alto * 272) / 215 / 2, y0, (alto * 272) / 215 / 2, y0 + alto];
   void e;
   const marco: P[] = [[caja[0], caja[1]], [caja[2], caja[1]], [caja[2], caja[3]], [caja[0], caja[3]]];
   const prims: Prim[] = [];
   const notas: string[] = [];
   // roca por zona: H.I. a la izquierda, corona arriba, H.D. a la derecha
   const cC = colorTipo(rmr.CORONA ?? rmr.HI ?? rmr.HD), cI = colorTipo(rmr.HI ?? rmr.CORONA), cD = colorTipo(rmr.HD ?? rmr.CORONA);
-  prims.push({ t: 'poly', pts: marco, cerrado: true, relleno: cC, opac: 0.5 });
+  prims.push({ t: 'poly', pts: marco, cerrado: true, relleno: '#FFFFFF' }, { t: 'poly', pts: marco, cerrado: true, relleno: cC, opac: 0.5 });
   const hw = H - Math.min(H * 0.45, B * 0.31);
   if (cI !== cC) prims.push({ t: 'poly', pts: [[caja[0], caja[1]], [-B / 2, caja[1]], [-B / 2, hw], [caja[0], hw + (caja[0] + B / 2) * -0.6]], cerrado: true, relleno: cI, opac: 0.5 });
   if (cD !== cC) prims.push({ t: 'poly', pts: [[caja[2], caja[1]], [B / 2, caja[1]], [B / 2, hw], [caja[2], hw + (caja[2] - B / 2) * 0.6]], cerrado: true, relleno: cD, opac: 0.5 });
@@ -439,12 +485,16 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
     prims.push({ t: 'poly', pts: flecha([lbl[0], lbl[1] + 0.22], meta, Math.min(B, H) * 0.035), cerrado: true, relleno: '#0B1A2A' });
     const nom = c.zona === 'CORONA' ? 'Cuña en corona' : `Cuña en ${c.zona === 'HD' ? 'H.D.' : 'H.I.'}`;
     const an = c.zona === 'CORONA' ? 'centro' : c.zona === 'HD' ? 'der' : 'izq';
-    const rg = riesgoCuna(c, pinfo), colR = rg.nivel === 'ALTO' ? '#C00000' : rg.nivel === 'MEDIO' ? '#B26B00' : '#2E7D32';
-    prims.push({ t: 'texto', p: lbl, s: `${nom} (${c.familias.join('+')}) · RIESGO ${rg.nivel}`, tam: 5.4, negrita: true, color: colR, ancla: an, fondo: true });
-        prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.3], s: `${c.zona === 'CORONA' ? 'h' : 'prof.'} ${c.altura.toFixed(1)} m · ${c.peso.toFixed(1)} t/m · ${rg.motivo}`, tam: 4.8, color: '#0B1A2A', ancla: an, fondo: true });
-    prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.58], s: `Usar ${rg.accion}`, tam: 4.8, negrita: true, color: colR, ancla: an, fondo: true });
+    const rg = riesgoCuna(c, pinfo, espesorShotcrete((r.sostenimiento ?? []).join('\n')));
+    const col = (n: string) => n === 'ALTO' ? '#C00000' : n === 'MEDIO' ? '#B26B00' : '#2E7D32';
+    // riesgo propio de la cuña (sin sostener) y riesgo residual con el sostenimiento indicado
+    const psi = rad(c.incl ?? 90), fs0 = c.zona === 'CORONA' ? 0 : Math.cos(psi) * Math.tan(rad(30)) / Math.max(Math.sin(psi), 0.01);
+    const n0 = c.zona === 'CORONA' ? (c.peso >= 1 ? 'ALTO' : 'MEDIO') : fs0 < 1.5 ? 'ALTO' : fs0 < 2 ? 'MEDIO' : 'BAJO';
+    prims.push({ t: 'texto', p: lbl, s: `${nom} (${c.familias.join('+')}) · sin sostener: RIESGO ${n0}`, tam: 5.4, negrita: true, color: col(n0), ancla: an, fondo: true });
+    prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.3], s: `${c.zona === 'CORONA' ? 'h' : 'prof.'} ${c.altura.toFixed(1)} m · ${c.peso.toFixed(1)} t/m · ${rg.motivo.split(';')[0]}`, tam: 4.8, color: '#0B1A2A', ancla: an, fondo: true });
+    prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.58], s: `Con sostenimiento: FS ${rg.fs.toFixed(1)} · RIESGO ${rg.nivel}${rg.nivel === 'BAJO' ? '' : ` · ${rg.accion}`}`, tam: 4.8, negrita: true, color: col(rg.nivel), ancla: an, fondo: true });
     notas.push(`${nom} formada por ${c.familias.map(n => rotulo(fams.find(f => f.n === n)!)).join(' y ')}: ${c.zona === 'CORONA' ? 'altura' : 'profundidad'} ${c.altura.toFixed(1)} m, área ${c.area.toFixed(1)} m², ${c.peso.toFixed(1)} t por metro de labor. ` +
-      `Riesgo ${rg.nivel} (FS ${rg.fs.toFixed(1)}): ${rg.motivo}. Recomendación: ${rg.accion}.` + (c.altura > 3 ? ' Es la cuña máxima teórica (persistencia ilimitada); verifique la persistencia real de las familias en el frente.' : ''));
+      `Sin sostener: riesgo ${n0}. Con el sostenimiento indicado: riesgo ${rg.nivel}, FS ${rg.fs.toFixed(1)} con pernos y shotcrete (${rg.fsPernos.toFixed(1)} solo con pernos); ${rg.motivo.split(';')[0]}. Recomendación: ${rg.accion}.` + (c.altura > 3 ? ' Es la cuña máxima teórica (persistencia ilimitada); verifique la persistencia real de las familias en el frente.' : ''));
   }
   // fallas, vetas y contactos: rectas largas que cruzan la sección (con su potencia)
   const especiales = fams.filter(f => f.abrev !== 'SD');
@@ -479,12 +529,16 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
   prims.push({ t: 'poly', pts: real, borde: '#000000', ancho: 0.9 });
   prims.push({ t: 'poly', pts: [real[0]!, real.at(-1)!], borde: '#000000', ancho: 0.6 });
   // sostenimiento
-  const sost = (r.sostenimiento ?? []).join(' ').toLowerCase(), esp = Math.min(B, H) * 0.025, interior: P[] = real.map((p, i) => i === 0 || i === real.length - 1 ? [p[0] - vol.normal[i]![0] * esp, 0] as P : [p[0] - vol.normal[i]![0] * esp, p[1] - vol.normal[i]![1] * esp] as P);
-  if (/shotcrete|lanzado/.test(sost)) prims.push({ t: 'poly', pts: interior, borde: '#8C8C8C', ancho: 1.1 });
+  const sost = (r.sostenimiento ?? []).join(' ').toLowerCase(), esp = Math.min(B, H) * 0.018, interior: P[] = real.map((p, i) => i === 0 || i === real.length - 1 ? [p[0] - vol.normal[i]![0] * esp, 0] as P : [p[0] - vol.normal[i]![0] * esp, p[1] - vol.normal[i]![1] * esp] as P);
+  // shotcrete: banda gris pegada al contorno real (sin hueco entre roca y shotcrete)
+  if (/shotcrete|lanzado/.test(sost)) prims.push({ t: 'poly', pts: [...real, ...[...interior].reverse()], cerrado: true, relleno: '#9A9A9A', opac: 0.9 }, { t: 'poly', pts: interior, borde: '#6E6E6E', ancho: 0.3 });
+  prims.push({ t: 'poly', pts: real, borde: '#000000', ancho: 0.9 });
   if (/malla/.test(sost)) {
     const soloCorona = /corona/.test(sost) && !/hastial|secci[oó]n completa|toda/.test(sost.match(/malla[^.;\n]*/)?.[0] ?? '');
-    const zig: P[] = interior.filter((p, i) => i % 2 === 0 && p[1] > (soloCorona ? hw : H * 0.15)).map((p, i) => { const q = interior[Math.min(interior.indexOf(p) + 1, interior.length - 1)]!; const tt: P = [q[0] - p[0], q[1] - p[1]], n = Math.hypot(...tt) || 1; const s = (i % 2 ? 1 : -1) * Math.min(B, H) * 0.012; return [p[0] - (tt[1] / n) * s, p[1] + (tt[0] / n) * s]; });
-    prims.push({ t: 'poly', pts: zig, borde: '#1F4E9E', ancho: 0.35 });
+    // malla: zigzag continuo dentro de la banda de shotcrete, a lo largo de la zona indicada
+    const amp = esp * 0.45, zig: P[] = [];
+    real.forEach((p, k) => { if (k % 2 || p[1] <= (soloCorona ? hw : H * 0.15)) return; const q = interior[k]!, n = vol.normal[k]!, sg = zig.length % 2 ? 1 : -1; zig.push([(p[0] + q[0]) / 2 + n[0] * amp * sg, (p[1] + q[1]) / 2 + n[1] * amp * sg]); });
+    prims.push({ t: 'poly', pts: zig, borde: '#1F4E9E', ancho: 0.4 });
   }
   const lp = longPerno(sost);
   if (lp && /perno|split|helicoidal|bolt|swellex/.test(sost)) {

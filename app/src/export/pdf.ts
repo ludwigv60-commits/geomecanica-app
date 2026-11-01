@@ -150,6 +150,6 @@ function croquis(page: PDFPage, font: PDFFont, negrita: PDFFont, r: Reporte) {
   if (pl) dibujar(aPuntos(pl, [21, 399, 299, 614]));
   if (r.ancho && r.alto && r.familias.some(f => f.dip != null && f.dipdir != null)) {
     // La sección impresa trae un contorno a trazos de x 355.5–507.5 y y 418–601.5: se dibuja a esa escala.
-    dibujar(aPuntos(vistaSeccion(r, rmr), [301, 399, 573, 614], { kx: 152 / r.ancho, ky: 183.5 / r.alto, ox: 431.5, oy: 601.5 }));
+    dibujar(aPuntos(vistaSeccion(r, rmr), [301, 399, 573, 614]));
   }
 }
