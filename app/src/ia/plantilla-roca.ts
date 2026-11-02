@@ -34,7 +34,8 @@ export interface Plantilla { base: Reporte; n: number; fuente: string; rmr: numb
 export function plantillaTipo(tipo: TipoRoca, r: Reporte, historial: Reporte[]): Plantilla | null {
   const todos = previos(r, historial).filter(h => tipoDe(h)!.tipo === tipo);
   const misma = r.labor ? todos.filter(h => h.labor && claveLabor(h.labor) === claveLabor(r.labor)) : [];
-  const grupo = misma.length >= 3 ? misma.slice(0, 10) : todos.slice(0, 30);
+  // Misma labor (últimos 15) si hay al menos 5 de ese tipo; si no, toda la base de ese tipo.
+  const grupo = misma.length >= 5 ? misma.slice(0, 15) : todos;
   if (!grupo.length) return null;
   const z = 'CORONA' as const;
   const modas = Object.fromEntries(IDS.map(id => [id, moda(grupo.map(h => h.rmr[z][id]).filter(v => v != null))]));
@@ -44,8 +45,18 @@ export function plantillaTipo(tipo: TipoRoca, r: Reporte, historial: Reporte[]):
     const s = IDS.filter(id => h.rmr[z][id] === modas[id]).length + QK.filter(k => h.q[z][k] === modasQ[k]).length * 0.5;
     if (s > mejor) { mejor = s; base = h; }
   }
+  // Si al mapeo elegido le falta algún dato, se completa con el valor más frecuente de ese tipo en toda la base.
+  const modaDe = <T,>(f: (h: Reporte) => T | null | undefined) => moda(grupo.map(f).filter((v): v is T => v != null)) ?? moda(todos.map(f).filter((v): v is T => v != null));
+  base = { ...base, rmr: { ...base.rmr, CORONA: { ...base.rmr.CORONA } }, q: { ...base.q, CORONA: { ...base.q.CORONA } }, ajuste: { ...base.ajuste }, litologia: { ...base.litologia } };
+  for (const id of IDS) if (base.rmr.CORONA[id] == null) { const v = modaDe(h => h.rmr.CORONA[id]); if (v != null) base.rmr.CORONA[id] = v; }
+  for (const k of QK) if (base.q.CORONA[k] == null) { const v = modaDe(h => h.q.CORONA[k]); if (v != null) base.q.CORONA[k] = v; }
+  if (base.ajuste.CORONA == null) base.ajuste.CORONA = modaDe(h => h.ajuste.CORONA) ?? null;
+  if (base.jv == null) base.jv = modaDe(h => h.jv) ?? null;
+  // Base antigua sin Jv: se estima desde el puntaje de RQD del RMR (RQD = 115 − 3.3·Jv, al centro de cada clase).
+  if (base.jv == null && base.rmr.CORONA.rqd != null) base.jv = ({ 20: 6, 17: 10, 13: 16, 8: 23, 3: 31 } as Record<number, number>)[base.rmr.CORONA.rqd] ?? null;
+  if (!base.litologia.CORONA) base.litologia.CORONA = modaDe(h => h.litologia.CORONA || null) ?? '';
   const t = tipoDe(base)!;
-  const fuente = misma.length >= 3 ? `${grupo.length} mapeos tipo ${tipo} de ${r.labor}` : `${grupo.length} mapeos tipo ${tipo} de la base`;
+  const fuente = misma.length >= 5 ? `los últimos ${grupo.length} mapeos tipo ${tipo} de ${r.labor}` : `${grupo.length} mapeos tipo ${tipo} de toda tu base`;
   return { base, n: grupo.length, fuente, rmr: t.rmr, tipo: t.tipo };
 }
 

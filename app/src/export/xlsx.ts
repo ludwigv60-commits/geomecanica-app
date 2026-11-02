@@ -28,7 +28,23 @@ function valorDeFormula(xml: string, ref: string, v: number | string): string {
   });
 }
 
-export async function generarXlsx(r: Reporte, plantilla: ArrayBuffer | Uint8Array): Promise<Uint8Array> {
+/** Agrega una imagen PNG sobre un rango de celdas (col/fila desde 0, fin exclusivo) en el dibujo de la hoja 1. */
+async function agregarImagen(zip: JSZip, png: Uint8Array, nombre: string, [c0, r0, c1, r1]: [number, number, number, number], id: number) {
+  const media = `xl/media/${nombre}.png`; zip.file(media, png);
+  const relsRuta = 'xl/drawings/_rels/drawing1.xml.rels';
+  let rels = await zip.file(relsRuta)!.async('string');
+  const rid = `rIdV${id}`;
+  rels = rels.replace('</Relationships>', `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${nombre}.png"/></Relationships>`);
+  zip.file(relsRuta, rels);
+  const dRuta = 'xl/drawings/drawing1.xml';
+  let d = await zip.file(dRuta)!.async('string');
+  const pos = (c: number, r: number) => `<xdr:col>${c}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${r}</xdr:row><xdr:rowOff>0</xdr:rowOff>`;
+  const ancla = `<xdr:twoCellAnchor editAs="oneCell"><xdr:from>${pos(c0, r0)}</xdr:from><xdr:to>${pos(c1, r1)}</xdr:to><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${100 + id}" name="${nombre}" descr="${nombre}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`;
+  d = d.replace(/<\/xdr:wsDr>\s*$/, `${ancla}</xdr:wsDr>`);
+  zip.file(dRuta, d);
+}
+
+export async function generarXlsx(r: Reporte, plantilla: ArrayBuffer | Uint8Array, vistas: { planta?: Uint8Array; seccion?: Uint8Array } = {}): Promise<Uint8Array> {
   const zip = await JSZip.loadAsync(plantilla);
   const ruta = 'xl/worksheets/sheet1.xml';
   let xml = await zip.file(ruta)!.async('string');
@@ -41,6 +57,9 @@ export async function generarXlsx(r: Reporte, plantilla: ArrayBuffer | Uint8Arra
   }
   for (const m of marcas) xml = texto(xml, m.celda, `✔ ${m.texto}`);
   zip.file(ruta, xml);
+  // Vistas planta (A37:L55) y sección (M37:X55), las mismas del PDF.
+  if (vistas.planta) await agregarImagen(zip, vistas.planta, 'vista_planta', [0, 36, 12, 55], 1);
+  if (vistas.seccion) await agregarImagen(zip, vistas.seccion, 'vista_seccion', [12, 36, 24, 55], 2);
   // Que Excel recalcule al abrir (por si el ingeniero cambia algo en la PC).
   let wb = await zip.file('xl/workbook.xml')!.async('string');
   wb = wb.replace(/<calcPr([^>]*?)\/>/, (_s, a: string) => `<calcPr${a.replace(/\sfullCalcOnLoad="[^"]*"/, '')} fullCalcOnLoad="1"/>`);

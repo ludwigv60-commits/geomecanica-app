@@ -9,7 +9,7 @@
 //    cortas de cada familia con su buzamiento aparente en el plano del frente; fallas con su potencia;
 //    cuñas potenciales (análisis 2D en la sección) con altura, área y peso por metro; malla, shotcrete y
 //    pernos según las indicaciones de sostenimiento.
-import { TIPOS, tipoRoca, type Zona } from '../core/rmr';
+import { TIPOS, rmrTotal, tipoRoca, type Zona } from '../core/rmr';
 import type { Familia, Reporte } from '../model';
 
 export type P = [number, number];
@@ -371,6 +371,17 @@ function escala(prims: Prim[], p: P, largo: number) {
 // ---------- SECCIÓN ----------
 export interface Cuna { zona: 'CORONA' | 'HI' | 'HD'; familias: [number, number]; pol: P[]; altura: number; area: number; peso: number; ancla: number | null; incl?: number; base?: { p: P; n: P }[]; persist?: number }
 
+/** Zona de influencia: las cuñas solo se desprenden dentro de este % de la sección más allá del perfil real
+ *  (criterio del área de geomecánica de Justa): I/II 8 %, III-A 10 %, III-B 13 %, IV 15 %, V 20 %. */
+export const INFLUENCIA: Record<string, number> = { 'I/II': 0.08, 'III-A': 0.10, 'III-B': 0.13, 'IV': 0.15, 'V': 0.20 };
+export function zonaInfluencia(r: Reporte): { tipo: string; pct: number; corona: number; hastial: number } | null {
+  const v = rmrTotal(r.rmr.CORONA, r.ajuste.CORONA) ?? rmrTotal(r.rmr.HI, r.ajuste.HI);
+  const tipo = v != null ? tipoRoca(v) : r.tipoGeologo;
+  if (!tipo || !r.ancho || !r.alto) return null;
+  const pct = INFLUENCIA[tipo] ?? 0.13;
+  return { tipo, pct, corona: pct * r.alto, hastial: pct * r.ancho };
+}
+
 /** Largo de traza (m) de una familia: el medido, o el de la clase de persistencia del RMR (6 <1 m, 4 1–3, 2 3–10, 1 10–20, 0 >20). */
 const largoTraza = (r: Reporte, f: { persistencia?: number | null }) => {
   if (f.persistencia != null && f.persistencia > 0) return f.persistencia;
@@ -381,31 +392,39 @@ const largoTraza = (r: Reporte, f: { persistencia?: number | null }) => {
  *  plano que aflora hacia la labor con buzamiento aparente > fricción (30°) y otro que lo libera. */
 export function cunas(r: Reporte): Cuna[] {
   if (!r.ancho || !r.alto || r.azimut == null) return [];
-  const B = r.ancho, H = r.alto, real = seccionReal(B, H, r.sobreexc ?? {}), fams = familiasMedidas(r);
+  const B = r.ancho, H = r.alto, fams = familiasMedidas(r);
+  // Perfil real remuestreado cada ~5 cm: las cuñas chicas (zona de influencia) necesitan bases cortas.
+  const real0 = seccionReal(B, H, r.sobreexc ?? {}), nor0 = seccionTeorica(B, H).normal, real: P[] = [], nor: P[] = [];
+  real0.forEach((p, i) => {
+    const q = real0[i + 1]; const n = q ? Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / 0.05)) : 1;
+    for (let k = 0; k < n; k++) { const t = k / n; real.push(q ? [p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])] : p); nor.push(nor0[i]!); }
+  });
   const ap = fams.map(f => ({ f, ...aparente(f.dip, f.dipdir, r.azimut!) }));
   const dir = (a: { ang: number; bajaDerecha: boolean }, haciaArriba: 'izq' | 'der'): P => { const t = rad(a.ang); return haciaArriba === 'der' ? [Math.cos(t), Math.sin(t)] : [-Math.cos(t), Math.sin(t)]; };
   const perno = longPerno((r.sostenimiento ?? []).join(' '));
+  const zi = zonaInfluencia(r);
   const out: Cuna[] = [];
   const hw = H - Math.min(H * 0.45, B * 0.31);
   const iz = real.findIndex(p => p[1] >= hw - 1e-6), de = real.length - 1 - [...real].reverse().findIndex(p => p[1] >= hw - 1e-6);
-  const SL = real[iz]!, SR = real[de]!, techo = Math.max(...real.map(p => p[1])), nor = seccionTeorica(B, H).normal;
+  const SL = real[iz]!, SR = real[de]!, techo = Math.max(...real.map(p => p[1]));
   const baseDe = (i0: number, i1: number) => real.slice(i0, i1 + 1).map((p, k) => ({ p, n: nor[i0 + k]! }));
   // Corona: cara izquierda baja a la izquierda (sube hacia la derecha), cara derecha baja a la derecha.
   let mejor: Cuna | null = null;
   for (const a of ap) for (const b of ap) {
     if (a === b || a.bajaDerecha || !b.bajaDerecha || a.ang < 12 || b.ang < 12) continue;
     // La cuña no puede tener caras más largas que la persistencia de sus familias: se achica hacia el centro.
-    const L = Math.min(largoTraza(r, a.f), largoTraza(r, b.f));
+    const L = Math.min(largoTraza(r, a.f), largoTraza(r, b.f)), hMax = zi ? zi.corona : Infinity;
     let i0 = iz, i1 = de, A: P | null = null;
     while (i1 - i0 >= 2) {
       A = cruce(real[i0]!, dir(a, 'der'), real[i1]!, dir(b, 'izq'));
-      if (!A || Math.max(Math.hypot(A[0] - real[i0]![0], A[1] - real[i0]![1]), Math.hypot(A[0] - real[i1]![0], A[1] - real[i1]![1])) <= L) break;
+      const alto = A ? A[1] - Math.max(...real.slice(i0, i1 + 1).map(p => p[1])) : 0;
+      if (!A || (Math.max(Math.hypot(A[0] - real[i0]![0], A[1] - real[i0]![1]), Math.hypot(A[0] - real[i1]![0], A[1] - real[i1]![1])) <= L && alto <= hMax)) break;
       const cx = (real[i0]![0] + real[i1]![0]) / 2;
       if (Math.abs(real[i0 + 1]![0] - cx) > Math.abs(real[i1 - 1]![0] - cx)) i0++; else i1--;
     }
     if (!A) continue;
     const top = Math.max(...real.slice(i0, i1 + 1).map(p => p[1]));
-    if (A[1] <= top + 0.05) continue;
+    if (A[1] <= top + 0.05 || A[1] - top > hMax + 0.05) continue;
     const pol: P[] = [real[i0]!, A, real[i1]!, ...real.slice(i0, i1 + 1).reverse()];
     const ar = area(pol), c: Cuna = { zona: 'CORONA', familias: [a.f.n, b.f.n], pol, altura: A[1] - top, area: ar, peso: ar * GAMMA, ancla: perno != null ? perno - (A[1] - top) : null, base: baseDe(i0, i1), persist: Number.isFinite(L) ? L : undefined };
     if (c.altura < Math.max(B, H) * 1.6 && (!mejor || c.area > mejor.area)) mejor = c;
@@ -421,8 +440,12 @@ export function cunas(r: Reporte): Cuna[] {
       if ((lado === 'HD' ? !b.bajaDerecha : b.bajaDerecha) || b.ang < 45) continue;  // b: plano de liberación hacia la roca
       const A = cruce(pie, dir(a, lado === 'HD' ? 'der' : 'izq'), cab, dir(b, lado === 'HD' ? 'der' : 'izq'));
       if (!A || s * A[0] <= B / 2 || A[1] < 0 || A[1] > hw) continue;
-      const pol: P[] = [pie, A, cab];
-      const ar = area(pol), prof = s * A[0] - B / 2;
+      let pol: P[] = [pie, A, cab], prof = s * A[0] - B / 2;
+      if (zi && prof > zi.hastial) { // se achica (semejante) hasta la zona de influencia
+        const k = zi.hastial / prof, M: P = [(pie[0] + cab[0]) / 2, (pie[1] + cab[1]) / 2];
+        pol = pol.map(q => [M[0] + k * (q[0] - M[0]), M[1] + k * (q[1] - M[1])] as P); prof = zi.hastial;
+      }
+      const ar = area(pol);
       const c: Cuna = { zona: lado, familias: [a.f.n, b.f.n], pol, altura: prof, area: ar, peso: ar * GAMMA, ancla: perno != null ? perno - prof : null, incl: a.ang, base: lado === 'HD' ? baseDe(de, real.length - 1) : baseDe(0, iz) };
       if (prof < B && (!m || c.area > m.area)) m = c;
     }
@@ -494,6 +517,15 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
   }
   // cuñas potenciales con su nivel de riesgo
   const pinfo = pernoInfo((r.sostenimiento ?? []).join(' '));
+  const zi = zonaInfluencia(r);
+  if (zi && familiasMedidas(r).length >= 2) {
+    // límite de la zona de influencia (corona: % del alto; hastiales: % del ancho), línea discontinua
+    const lim = real.map((p, i) => { const n = vol.normal[i]!, d = n[1] > 0.5 ? zi.corona : zi.hastial; return [p[0] + n[0] * d, p[1] + n[1] * d] as P; }).filter(p => p[1] > 0.05);
+    prims.push({ t: 'poly', pts: lim, borde: '#0B1A2A', ancho: 0.5, trazos: [2, 1.5] });
+    const tope = lim.reduce((a, p) => (p[1] > a[1] ? p : a), lim[0]!);
+    prims.push({ t: 'texto', p: [tope[0] - B * 0.1, tope[1] + 0.1], s: `Zona de influencia ${Math.round(zi.pct * 100)} % (${zi.tipo})`, tam: 4.2, color: '#0B1A2A', ancla: 'der', fondo: true });
+    notas.push(`Zona de influencia de cuñas para roca ${zi.tipo}: ${Math.round(zi.pct * 100)} % de la sección (${zi.corona.toFixed(2)} m sobre la corona, ${zi.hastial.toFixed(2)} m detrás de los hastiales). Las cuñas se dibujan solo dentro de esa franja.`);
+  }
   for (const c of cunas(r)) {
     prims.splice(iHueco, 0, { t: 'poly', pts: c.pol, cerrado: true, relleno: '#35506B', opac: 0.35, borde: '#0B1A2A', ancho: 0.7, trazos: [3, 1.2] });
     const ce: P = [c.pol.reduce((a, p) => a + p[0], 0) / c.pol.length, c.pol.reduce((a, p) => a + p[1], 0) / c.pol.length];
@@ -509,9 +541,9 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
     // riesgo propio de la cuña (sin sostener) y riesgo residual con el sostenimiento indicado
     const psi = rad(c.incl ?? 90), fs0 = c.zona === 'CORONA' ? 0 : Math.cos(psi) * Math.tan(rad(30)) / Math.max(Math.sin(psi), 0.01);
     const n0 = c.zona === 'CORONA' ? (c.peso >= 1 ? 'ALTO' : 'MEDIO') : fs0 < 1.5 ? 'ALTO' : fs0 < 2 ? 'MEDIO' : 'BAJO';
-    prims.push({ t: 'texto', p: lbl, s: `${nom} (${c.familias.map(n => { const f = fams.find(x => x.n === n); return f ? f.abrev + n : n; }).join(' + ')}) · sin sostener: RIESGO ${n0}`, tam: 5.4, negrita: true, color: col(n0), ancla: an, fondo: true });
-    prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.3], s: `${c.zona === 'CORONA' ? 'h' : 'prof.'} ${c.altura.toFixed(1)} m · ${c.peso.toFixed(1)} t/m · ${rg.motivo.split(';')[0]}`, tam: 4.8, color: '#0B1A2A', ancla: an, fondo: true });
-    prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.58], s: `Con sostenimiento: FS ${rg.fs.toFixed(1)} · RIESGO ${rg.nivel}${rg.nivel === 'BAJO' ? '' : ` · ${rg.accion}`}`, tam: 4.8, negrita: true, color: col(rg.nivel), ancla: an, fondo: true });
+    prims.push({ t: 'texto', p: lbl, s: `${nom} (${c.familias.map(n => { const f = fams.find(x => x.n === n); return f ? f.abrev + n : n; }).join(' + ')}) · sin sostener: RIESGO ${n0}`, tam: 4.9, negrita: true, color: col(n0), ancla: an, fondo: true });
+    prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.3], s: `${c.zona === 'CORONA' ? 'h' : 'prof.'} ${c.altura.toFixed(1)} m · ${c.peso.toFixed(1)} t/m · ${rg.motivo.split(';')[0]}`, tam: 4.4, color: '#0B1A2A', ancla: an, fondo: true });
+    prims.push({ t: 'texto', p: [lbl[0], lbl[1] - 0.58], s: `Con sostenimiento: FS ${rg.fs.toFixed(1)} · RIESGO ${rg.nivel}${rg.nivel === 'BAJO' ? '' : ` · ${rg.accion}`}`, tam: 4.4, negrita: true, color: col(rg.nivel), ancla: an, fondo: true });
     notas.push(`${nom} formada por ${c.familias.map(n => rotulo(fams.find(f => f.n === n)!)).join(' y ')}: ${c.zona === 'CORONA' ? 'altura' : 'profundidad'} ${c.altura.toFixed(1)} m, área ${c.area.toFixed(1)} m², ${c.peso.toFixed(1)} t por metro de labor. ` +
       `Sin sostener: riesgo ${n0}. Con el sostenimiento indicado: riesgo ${rg.nivel}, FS ${rg.fs.toFixed(1)} con pernos y shotcrete (${rg.fsPernos.toFixed(1)} solo con pernos); ${rg.motivo.split(';')[0]}. Recomendación: ${rg.accion}.` + (c.persist != null ? ` Tamaño limitado por la persistencia de las familias (trazas de hasta ${c.persist} m).` : c.altura > 3 ? ' Es la cuña máxima teórica (persistencia ilimitada); ingrese la persistencia de cada familia para el tamaño real.' : '') + espTxt(c));
   }
