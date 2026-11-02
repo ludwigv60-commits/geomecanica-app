@@ -593,9 +593,13 @@ function Descargas({ r }: { r: Reporte }) {
     setMsg('Generando…');
     try {
       const plantilla = await fetch(`./plantilla/formato.${tipo}`).then(x => { if (!x.ok) throw new Error('No se encontró la plantilla'); return x.arrayBuffer(); });
-      const datos = tipo === 'xlsx' ? await (await import('../export/xlsx')).generarXlsx(r, plantilla, await (await import('../export/imagenes')).vistasPng(r).catch(() => ({}))) : await (await import('../export/pdf')).generarPdf(r, plantilla);
+      let aviso = '';
+      const vistas = tipo === 'xlsx' ? await (await import('../export/imagenes')).vistasPng(r).catch(e => ({ errores: [String(e)] } as { errores: string[]; planta?: undefined; seccion?: undefined })) : null;
+      if (vistas && r.familias.some(f => f.dip != null && f.dipdir != null) && (!vistas.planta || !vistas.seccion))
+        aviso = ` Ojo: el Excel salió sin ${!vistas.planta && !vistas.seccion ? 'las vistas' : !vistas.planta ? 'la vista en planta' : 'la vista en sección'}${vistas.errores?.length ? ` (${vistas.errores.join('; ')})` : '; revise azimut, ancho y alto'}.`;
+      const datos = tipo === 'xlsx' ? await (await import('../export/xlsx')).generarXlsx(r, plantilla, vistas ?? {}) : await (await import('../export/pdf')).generarPdf(r, plantilla);
       const res = await entregar(datos, nombreArchivo(r, tipo), tipo === 'xlsx' ? MIME_XLSX : MIME_PDF);
-      setMsg(res === 'descargado' ? 'Archivo descargado.' : null);
+      setMsg(res === 'descargado' ? 'Archivo descargado.' + aviso : aviso.trim() || null);
     } catch (e) { setMsg(`No se pudo generar: ${(e as Error).message}`); }
   };
   return (

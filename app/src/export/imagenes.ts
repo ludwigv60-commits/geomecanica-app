@@ -1,34 +1,71 @@
 // Vistas planta y sección como imágenes PNG (para el Excel), dibujadas igual que en la app y el PDF.
 import type { Reporte } from '../model';
 import { calcular } from '../calc';
-import { aSvg, vistaPlanta, vistaSeccion } from './croquis';
-import { seccionDobleSvg } from './cunas2d';
+import { vistaPlanta, vistaSeccion, type Vista } from './croquis';
+import { vistaCunas } from './cunas2d';
 
 /** Recuadros del formato .xlsx (A37:L55 y M37:X55) medidos en píxeles de Excel. */
 export const CAJA_PLANTA = { w: 565, h: 418 }, CAJA_SECCION = { w: 555, h: 418 };
 
-export async function svgAPng(svg: string, w: number, h: number): Promise<Uint8Array> {
-  const fijo = svg.replace('width="100%"', `width="${w}" height="${h}"`);
-  const url = URL.createObjectURL(new Blob([fijo], { type: 'image/svg+xml' }));
-  try {
-    const img = new Image();
-    await new Promise((ok, mal) => { img.onload = ok; img.onerror = mal; img.src = url; });
-    const cv = Object.assign(document.createElement('canvas'), { width: w, height: h });
-    const ctx = cv.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
-    const b = await new Promise<Blob>((ok, mal) => cv.toBlob(x => (x ? ok(x) : mal(new Error('sin imagen'))), 'image/png'));
-    return new Uint8Array(await b.arrayBuffer());
-  } finally { URL.revokeObjectURL(url); }
+/** Dibuja una vista directamente en un canvas (mismo trazado que aSvg). No depende de que el
+ *  navegador sepa convertir SVG a imagen, que en iPhone/Safari falla a veces sin avisar. */
+export function dibujarCanvas(ctx: CanvasRenderingContext2D, v: Vista, ox0: number, oy0: number, W: number, Hh: number) {
+  const [x0, y0, x1, y1] = v.caja, k = Math.min((W - 6) / (x1 - x0), (Hh - 6) / (y1 - y0));
+  const ox = ox0 + (W - (x1 - x0) * k) / 2, oy = (Hh - (y1 - y0) * k) / 2;
+  const X = (q: [number, number]): [number, number] => [ox + (q[0] - x0) * k, oy0 + Hh - oy - (q[1] - y0) * k];
+  const s = W / 280;
+  ctx.save(); ctx.beginPath(); ctx.rect(ox0, oy0, W, Hh); ctx.clip();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  for (const p of v.prims) {
+    if (p.t === 'poly') {
+      if (p.pts.length < 2) continue;
+      ctx.beginPath(); p.pts.forEach((q, i) => { const [x, y] = X(q); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+      if (p.cerrado) ctx.closePath();
+      if (p.relleno && p.relleno !== 'none') { ctx.globalAlpha = p.opac ?? 1; ctx.fillStyle = p.relleno; ctx.fill(); ctx.globalAlpha = 1; }
+      if (p.borde && p.borde !== 'none') {
+        ctx.strokeStyle = p.borde; ctx.lineWidth = (p.ancho ?? 1) * s; ctx.setLineDash(p.trazos ? p.trazos.map(n => n * s) : []); ctx.stroke(); ctx.setLineDash([]);
+      }
+    } else {
+      const [x, y] = X(p.p);
+      ctx.font = `${p.negrita ? '700 ' : ''}${((p.tam ?? 6) * s * 1.15).toFixed(1)}px Helvetica, Arial, sans-serif`;
+      ctx.textAlign = p.ancla === 'centro' ? 'center' : p.ancla === 'der' ? 'right' : 'left'; ctx.textBaseline = 'alphabetic';
+      if (p.fondo) { ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2; ctx.strokeText(p.s, x, y); }
+      ctx.fillStyle = p.color ?? '#000'; ctx.fillText(p.s, x, y);
+    }
+  }
+  ctx.restore();
 }
 
-export async function vistasPng(r: Reporte): Promise<{ planta?: Uint8Array; seccion?: Uint8Array }> {
+async function lienzoAPng(w: number, h: number, pinta: (ctx: CanvasRenderingContext2D) => void): Promise<Uint8Array> {
+  const cv = Object.assign(document.createElement('canvas'), { width: w, height: h });
+  const ctx = cv.getContext('2d'); if (!ctx) throw new Error('sin canvas');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); pinta(ctx);
+  const b = await new Promise<Blob | null>(ok => cv.toBlob(ok, 'image/png'));
+  if (b) return new Uint8Array(await b.arrayBuffer());
+  const bin = atob(cv.toDataURL('image/png').split(',')[1]!); // respaldo si toBlob no responde
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+export async function vistasPng(r: Reporte): Promise<{ planta?: Uint8Array; seccion?: Uint8Array; errores?: string[] }> {
   const z = calcular(r).zonas, rmr = { HI: z.HI.total, CORONA: z.CORONA.total, HD: z.HD.total };
-  const out: { planta?: Uint8Array; seccion?: Uint8Array } = {};
+  const out: { planta?: Uint8Array; seccion?: Uint8Array; errores?: string[] } = {};
+  const err = (q: string, e: unknown) => { (out.errores ??= []).push(`${q}: ${e instanceof Error ? e.message : String(e)}`); };
   const k = 2; // doble resolución para que se vea nítido al imprimir
-  const pl = vistaPlanta(r, rmr, true);
-  if (pl) out.planta = await svgAPng(aSvg(pl, CAJA_PLANTA.w * k, CAJA_PLANTA.h * k), CAJA_PLANTA.w * k, CAJA_PLANTA.h * k);
-  const doble = seccionDobleSvg(r, rmr, CAJA_SECCION.w * k, CAJA_SECCION.h * k);  // antes | después del sostenimiento
-  if (doble) out.seccion = await svgAPng(doble, CAJA_SECCION.w * k, CAJA_SECCION.h * k);
-  else if (r.ancho && r.alto && r.familias.some(f => f.dip != null && f.dipdir != null))
-    out.seccion = await svgAPng(aSvg(vistaSeccion(r, rmr), CAJA_SECCION.w * k, CAJA_SECCION.h * k), CAJA_SECCION.w * k, CAJA_SECCION.h * k);
+  const wP = CAJA_PLANTA.w * k, hP = CAJA_PLANTA.h * k, wS = CAJA_SECCION.w * k, hS = CAJA_SECCION.h * k;
+  try {
+    const pl = vistaPlanta(r, rmr, true);
+    if (pl) out.planta = await lienzoAPng(wP, hP, ctx => dibujarCanvas(ctx, pl, 0, 0, wP, hP));
+  } catch (e) { err('planta', e); }
+  try {
+    const a = vistaCunas(r, rmr, 'antes', (wS / 2) / hS), d = vistaCunas(r, rmr, 'despues', (wS / 2) / hS);
+    if (a && d) out.seccion = await lienzoAPng(wS, hS, ctx => {   // antes | después del sostenimiento
+      dibujarCanvas(ctx, a, 0, 0, wS / 2, hS); dibujarCanvas(ctx, d, wS / 2, 0, wS / 2, hS);
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 1.2 * k; ctx.beginPath(); ctx.moveTo(wS / 2, 0); ctx.lineTo(wS / 2, hS); ctx.stroke();
+    });
+    else if (r.ancho && r.alto && r.familias.some(f => f.dip != null && f.dipdir != null)) {
+      const se = vistaSeccion(r, rmr);
+      out.seccion = await lienzoAPng(wS, hS, ctx => dibujarCanvas(ctx, se, 0, 0, wS, hS));
+    }
+  } catch (e) { err('sección', e); }
   return out;
 }
