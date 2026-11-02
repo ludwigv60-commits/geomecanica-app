@@ -243,3 +243,6 @@ details.ajuste[open] > summary::after { content:'▾'; }
 .cargar-base { display:flex; flex-direction:column; gap:8px; padding:12px; border-radius:12px; background:#F28C2814; border:1px dashed var(--acento); }
 .cargar-base p { margin:0; font-size:14px; }
 .cargar-base .btn { text-align:center; display:flex; align-items:center; justify-content:center; min-height:52px; }
+.nivel { display:flex; flex-direction:column; align-items:center; gap:4px; margin:6px 0; }
+.nivel small { font-weight:600; }
+.nivel.chico { margin:0; }

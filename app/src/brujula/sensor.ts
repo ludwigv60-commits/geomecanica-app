@@ -49,6 +49,12 @@ export class Brujula {
   }
   detener() { for (const [n, f] of this.hs) window.removeEventListener(n, f); this.hs = []; }
   get necesitaEcharIOS() { return this.ios && this.iosOff == null; }
+  /** Vertical hacia arriba en ejes del celular (x derecha, y hacia el borde superior, z saliendo de la pantalla). Solo gravedad. */
+  arriba(): [number, number, number] | null {
+    const A = this.rel ?? this.abs; if (!A || A.b == null || A.g == null) return null;
+    const D = Math.PI / 180, cB = Math.cos(A.b * D);
+    return [-cB * Math.sin(A.g * D), Math.sin(A.b * D), cB * Math.cos(A.g * D)];
+  }
 
   private circEma(k: string, v: number, tau: number, dt: number) {
     const p = this.ema[k]; if (p == null) return (this.ema[k] = v);

@@ -17,6 +17,7 @@ export function Medidor({ modo, titulo, decl, conv, foto, conAzimut = true, onLi
   const [iniciado, setIniciado] = useState(false);
   const [midiendo, setMidiendo] = useState(false);
   const [ios, setIos] = useState(false);
+  const [arriba, setArriba] = useState<[number, number, number] | null>(null);
 
   const iniciar = async () => {
     const br = new Brujula(); br.modo = modo; b.current = br;
@@ -45,6 +46,7 @@ export function Medidor({ modo, titulo, decl, conv, foto, conAzimut = true, onLi
       if (br) {
         const s = br.muestra();
         setIos(br.necesitaEcharIOS);
+        setArriba(br.arriba());
         if (s) {
           const now = s.t;
           buf.current.push(s); while (buf.current.length && now - buf.current[0]!.t > 1500) buf.current.shift();
@@ -119,6 +121,7 @@ export function Medidor({ modo, titulo, decl, conv, foto, conAzimut = true, onLi
               <b>{fmt(vAz, true)}°</b><span>azimut UTM · cámara {vista?.b != null ? `${vista.b.toFixed(0)}°` : '—'}</span>
               <span className={estable ? 'chip ok' : 'chip'}>{estable ? 'ESTABLE' : 'Quieto…'}</span>
               {interf && <span className="chip mal">Interferencia</span>}
+              <Nivel modo="az" u={arriba} quieto={estable} chico />
             </div>)}
         {ios && conAzimut && iniciado && <p className="cam-aviso">Ponga el celular echado 2 s para fijar el norte.</p>}
         {msg && <p className="cam-aviso">{msg}</p>}
@@ -143,6 +146,7 @@ export function Medidor({ modo, titulo, decl, conv, foto, conAzimut = true, onLi
               ? <><b>{fmt(vAz, true)}°</b><small>azimut UTM · cámara {vista?.b != null ? `${vista.b.toFixed(0)}°` : '—'}</small></>
               : <><b>{fmt(vista?.a)}° / {fmt(vDd, true)}°</b><small>dip / dip direction UTM</small></>}
           </div>
+          <Nivel modo={modo} u={arriba} quieto={estable} />
           <div className="chips">
             <span className={estable ? 'chip ok' : 'chip'}>{estable ? 'ESTABLE' : 'Quieto…'}</span>
             {interf && <span className="chip mal">Interferencia magnética</span>}
@@ -165,6 +169,39 @@ export function Medidor({ modo, titulo, decl, conv, foto, conAzimut = true, onLi
         </>}
         {msg && <p className="alerta">{msg}</p>}
       </main>
+    </div>
+  );
+}
+
+/** Ojo de pollo (nivel circular). La burbuja va siempre al lado más alto, como en una brújula Brunton.
+ *  Azimut: centrada = celular vertical y sin ladear. Plano: muestra hacia dónde y cuánto buza la cara donde está apoyado. */
+function Nivel({ modo, u, quieto, chico }: { modo: Modo; u: [number, number, number] | null; quieto: boolean; chico?: boolean }) {
+  if (!u) return null;
+  const R = chico ? 26 : 62, r = chico ? 7 : 14, D = 180 / Math.PI;
+  let x: number, y: number, ok: boolean, txt: string;
+  if (modo === 'az') {
+    // celular vertical: arriba ≈ (0, 1, 0); x = ladeo, z = cabeceo de la cámara
+    const lad = Math.asin(Math.max(-1, Math.min(1, u[0]))) * D, cab = Math.asin(Math.max(-1, Math.min(1, u[2]))) * D;
+    const k = (R - r) / 10; x = Math.max(-1, Math.min(1, lad / 10)) * 10 * k; y = -Math.max(-1, Math.min(1, cab / 10)) * 10 * k;
+    ok = Math.abs(lad) < 2 && Math.abs(cab) < 3;
+    txt = ok ? 'Nivelado' : `Ladeo ${lad.toFixed(0)}° · cabeceo ${cab.toFixed(0)}°`;
+  } else {
+    // apoyado en el plano: la burbuja marca el lado alto; el radio es proporcional al dip (borde = 90°)
+    const h = Math.hypot(u[0], u[1]), dip = Math.acos(Math.max(-1, Math.min(1, Math.abs(u[2])))) * D;
+    const d = (dip / 90) * (R - r); x = h > 1e-6 ? (u[0] / h) * d : 0; y = h > 1e-6 ? (-u[1] / h) * d : 0;
+    ok = quieto; txt = quieto ? 'Apoyo firme' : 'Sostenga el celular quieto sobre la cara';
+  }
+  const col = ok ? '#2E9E4F' : '#E07A12', S = 2 * R + 4;
+  return (
+    <div className={chico ? 'nivel chico' : 'nivel'} role="img" aria-label={`Nivel: ${txt}`}>
+      <svg width={S} height={S} viewBox={`${-S / 2} ${-S / 2} ${S} ${S}`}>
+        <circle r={R} fill="rgba(255,255,255,.12)" stroke={col} strokeWidth={chico ? 2 : 3} />
+        <circle r={r + 3} fill="none" stroke={col} strokeWidth={1.5} strokeDasharray="3 3" />
+        <line x1={-R} x2={R} y1={0} y2={0} stroke={col} strokeOpacity={0.35} />
+        <line y1={-R} y2={R} x1={0} x2={0} stroke={col} strokeOpacity={0.35} />
+        <circle cx={x} cy={y} r={r} fill={col} fillOpacity={0.85} stroke="#fff" strokeWidth={1.5} />
+      </svg>
+      {!chico && <small style={{ color: col }}>{txt}</small>}
     </div>
   );
 }
