@@ -277,7 +277,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase 
             : hayBase && <p className="alerta">En su base no hay mapeos tipo {r.tipoGeologo}{r.labor ? ` en ${r.labor}` : ''}. Llene los parámetros en Resultado.</p>)}
           {!hayBase && <div className="cargar-base">
             <p><b>Cargue sus mapeos una sola vez</b> y al elegir el tipo de roca se llena todo el RMR y el Q. Quedan solo en este celular.</p>
-            <label className="btn primario">📦 Cargar datos de Justa<input type="file" accept=".json,.xlsx,application/json" hidden onChange={async e => {
+            <label className="btn primario">📦 Cargar datos de Justa<input type="file" hidden onChange={async e => {
               const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
               setMsgBase('Cargando…');
               try { setMsgBase((await import('../ia/paquete').then(m => m.cargarDatos(f)))); onBase?.(); } catch (err) { setMsgBase(`No se pudo: ${(err as Error).message}`); }

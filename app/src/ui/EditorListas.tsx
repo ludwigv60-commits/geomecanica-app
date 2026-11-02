@@ -35,7 +35,7 @@ export function EditorListas({ listas, historialBD = 0, onHistorial, onGuardar, 
           <h3>Historial de mapeos</h3>
           <p className="ayuda">Importe su base de mapeos (por ejemplo BD_Mapeos_Geomecanicos.xlsx). La IA propone con ella los valores habituales de cada labor: tipo de roca, parámetros RMR y Q, y las familias del mapeo anterior. El archivo no sale del celular.</p>
           <p>{historialBD ? `${historialBD} mapeos importados.` : 'Sin historial importado.'}</p>
-          <label className="btn mini">📥 Importar .xlsx o paquete .json<input type="file" accept=".xlsx,.json,application/json" hidden onChange={e => importar(e.target.files?.[0])} /></label>
+          <label className="btn mini">📥 Importar .xlsx o paquete .json<input type="file" hidden onChange={e => { importar(e.target.files?.[0]); e.target.value = ''; }} /></label>
           {historialBD > 0 && <button className="btn mini" onClick={async () => { await guardarConfig('historialBD', []); onHistorial?.(); setMsgBd('Historial quitado.'); }}>Quitar historial</button>}
           {msgBd && <p className="ayuda">{msgBd}</p>}
         </section>
@@ -63,17 +63,16 @@ function ModeloPrivado() {
   useEffect(() => { leerConfig<ArrayBuffer>('modelo:trazas.onnx').then(x => setHay(!!x)).catch(() => setHay(false)); }, []);
   const cargar = async (f?: File) => {
     if (!f) return;
-    const b = await f.arrayBuffer();
-    if (b.byteLength < 100000) { setMsg('Ese archivo no parece un modelo (.onnx).'); return; }
-    await guardarConfig('modelo:trazas.onnx', b); olvidarSesion('trazas.onnx'); setHay(true);
-    setMsg(`Modelo cargado (${(b.byteLength / 1e6).toFixed(1)} MB). La próxima vez que toque "Buscar trazas con IA" usará su modelo.`);
+    setMsg('Leyendo…');
+    try { const { cargarModelo } = await import('../ia/paquete'); setMsg(await cargarModelo(f)); setHay(true); }
+    catch (e) { setMsg(`No se pudo cargar: ${(e as Error).message}`); }
   };
   return (
     <section className="tarjeta">
       <h3>IA de trazas entrenada con sus fotos</h3>
       <p className="ayuda">Cargue el archivo trazas_justa.onnx. Queda guardado solo en este celular: no se publica ni se envía a ningún lado.</p>
       <p>{hay ? 'Usando su modelo privado.' : 'Usando el modelo general de la app.'}</p>
-      <label className="btn mini">🧠 Cargar modelo .onnx<input type="file" accept=".onnx,application/octet-stream" hidden onChange={e => { cargar(e.target.files?.[0]); e.target.value = ''; }} /></label>
+      <label className="btn mini">🧠 Cargar modelo .onnx<input type="file" hidden onChange={e => { cargar(e.target.files?.[0]); e.target.value = ''; }} /></label>
       {hay && <button className="btn mini" onClick={async () => { await guardarConfig('modelo:trazas.onnx', undefined); olvidarSesion('trazas.onnx'); setHay(false); setMsg('Volvió al modelo general.'); }}>Quitar modelo privado</button>}
       {msg && <p className="ayuda">{msg}</p>}
     </section>
