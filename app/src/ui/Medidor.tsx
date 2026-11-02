@@ -29,14 +29,86 @@ export function Medidor({ modo, titulo, decl, conv, foto, conAzimut = true, onLi
     setTimeout(() => { if (!buf.current.length) setMsg('No llegan datos de la brújula. Use Chrome (Android) o Safari (iPhone) con https.'); }, 2500);
   };
 
-  const abrirCamara = async () => {
-    if (modo === 'az') {
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false });
-        if (video.current) { video.current.srcObject = s; await video.current.play().catch(() => {}); }
-      } catch { setMsg('No se pudo abrir la cámara. Revise el permiso de cámara del navegador.'); }
-    }
+  // ---- cámara: lentes (gran angular 0.5×), zoom, linterna, flash y aclarado ----
+  const pista = useRef<MediaStreamTrack | null>(null);
+  const caps = useRef<{ zoom: { min: number; max: number } | null; torch: boolean; expo: { min: number; max: number } | null }>({ zoom: null, torch: false, expo: null });
+  const [lentes, setLentes] = useState<{ normal?: string; ancha?: string; actual?: string }>({});
+  const [zoomHw, setZoomHw] = useState(1);   // zoom óptico/hardware de la cámara (si lo permite)
+  const [dz, setDz] = useState(1);           // zoom digital (recorte) cuando el hardware no llega
+  const [luz, setLuz] = useState(false);     // linterna encendida
+  const [hayFlash, setHayFlash] = useState(false);
+  const [flash, setFlash] = useState(false); // flash real al tomar la foto (Android)
+  const [aclarar, setAclarar] = useState(false);
+  const [, refrescar] = useState(0);
+
+  const abrirCamara = async (deviceId?: string) => {
+    if (modo !== 'az') return;
+    (video.current?.srcObject as MediaStream | null)?.getTracks().forEach(t => t.stop());
+    const res = { width: { ideal: 3840 }, height: { ideal: 2160 } };
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId }, ...res } : { facingMode: { ideal: 'environment' }, ...res }, audio: false });
+      if (video.current) { video.current.srcObject = s; await video.current.play().catch(() => {}); }
+      const t = s.getVideoTracks()[0] ?? null; pista.current = t;
+      if (!t) return;
+      type Caps = MediaTrackCapabilities & { zoom?: { min: number; max: number }; torch?: boolean; exposureCompensation?: { min: number; max: number } };
+      const c = (t.getCapabilities?.() ?? {}) as Caps;
+      caps.current = { zoom: c.zoom && c.zoom.max > c.zoom.min ? { min: c.zoom.min, max: c.zoom.max } : null, torch: !!c.torch, expo: c.exposureCompensation ?? null };
+      setZoomHw((t.getSettings() as MediaTrackSettings & { zoom?: number }).zoom ?? 1); setDz(1); refrescar(x => x + 1);
+      if (luz && caps.current.torch) await luzHw(true);
+      const id = t.getSettings().deviceId;
+      // Lentes traseras: el iPhone las nombra ("Cámara ultra gran angular trasera" / "Back Ultra Wide Camera").
+      const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput' && !/front|frontal|user|delanter|facetime/i.test(d.label));
+      const ancha = devs.find(d => /ultra/i.test(d.label))?.deviceId;
+      setLentes(l => ({ normal: l.normal ?? (id !== ancha ? id : undefined), ancha, actual: id }));
+      // Flash real (Android Chrome): ImageCapture con fillLightMode "flash".
+      const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { getPhotoCapabilities: () => Promise<{ fillLightMode?: string[] }> } }).ImageCapture;
+      if (IC) new IC(t).getPhotoCapabilities().then(pc => setHayFlash(!!pc.fillLightMode?.includes('flash'))).catch(() => setHayFlash(false));
+    } catch { setMsg('No se pudo abrir la cámara. Revise el permiso de cámara del navegador.'); }
   };
+  const luzHw = async (on: boolean) => {
+    const t = pista.current; if (!t) return false;
+    try {
+      await t.applyConstraints({ advanced: [{ torch: on } as MediaTrackConstraintSet] }); return true;
+    } catch { return false; }
+  };
+  const cambiarLuz = async () => {
+    const on = !luz;
+    if (caps.current.torch) { if (await luzHw(on)) { setLuz(on); return; } }
+    setLuz(false);
+    setMsg(hayFlash ? 'Este celular no deja prender la linterna desde la app, pero sí el flash al tomar la foto: active ⚡.' : 'Este celular no deja prender la linterna desde el navegador (pasa en iPhone). Use la lámpara del casco y active ☀️ Aclarar.');
+  };
+  const masLuzExpo = async (on: boolean) => { // exposición al máximo con poca luz, si la cámara lo permite
+    const t = pista.current, e = caps.current.expo; if (!t || !e) return;
+    try { await t.applyConstraints({ advanced: [{ exposureCompensation: on ? e.max : 0 } as MediaTrackConstraintSet] }); } catch { /* opcional */ }
+  };
+  const zoomTotal = (lentes.actual && lentes.actual === lentes.ancha ? 0.5 : 1) * zoomHw * dz;
+  const ponerZoom = async (f: number, sinCambiarLente = false) => {
+    const c = caps.current, t = pista.current, enAncha = !!lentes.actual && lentes.actual === lentes.ancha;
+    const base = enAncha ? 0.5 : 1;
+    if (!sinCambiarLente) {
+      if (f < 0.9 && !enAncha && !(c.zoom && c.zoom.min <= f + 0.05) && lentes.ancha) { await abrirCamara(lentes.ancha); return; }
+      if (f >= 0.9 && enAncha && lentes.normal) { await abrirCamara(lentes.normal); setTimeout(() => ponerZoom(f, true), 300); return; }
+    }
+    const rel = f / base;
+    if (c.zoom && t) {
+      const hw = Math.min(c.zoom.max, Math.max(c.zoom.min, rel));
+      try { await t.applyConstraints({ advanced: [{ zoom: hw } as MediaTrackConstraintSet] }); setZoomHw(hw); setDz(Math.max(1, rel / hw)); return; } catch { /* zoom digital */ }
+    }
+    setZoomHw(1); setDz(Math.min(10, Math.max(1, rel)));
+  };
+  const pinzaCam = useRef<{ d0: number; z0: number } | null>(null);
+  const dedosCam = useRef(new Map<number, [number, number]>());
+  const tocarCam = (e: React.PointerEvent, tipo: 'abajo' | 'mover' | 'arriba') => {
+    if (tipo === 'arriba') { dedosCam.current.delete(e.pointerId); if (dedosCam.current.size < 2) pinzaCam.current = null; return; }
+    dedosCam.current.set(e.pointerId, [e.clientX, e.clientY]);
+    const [a, b] = [...dedosCam.current.values()]; if (!a || !b) return;
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    if (!pinzaCam.current) { pinzaCam.current = { d0: d, z0: zoomTotal }; return; }
+    const base = lentes.actual && lentes.actual === lentes.ancha ? 0.5 : 1;
+    ponerZoom(Math.max(base, Math.min(10, pinzaCam.current.z0 * d / pinzaCam.current.d0)), true);
+  };
+  const nivelesZoom = [...(lentes.ancha || (caps.current.zoom && caps.current.zoom.min <= 0.6) ? [0.5] : []), 1, 2, 3, 5, 10];
+
   useEffect(() => { if (foto) abrirCamara(); }, []);
 
   useEffect(() => {
@@ -69,29 +141,52 @@ export function Medidor({ modo, titulo, decl, conv, foto, conAzimut = true, onLi
     };
   }, []);
 
+  /** Recorta lo que se ve en pantalla (object-fit: cover + zoom digital) desde una imagen o el video. */
+  const recorte = (src: CanvasImageSource, iw: number, ih: number): string => {
+    const v = video.current!;
+    const ew = v.clientWidth || iw, eh = v.clientHeight || ih;
+    const esc = Math.max(ew / iw, eh / ih);
+    const sw = ew / esc / dz, sh = eh / esc / dz, sx = (iw - sw) / 2, sy = (ih - sh) / 2;
+    const k = Math.min(1, 3000 / Math.max(sw, sh));
+    const cv = Object.assign(document.createElement('canvas'), { width: Math.round(sw * k), height: Math.round(sh * k) });
+    const ctx = cv.getContext('2d')!; ctx.drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+    if (aclarar) { // poca luz: curva gamma suave (sube sombras sin quemar las luces)
+      const im = ctx.getImageData(0, 0, cv.width, cv.height), d = im.data;
+      const lut = new Uint8ClampedArray(256); for (let i = 0; i < 256; i++) lut[i] = Math.round(255 * Math.pow(i / 255, 0.55));
+      for (let i = 0; i < d.length; i += 4) { d[i] = lut[d[i]!]!; d[i + 1] = lut[d[i + 1]!]!; d[i + 2] = lut[d[i + 2]!]!; }
+      ctx.putImageData(im, 0, 0);
+    }
+    return cv.toDataURL('image/jpeg', 0.92);
+  };
   const cuadro = (): string | undefined => {
     const v = video.current; if (!v || !v.videoWidth) return undefined;
     // Se guarda exactamente lo que se ve en la pantalla completa (mismo recorte que object-fit: cover).
-    const ew = v.clientWidth || v.videoWidth, eh = v.clientHeight || v.videoHeight;
-    const esc = Math.max(ew / v.videoWidth, eh / v.videoHeight);
-    const sw = ew / esc, sh = eh / esc, sx = (v.videoWidth - sw) / 2, sy = (v.videoHeight - sh) / 2;
-    const k = Math.min(1, 2000 / Math.max(sw, sh));
-    const cv = Object.assign(document.createElement('canvas'), { width: Math.round(sw * k), height: Math.round(sh * k) });
-    cv.getContext('2d')!.drawImage(v, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
-    return cv.toDataURL('image/jpeg', 0.85);
+    return recorte(v, v.videoWidth, v.videoHeight);
   };
-  const registrar = () => {
+  /** En Android toma una foto fija del sensor (resolución completa; con ⚡, con flash real). Si no se puede, usa el cuadro del video. */
+  const captura = async (): Promise<string | undefined> => {
+    const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { takePhoto: (o?: object) => Promise<Blob> } }).ImageCapture;
+    if (IC && pista.current) {
+      try {
+        const bmp = await createImageBitmap(await new IC(pista.current).takePhoto(flash && hayFlash ? { fillLightMode: 'flash' } : {}));
+        return recorte(bmp, bmp.width, bmp.height);
+      } catch (e) { console.warn('flash', e); }
+    }
+    return cuadro();
+  };
+  const registrar = async () => {
     if (foto && !conAzimut) { // fotos de hastiales y corona: sin brújula, al instante
-      const img = cuadro();
+      setMidiendo(true); const img = await captura(); setMidiendo(false);
       if (!img) { setMsg('No se pudo tomar la foto: la cámara no está disponible.'); return; }
       try { navigator.vibrate?.(60); } catch { /* opcional */ }
       onListo({ modo, sd: 0, n: 0, metodo: 'sin-brujula' }, img); return;
     }
     grab.current = []; setMidiendo(true);
-    setTimeout(() => {
-      const img = foto ? cuadro() : undefined;
-      if (foto && !img) { grab.current = null; setMidiendo(false); setMsg('No se pudo tomar la foto: la cámara no está disponible.'); return; }
-      const w = grab.current ?? []; grab.current = null; setMidiendo(false);
+    setTimeout(async () => {
+      const w = grab.current ?? []; grab.current = null;
+      const img = foto ? await captura() : undefined;
+      setMidiendo(false);
+      if (foto && !img) { setMsg('No se pudo tomar la foto: la cámara no está disponible.'); return; }
       if (w.length < 20) {
         if (foto && img) { setMsg(null); onListo({ modo, sd: 0, n: 0, metodo: 'sin-datos-brujula' }, img); return; } // se guarda la foto aunque la brújula no responda
         setMsg('Pocas muestras. Repita.'); return;
@@ -103,18 +198,53 @@ export function Medidor({ modo, titulo, decl, conv, foto, conAzimut = true, onLi
     }, foto ? 1500 : 3000);
   };
 
+  // Cámara nativa del celular: máxima calidad (modo noche, HDR, lentes 0.5×–10×, flash). El azimut se toma de la
+  // brújula en el momento de tocar el botón (el celular ya apunta al frente), porque el navegador no recibe el rumbo de esa foto.
+  const nativa = useRef<HTMLInputElement>(null);
+  const lecturaNativa = useRef<Lectura | null>(null);
+  const abrirNativa = () => {
+    lecturaNativa.current = null;
+    if (conAzimut) {
+      const w = buf.current;
+      if (w.length >= 20) lecturaNativa.current = resumir([...w], modo, decl, conv, b.current?.metodo ?? '');
+    }
+    nativa.current?.click();
+  };
+  const fotoNativa = async (file?: File) => {
+    if (!file) return;
+    try {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions).catch(() => createImageBitmap(file));
+      const k = Math.min(1, 3000 / Math.max(bmp.width, bmp.height));
+      const cv = Object.assign(document.createElement('canvas'), { width: Math.round(bmp.width * k), height: Math.round(bmp.height * k) });
+      cv.getContext('2d')!.drawImage(bmp, 0, 0, cv.width, cv.height);
+      const img = cv.toDataURL('image/jpeg', 0.92);
+      const l = lecturaNativa.current ?? { modo, sd: 0, n: 0, metodo: conAzimut ? 'sin-datos-brujula' : 'sin-brujula' };
+      onListo(l, img);
+    } catch { setMsg('No se pudo leer la foto de la cámara.'); }
+  };
+
   const fmt = (x?: number, pad = false) => (x == null ? '—' : pad ? String(Math.round(x)).padStart(3, '0') : x.toFixed(0));
   const vAz = vista?.a != null && modo === 'az' ? toGrid(vista.a, decl, conv) : undefined;
   const vDd = vista?.b != null && modo === 'pl' ? toGrid(vista.b, decl, conv) : undefined;
 
   if (foto) return (
     <div className="camara">
-      <video ref={video} playsInline muted />
+      <video ref={video} playsInline muted style={{ transform: dz > 1.001 ? `scale(${dz})` : undefined, filter: aclarar ? 'brightness(1.45) contrast(1.05)' : undefined }}
+        onPointerDown={e => tocarCam(e, 'abajo')} onPointerMove={e => dedosCam.current.has(e.pointerId) && tocarCam(e, 'mover')} onPointerUp={e => tocarCam(e, 'arriba')} onPointerCancel={e => tocarCam(e, 'arriba')} />
       {conAzimut && <span className="mira" />}
       <div className="cam-arriba">
         <button className="btn mini claro" onClick={onCancelar}>‹ Volver</button><b>{titulo}</b>
+        <div className="cam-luces">
+          <button className={luz ? 'on' : ''} onClick={cambiarLuz} aria-label="Linterna">🔦</button>
+          {hayFlash && <button className={flash ? 'on' : ''} onClick={() => setFlash(f => !f)} aria-label="Flash al tomar la foto">⚡</button>}
+          <button className={aclarar ? 'on' : ''} onClick={() => { const on = !aclarar; setAclarar(on); masLuzExpo(on); }} aria-label="Aclarar con poca luz">☀️</button>
+        </div>
       </div>
       <div className="cam-abajo">
+        <div className="cam-zoom">
+          {nivelesZoom.map(n => <button key={n} className={Math.abs(zoomTotal - n) < n * 0.08 ? 'on' : ''} onClick={() => ponerZoom(n)}>{n === 0.5 ? '0.5' : n}×</button>)}
+          {!nivelesZoom.some(n => Math.abs(zoomTotal - n) < n * 0.08) && <span className="cam-zoom-val">{zoomTotal.toFixed(1)}×</span>}
+        </div>
         {conAzimut && (!iniciado
           ? <button className="btn primario" onClick={iniciar}>Activar brújula para el azimut</button>
           : <div className="cam-lectura">
@@ -125,8 +255,13 @@ export function Medidor({ modo, titulo, decl, conv, foto, conAzimut = true, onLi
             </div>)}
         {ios && conAzimut && iniciado && <p className="cam-aviso">Ponga el celular echado 2 s para fijar el norte.</p>}
         {msg && <p className="cam-aviso">{msg}</p>}
-        <button className="obturador" aria-label="Tomar foto" disabled={midiendo || (conAzimut && !iniciado)} onClick={registrar}>{midiendo ? '…' : ''}</button>
-        <small>{conAzimut ? 'Celular vertical, apuntando al frente, en el eje de la labor.' : 'Encuadre toda la zona.'}</small>
+        <div className="cam-disparo">
+          <span />
+          <button className="obturador" aria-label="Tomar foto" disabled={midiendo || (conAzimut && !iniciado)} onClick={registrar}>{midiendo ? '…' : ''}</button>
+          <button className="cam-nativa" disabled={conAzimut && !iniciado} onClick={abrirNativa}>📸<small>Cámara del celular</small></button>
+        </div>
+        <input ref={nativa} type="file" accept="image/*" capture="environment" hidden onChange={e => { fotoNativa(e.target.files?.[0]); e.target.value = ''; }} />
+        <small>{conAzimut ? 'Celular vertical, apuntando al frente, en el eje de la labor.' : 'Encuadre toda la zona.'} Pellizque para acercar o alejar. Para la mejor calidad (modo noche, HDR) use 📸 Cámara del celular.</small>
       </div>
     </div>
   );

@@ -51,6 +51,25 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
   const trazo = useRef<[number, number][]>([]);
   const [arrastre, setArrastre] = useState<[number, number, number, number] | null>(null);
   const [confirmaTodo, setConfirmaTodo] = useState(false);
+  // Pantalla completa: la foto ocupa todo y las herramientas (dibujar, borrar, medir, IA) están ahí mismo.
+  const [full, setFull] = useState(false);
+  const area = useRef<HTMLDivElement>(null);
+  const [areaWH, setAreaWH] = useState<[number, number] | null>(null);
+  useEffect(() => {
+    if (!full) return;
+    const el = area.current; if (!el) return;
+    const ro = new ResizeObserver(() => setAreaWH([el.clientWidth, el.clientHeight])); ro.observe(el);
+    const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    return () => { ro.disconnect(); document.body.style.overflow = prev; };
+  }, [full]);
+  const abrirFull = () => {
+    setFull(true); setVistaZ({ z: 1, tx: 0, ty: 0 });
+    try { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {}); } catch { /* iPhone no lo permite: se usa la pantalla fija */ }
+  };
+  const cerrarFull = () => {
+    setFull(false); setVistaZ({ z: 1, tx: 0, ty: 0 });
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch { /* opcional */ }
+  };
   // Zoom con dos dedos (o botones) para dibujar estructuras finas; con un dedo se dibuja o se mueve la foto.
   const [vistaZ, setVistaZ] = useState({ z: 1, tx: 0, ty: 0 });
   const marco = useRef<HTMLDivElement>(null);
@@ -296,10 +315,10 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
     let az: number | undefined;
     try { const ru = rumboExif(await file.arrayBuffer()); if (ru) az = Math.round(toGrid(ru.dir, ru.ref === 'M' ? decl : 0, conv) * 10) / 10; } catch { /* sin EXIF */ }
     const i = await cargar(URL.createObjectURL(file));
-    const k = Math.min(1, 1600 / Math.max(i.width, i.height));
+    const k = Math.min(1, 3000 / Math.max(i.width, i.height));
     const cv = Object.assign(document.createElement('canvas'), { width: Math.round(i.width * k), height: Math.round(i.height * k) });
     cv.getContext('2d')!.drawImage(i, 0, 0, cv.width, cv.height);
-    await agregar(cv.toDataURL('image/jpeg', 0.85), az, az != null ? 0 : undefined);
+    await agregar(cv.toDataURL('image/jpeg', 0.92), az, az != null ? 0 : undefined);
     if (zona === 'FRENTE') setEstado(az != null ? `Azimut tomado de la foto (rumbo de la cámara guardado por el celular): ${az}° UTM. Revíselo: vale si la foto se tomó mirando de frente por el eje de la labor.` : 'Esta foto no trae el rumbo de la cámara. Para llenar el azimut solo, tome la foto con 📷 desde la app o active en el iPhone: Ajustes › Privacidad › Localización › Cámara.');
   };
 
@@ -333,33 +352,47 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
           <button className="btn" onClick={() => confirmarLabor(sel.id)}>Sí es labor (la IA aprende)</button></div>
       </div>}
       {sel?.calidad && !sel.calidad.apta && <p className="alerta">FOTO NO APTA – {sel.calidad.motivos.join('; ')}. Tome una nueva.</p>}
-      {img && <div className="barra-dibujo">
-        <div className="segmentos">
-          <button className={modo === 'ver' ? 'sel' : ''} onClick={() => setModo('ver')}>👆 Mover</button>
-          <button className={modo === 'dibujar' ? 'sel' : ''} disabled={!r.familias.length} onClick={() => setModo('dibujar')}>✏️ Dibujar</button>
-          <button className={modo === 'borrar' ? 'sel' : ''} onClick={() => setModo('borrar')}>🧽 Borrar</button>
-          <button disabled={!sel?.trazas?.segmentos.length} onClick={deshacer}>↶</button>
-        </div>
-        <div className="chips-estr">
-          {r.familias.map((f, i) => (
-            <button key={i} className={modo === 'dibujar' && fam === i ? 'chip-estr sel' : 'chip-estr'} style={{ borderColor: colorFamilia(r.familias, i) }} onClick={() => { setFam(i); setModo('dibujar'); }}>
-              <i style={{ background: colorFamilia(r.familias, i) }} />{textoFamilia(r.familias, i)}</button>
-          ))}
-          {ABREVS.map(a => <button key={a} className="chip-estr nueva" style={{ borderColor: colorTipo(a) }} onClick={() => nuevaEstructura(a)}>+ {a}</button>)}
-        </div>
-        <div className="zoom-btns">
-          <button onClick={() => zoomBoton(1 / 1.5)} disabled={vistaZ.z <= 1}>－</button>
-          <span>{vistaZ.z > 1 ? `${vistaZ.z.toFixed(1)}×` : 'Zoom'}</span>
-          <button onClick={() => zoomBoton(1.5)} disabled={vistaZ.z >= 6}>＋</button>
-          {vistaZ.z > 1 && <button onClick={() => setVistaZ({ z: 1, tx: 0, ty: 0 })}>1:1</button>}
-          {modo === 'dibujar' && r.familias[fam] && <small>Dibujando <b>{textoFamilia(r.familias, fam)}</b></small>}
-          {modo === 'borrar' && <small>Toque la traza a borrar</small>}
-        </div>
-      </div>}
-      {img && dims && <div ref={marco} className="foto-marco" style={{ aspectRatio: `${dims.w} / ${dims.h}`, touchAction: modo === 'ver' && vistaZ.z <= 1 ? 'pan-y' : 'none' }}>
-        <canvas ref={lienzo} className="foto-lienzo" style={{ width: '100%', transform: `translate(${vistaZ.tx}px, ${vistaZ.ty}px) scale(${vistaZ.z})`, transformOrigin: '0 0' }}
-          onPointerDown={abajo} onPointerMove={mover} onPointerUp={arriba} onPointerCancel={e => { soltar(e); inicio.current = null; setArrastre(null); }} />
-      </div>}
+      <div className={full ? 'editor-foto completa' : 'editor-foto'}>
+        {img && <div className="barra-dibujo">
+          {full && <div className="fc-cab"><b>{ZONAS_FOTO.find(z => z.id === zona)!.nombre}</b><button className="btn mini" onClick={cerrarFull}>✕ Salir</button></div>}
+          <div className="segmentos">
+            <button className={modo === 'ver' ? 'sel' : ''} onClick={() => setModo('ver')}>👆 Mover</button>
+            <button className={modo === 'dibujar' ? 'sel' : ''} disabled={!r.familias.length} onClick={() => setModo('dibujar')}>✏️ Dibujar</button>
+            <button className={modo === 'borrar' ? 'sel' : ''} onClick={() => setModo('borrar')}>🧽 Borrar</button>
+            <button disabled={!sel?.trazas?.segmentos.length} onClick={deshacer}>↶</button>
+          </div>
+          <div className="chips-estr">
+            {r.familias.map((f, i) => (
+              <button key={i} className={modo === 'dibujar' && fam === i ? 'chip-estr sel' : 'chip-estr'} style={{ borderColor: colorFamilia(r.familias, i) }} onClick={() => { setFam(i); setModo('dibujar'); }}>
+                <i style={{ background: colorFamilia(r.familias, i) }} />{textoFamilia(r.familias, i)}</button>
+            ))}
+            {ABREVS.map(a => <button key={a} className="chip-estr nueva" style={{ borderColor: colorTipo(a) }} onClick={() => nuevaEstructura(a)}>+ {a}</button>)}
+          </div>
+          <div className="zoom-btns">
+            <button onClick={() => zoomBoton(1 / 1.5)} disabled={vistaZ.z <= 1}>－</button>
+            <span>{vistaZ.z > 1 ? `${vistaZ.z.toFixed(1)}×` : 'Zoom'}</span>
+            <button onClick={() => zoomBoton(1.5)} disabled={vistaZ.z >= 6}>＋</button>
+            {vistaZ.z > 1 && <button onClick={() => setVistaZ({ z: 1, tx: 0, ty: 0 })}>1:1</button>}
+            {!full && <button className="btn-full" onClick={abrirFull}>⛶ Pantalla completa</button>}
+            {modo === 'dibujar' && r.familias[fam] && <small>Dibujando <b>{textoFamilia(r.familias, fam)}</b></small>}
+            {modo === 'borrar' && <small>Toque la traza a borrar</small>}
+          </div>
+        </div>}
+        {img && dims && <div ref={area} className="fc-area"><div ref={marco} className="foto-marco" style={{ aspectRatio: `${dims.w} / ${dims.h}`, touchAction: full || !(modo === 'ver' && vistaZ.z <= 1) ? 'none' : 'pan-y', ...(full && areaWH ? { width: Math.min(areaWH[0], areaWH[1] * dims.w / dims.h) } : {}) }}>
+          <canvas ref={lienzo} className="foto-lienzo" style={{ width: '100%', transform: `translate(${vistaZ.tx}px, ${vistaZ.ty}px) scale(${vistaZ.z})`, transformOrigin: '0 0' }}
+            onPointerDown={abajo} onPointerMove={mover} onPointerUp={arriba} onPointerCancel={e => { soltar(e); inicio.current = null; setArrastre(null); }} />
+        </div></div>}
+        {img && full && <div className="fc-abajo">
+          {estado && <p className="fc-estado">{estado}</p>}
+          <div className="fc-botones">
+            <button className="btn" disabled={!r.familias[fam]} onClick={() => onMedir(fam)}>🧭 {r.familias[fam]?.dip == null ? 'Medir' : 'Volver a medir'} {r.familias[fam] ? textoFamilia(r.familias, fam).split(':')[0] : ''}</button>
+            <button className="btn primario" onClick={analizarFoto}>🤖 {zona === 'FRENTE' ? 'Buscar estructuras' : 'Buscar familias'}</button>
+          </div>
+          {r.familias.length > 0 && <div className="fc-medir">
+            {r.familias.map((f, i) => f.dip == null && <button key={i} className="chip-estr" style={{ borderColor: colorFamilia(r.familias, i) }} onClick={() => { setFam(i); onMedir(i); }}>🧭 {textoFamilia(r.familias, i).split(':')[0]}</button>)}
+          </div>}
+        </div>}
+      </div>
       {img && !simple && <p className="tenue">Dos dedos: acercar y mover la foto. Un dedo: dibuja (✏️), borra (🧽) o mueve la foto con zoom (👆).</p>}
       {sel && <p className="tenue">
         {zona === 'FRENTE' && (sel.az != null ? `Azimut de esta foto: ${sel.az}° UTM. ` : 'Sin azimut (foto de galería). ')}
