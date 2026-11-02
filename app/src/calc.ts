@@ -7,7 +7,7 @@ import { proponer } from './core/sostenimiento';
 import type { Reporte } from './model';
 
 export function calcular(r: Reporte) {
-  const rqd = r.jv != null ? rqdDesdeJv(r.jv) : null;
+  const rqd = r.rqdManual ?? (r.jv != null ? rqdDesdeJv(r.jv) : null);
   const zonas = Object.fromEntries(ZONAS.map(z => {
     const basico = rmrBasico(r.rmr[z]);
     const total = rmrTotal(r.rmr[z], r.ajuste[z]);

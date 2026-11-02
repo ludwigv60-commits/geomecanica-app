@@ -48,6 +48,7 @@ export interface Reporte {
   ajuste: Record<Zona, number | null>;
   rmrDisenoManual: number | null;
   jv: number | null;
+  rqdManual?: number | null; // RQD escrito en campo (reemplaza al calculado con Jv)
   litologia: Record<Zona, string>;
   familias: Familia[];
   q: Record<Zona, Partial<Omit<ParametrosQ, 'rqd'>>>;

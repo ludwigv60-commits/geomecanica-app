@@ -70,7 +70,7 @@ export function App() {
             );
           })}
         </ul>
-        <button className="fab" onClick={() => setVista({ v: 'editor', r: nuevoReporte(reportes[0], siguienteCorrelativo(reportes)) })}>＋ Nuevo reporte</button>
+        <button className="fab" onClick={() => setVista({ v: 'editor', r: { ...nuevoReporte(reportes[0], siguienteCorrelativo(reportes)), ...(!reportes[0]?.supervisor && listas.supervisores[0] ? { supervisor: listas.supervisores[0] } : {}) } })}>＋ Nuevo reporte</button>
       </main>
     </div>
   );

@@ -250,3 +250,16 @@ details.ajuste[open] > summary::after { content:'▾'; }
 .afinar { display:flex; flex-direction:column; gap:8px; padding:10px; border:1px solid #b9a6e8; border-radius:10px; background:rgba(124,92,214,.06); }
 .afinar h3 { margin:0; font-size:15px; }
 .afinar-fila { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; justify-content:space-between; }
+.otro-valor { display:flex; align-items:center; gap:10px; margin-top:8px; padding:8px 10px; border-radius:12px; background:#7a4dd810; border:1px dashed #7a4dd8; }
+.otro-valor span { flex:1; font-size:14px; font-weight:600; }
+.otro-valor input { flex:0 0 96px; }
+.vistas .secciones { gap:6px; }
+.vistas .secciones > div, .vista-planta, .grafico-fs { border:1px solid var(--borde); border-radius:10px; overflow:hidden; background:#fff; }
+.resumen-cunas { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0; }
+.resumen-cunas .rc { display:flex; flex-direction:column; padding:10px 12px; border-radius:12px; color:#fff; }
+.resumen-cunas .rc small { opacity:.9; font-weight:600; }
+.resumen-cunas .rc b { font-size:20px; }
+.resumen-cunas .rc span { font-size:12.5px; opacity:.95; }
+.resumen-cunas .antes, .resumen-cunas .mal { background:#C62828; }
+.resumen-cunas .medio { background:#C77700; }
+.resumen-cunas .bien { background:#2E7D32; }

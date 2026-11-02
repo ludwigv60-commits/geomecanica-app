@@ -2,6 +2,7 @@
 import type { Reporte } from '../model';
 import { calcular } from '../calc';
 import { aSvg, vistaPlanta, vistaSeccion } from './croquis';
+import { seccionDobleSvg } from './cunas2d';
 
 /** Recuadros del formato .xlsx (A37:L55 y M37:X55) medidos en píxeles de Excel. */
 export const CAJA_PLANTA = { w: 565, h: 418 }, CAJA_SECCION = { w: 555, h: 418 };
@@ -25,7 +26,9 @@ export async function vistasPng(r: Reporte): Promise<{ planta?: Uint8Array; secc
   const k = 2; // doble resolución para que se vea nítido al imprimir
   const pl = vistaPlanta(r, rmr, true);
   if (pl) out.planta = await svgAPng(aSvg(pl, CAJA_PLANTA.w * k, CAJA_PLANTA.h * k), CAJA_PLANTA.w * k, CAJA_PLANTA.h * k);
-  if (r.ancho && r.alto && r.familias.some(f => f.dip != null && f.dipdir != null))
+  const doble = seccionDobleSvg(r, rmr, CAJA_SECCION.w * k, CAJA_SECCION.h * k);  // antes | después del sostenimiento
+  if (doble) out.seccion = await svgAPng(doble, CAJA_SECCION.w * k, CAJA_SECCION.h * k);
+  else if (r.ancho && r.alto && r.familias.some(f => f.dip != null && f.dipdir != null))
     out.seccion = await svgAPng(aSvg(vistaSeccion(r, rmr), CAJA_SECCION.w * k, CAJA_SECCION.h * k), CAJA_SECCION.w * k, CAJA_SECCION.h * k);
   return out;
 }

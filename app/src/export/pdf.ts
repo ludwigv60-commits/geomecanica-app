@@ -5,7 +5,8 @@ import type { Reporte } from '../model';
 import { casillas } from './datos';
 import MAPA from './mapa-celdas.json';
 import { colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
-import { aPuntos, vistaPlanta, vistaSeccion } from './croquis';
+import { aPuntos, vistaPlanta, vistaSeccion, type Vista } from './croquis';
+import { COLOR_RIESGO, analizarCunas, fsTxt, graficoFS, resumen, tablaCunas, vistaCunas } from './cunas2d';
 import { calcular } from '../calc';
 
 const TINTA = rgb(0.05, 0.2, 0.62); // azul lapicero, como en los reportes llenados a mano
@@ -77,7 +78,9 @@ export async function generarPdf(r: Reporte, plantilla: ArrayBuffer | Uint8Array
     const [x0, y0, x1, y1] = rect;
     page.drawEllipse({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, xScale: Math.max(6, (x1 - x0) / 2 - 1.5), yScale: Math.max(3.2, (y1 - y0) / 2 + 0.6), borderColor: TINTA, borderWidth: 0.9 });
   }
-  croquis(page, font, await doc.embedFont(StandardFonts.HelveticaBold), r);
+  const negrita = await doc.embedFont(StandardFonts.HelveticaBold);
+  croquis(page, font, negrita, r);
+  anexoCunas(doc, font, negrita, r);
   await anexoFotos(doc, font, r);
   doc.setTitle(`Indicación Geomecánica ${r.labor} ${r.desde}`);
   doc.setProducer('App Geomecánica (PRT-JS-CLD-16)');
@@ -129,27 +132,81 @@ async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
   }
 }
 
-/** Vista planta y vista sección calculadas, en los recuadros del formato. */
+/** Dibuja una vista (en metros) dentro de un rectángulo del PDF [x0, y0, x1, y1] (puntos, y hacia abajo). */
+function dibujarVista(page: PDFPage, font: PDFFont, negrita: PDFFont, vista: Vista, caja: [number, number, number, number]) {
+  const H = page.getHeight(), v = aPuntos(vista, caja);
+  for (const p of v.polys) {
+    const d = p.pts.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(2)} ${q[1].toFixed(2)}`).join(' ') + (p.cerrado ? ' Z' : '');
+    page.drawSvgPath(d, { x: 0, y: H, ...(p.relleno ? { color: hex(p.relleno), opacity: p.opac ?? 1 } : {}),
+      ...(p.borde ? { borderColor: hex(p.borde), borderWidth: p.ancho ?? 1, borderOpacity: 1, borderLineCap: 1, ...(p.trazos ? { borderDashArray: p.trazos } : {}) } : {}) });
+  }
+  for (const t of v.textos) {
+    const f = t.negrita ? negrita : font, s = limpiar(t.s), size = t.tam ?? 6, w = f.widthOfTextAtSize(s, size);
+    const x = t.ancla === 'centro' ? t.p[0] - w / 2 : t.ancla === 'der' ? t.p[0] - w : t.p[0];
+    if (t.fondo) page.drawRectangle({ x: x - 0.6, y: H - t.p[1] - size * 0.22, width: w + 1.2, height: size * 0.95, color: rgb(1, 1, 1), opacity: 0.8 });
+    page.drawText(s, { x, y: H - t.p[1], size, font: f, color: hex(t.color ?? '#000000') });
+  }
+}
+const rmrDe = (r: Reporte) => { const z = calcular(r).zonas; return { HI: z.HI.total, CORONA: z.CORONA.total, HD: z.HD.total }; };
+
+/** Vista planta y vista sección en los recuadros del formato. La sección va en dos: ANTES del desatado
+ *  (sin sostener, con las cuñas y su riesgo) y DESPUÉS (con shotcrete y pernos, con su FS). */
 function croquis(page: PDFPage, font: PDFFont, negrita: PDFFont, r: Reporte) {
-  const H = page.getHeight(), z = calcular(r).zonas, rmr = { HI: z.HI.total, CORONA: z.CORONA.total, HD: z.HD.total };
-  const dibujar = (v: ReturnType<typeof aPuntos>) => {
-    for (const p of v.polys) {
-      const d = p.pts.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(2)} ${q[1].toFixed(2)}`).join(' ') + (p.cerrado ? ' Z' : '');
-      page.drawSvgPath(d, { x: 0, y: H, ...(p.relleno ? { color: hex(p.relleno), opacity: p.opac ?? 1 } : {}),
-        ...(p.borde ? { borderColor: hex(p.borde), borderWidth: p.ancho ?? 1, borderOpacity: 1, borderLineCap: 1, ...(p.trazos ? { borderDashArray: p.trazos } : {}) } : {}) });
-    }
-    for (const t of v.textos) {
-      const f = t.negrita ? negrita : font, s = limpiar(t.s), size = t.tam ?? 6, w = f.widthOfTextAtSize(s, size);
-      const x = t.ancla === 'centro' ? t.p[0] - w / 2 : t.ancla === 'der' ? t.p[0] - w : t.p[0];
-      if (t.fondo) page.drawRectangle({ x: x - 0.6, y: H - t.p[1] - size * 0.22, width: w + 1.2, height: size * 0.95, color: rgb(1, 1, 1), opacity: 0.8 });
-      page.drawText(s, { x, y: H - t.p[1], size, font: f, color: hex(t.color ?? '#000000') });
-    }
-  };
+  const rmr = rmrDe(r), Hp = page.getHeight();
   // Recuadros medidos en la plantilla (puntos, y hacia abajo): planta x 20–300, sección x 300–574, y 398–615.
   const pl = vistaPlanta(r, rmr, false);
-  if (pl) dibujar(aPuntos(pl, [21, 399, 299, 614]));
-  if (r.ancho && r.alto && r.familias.some(f => f.dip != null && f.dipdir != null)) {
-    // La sección impresa trae un contorno a trazos de x 355.5–507.5 y y 418–601.5: se dibuja a esa escala.
-    dibujar(aPuntos(vistaSeccion(r, rmr), [301, 399, 573, 614]));
+  if (pl) dibujarVista(page, font, negrita, pl, [21, 399, 299, 614]);
+  const antes = vistaCunas(r, rmr, 'antes', 135 / 214), despues = vistaCunas(r, rmr, 'despues', 135 / 214);
+  if (antes && despues) {
+    page.drawRectangle({ x: 300.6, y: Hp - 614.4, width: 272.8, height: 215.8, color: rgb(1, 1, 1) }); // tapa el contorno impreso
+    dibujarVista(page, font, negrita, antes, [301, 399, 436.6, 614]);
+    dibujarVista(page, font, negrita, despues, [437.4, 399, 573, 614]);
+    page.drawLine({ start: { x: 437, y: Hp - 399 }, end: { x: 437, y: Hp - 614 }, thickness: 0.8, color: rgb(0, 0, 0) });
+  } else if (r.ancho && r.alto && r.familias.some(f => f.dip != null && f.dipdir != null)) {
+    dibujarVista(page, font, negrita, vistaSeccion(r, rmr), [301, 399, 573, 614]);
   }
+}
+
+/** Hoja de análisis de cuñas: las dos secciones en grande, el gráfico de FS y la tabla de cada cuña. */
+function anexoCunas(doc: PDFDocument, font: PDFFont, negrita: PDFFont, r: Reporte) {
+  const a = analizarCunas(r); if (!a || !a.bloques.length) return;
+  const rmr = rmrDe(r), [W, Hp] = [595.28, 841.89], m = 30;
+  const page = doc.addPage([W, Hp]);
+  const T = (s: string, x: number, y: number, size: number, f = font, color = rgb(0, 0, 0)) => page.drawText(limpiar(s), { x, y: Hp - y, size, font: f, color });
+  T(`ANÁLISIS DE CUÑAS EN LA SECCIÓN · ${r.labor} ${r.desde}${r.hasta ? ` a ${r.hasta}` : ''} · ${r.fecha}`, m, m + 4, 10.5, negrita, hex('#0D2A6B'));
+  const rs = resumen(a);
+  partirLineas(limpiar(`${a.bloques.length} cuñas potenciales dentro de la zona de influencia${a.zi ? ` (${Math.round(a.zi.pct * 100)} %, roca ${a.zi.tipo})` : ''}. Antes del desatado: ${rs.antes.ALTO} riesgo ALTO, ${rs.antes.MEDIO} MEDIO, ${rs.antes.BAJO} BAJO (${rs.caida} en caída libre). Con sostenimiento: FS mínimo ${fsTxt(rs.fsMin ?? 0)}; ${rs.despues.ALTO} ALTO, ${rs.despues.MEDIO} MEDIO, ${rs.despues.BAJO} BAJO.`), font, 7, W - 2 * m)
+    .forEach((l, i) => T(l, m, m + 17 + i * 8.5, 7));
+  const y0 = m + 34, hV = 330, wV = (W - 2 * m - 8) / 2;
+  const va = vistaCunas(r, rmr, 'antes', wV / hV), vd = vistaCunas(r, rmr, 'despues', wV / hV);
+  for (const [v, x] of [[va, m], [vd, m + wV + 8]] as [Vista | null, number][]) {
+    if (!v) continue;
+    dibujarVista(page, font, negrita, v, [x, y0, x + wV, y0 + hV]);
+    page.drawRectangle({ x, y: Hp - y0 - hV, width: wV, height: hV, borderColor: rgb(0, 0, 0), borderWidth: 0.6 });
+  }
+  const hG = 200, g = graficoFS(r, (W - 2 * m) / hG), yG = y0 + hV + 8;
+  if (g) { dibujarVista(page, font, negrita, g, [m, yG, W - m, yG + hG]); page.drawRectangle({ x: m, y: Hp - yG - hG, width: W - 2 * m, height: hG, borderColor: rgb(0.6, 0.6, 0.6), borderWidth: 0.5 }); }
+  // tabla de cuñas (mismo número que en las secciones y el gráfico)
+  const filas = tablaCunas(r), yT = yG + hG + 10;
+  const cols: [string, number][] = [['N°', 16], ['Zona', 34], ['Familias', 54], ['h (m)', 28], ['t/m', 28], ['Modo', 66], ['FS antes', 36], ['Riesgo', 38], ['FS sost.', 36], ['Riesgo', 38]];
+  const fa = 8.6, anchoT = cols.reduce((s, c) => s + c[1], 0), caben = Math.floor((Hp - m - 22 - yT) / fa) - 1;
+  const dos = filas.length > caben, esc = dos ? ((W - 2 * m - 8) / 2) / anchoT : 1, tam = dos ? 4.6 : 5.6;
+  const tabla = (lista: typeof filas, x0: number) => {
+    let x = x0;
+    for (const [t, w] of cols) { page.drawRectangle({ x, y: Hp - yT - fa, width: w * esc, height: fa, color: hex('#0D2A6B') }); T(t, x + 1.2, yT + fa - 2.4, tam, negrita, rgb(1, 1, 1)); x += w * esc; }
+    lista.forEach((f, i) => {
+      const y = yT + fa * (i + 1); let x1 = x0;
+      const vals = [String(f.n), f.zona, f.familias, f.prof.toFixed(2), f.peso.toFixed(2), f.modo, fsTxt(f.fs0), f.riesgo0, fsTxt(f.fs), f.riesgo];
+      if (i % 2) page.drawRectangle({ x: x0, y: Hp - y - fa, width: anchoT * esc, height: fa, color: hex('#F2F4F8') });
+      vals.forEach((v, k) => {
+        const w = cols[k]![1] * esc, esR = k === 7 || k === 9;
+        if (esR) page.drawRectangle({ x: x1 + 0.8, y: Hp - y - fa + 0.8, width: w - 1.6, height: fa - 1.6, color: hex(COLOR_RIESGO[v as 'ALTO']), opacity: 0.9 });
+        T(v, x1 + 1.2, y + fa - 2.4, tam, esR ? negrita : font, esR ? rgb(1, 1, 1) : rgb(0, 0, 0)); x1 += w;
+      });
+    });
+  };
+  tabla(filas.slice(0, caben), m);
+  if (dos) tabla(filas.slice(caben, caben * 2), m + (W - 2 * m) / 2 + 4);
+  const nota = 'Análisis 2D en el plano del frente: equilibrio límite por metro de labor, phi 30°, sin cohesión, gamma 2.7 t/m3. Red de diaclasas con el espaciamiento de cada familia; solo cuñas dentro de la zona de influencia. Pernos: densidad 1/esp² sobre la base de la cuña, si anclan >= 0.5 m detrás. Shotcrete: corte en los dos bordes, tau 0.35 MPa. Para el FS 3D de cuñas de tres planos use Unwedge.';
+  partirLineas(limpiar(nota), font, 5.4, W - 2 * m).forEach((l, i) => T(l, m, Hp - m - 10 + i * 6.4, 5.4, font, rgb(0.3, 0.3, 0.3)));
 }

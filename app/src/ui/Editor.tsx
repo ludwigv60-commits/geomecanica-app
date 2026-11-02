@@ -14,6 +14,7 @@ import { redactarCondicion } from '../ia/redaccion';
 import { textoFamilia } from '../ia/anotacion';
 import { entregar, nombreArchivo, MIME_PDF, MIME_XLSX } from '../export/compartir';
 import { aSvg, vistaPlanta, vistaSeccion } from '../export/croquis';
+import { analizarCunas, fsTxt, graficoFS, resumen as resumenCunas, vistaCunas } from '../export/cunas2d';
 import { aplicarPlantilla, plantillaTipo, revisarTipo } from '../ia/plantilla-roca';
 import type { TipoRoca } from '../core/rmr';
 
@@ -145,8 +146,15 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase 
             <h3>Cálculo de RQD · RQD = 115 − 3.3·Jv</h3>
             <div className="rejilla2">
               <Campo t="N° fracturas por m³ (Jv)"><NumIn className={sug('jv')} valor={r.jv} on={v => set('jv', v)} /></Campo>
-              <Campo t="RQD (%)"><output className="resultado">{c.rqd ?? '—'}</output></Campo>
+              <Campo t="RQD (%)">
+                <select value={r.rqdManual != null ? 'otro' : 'jv'} onChange={e => set('rqdManual', e.target.value === 'otro' ? (c.rqd ?? 10) : null)}>
+                  <option value="jv">{r.jv != null ? `Calculado con Jv: ${rqdDesdeJv(r.jv)} %` : 'Calculado con Jv'}</option>
+                  <option value="otro">✏️ Otro valor (escribir)</option>
+                </select>
+              </Campo>
             </div>
+            {r.rqdManual != null && <div className="otro-valor"><span>RQD de campo (%)</span><NumIn valor={r.rqdManual} on={v => set('rqdManual', v == null ? null : Math.max(0, Math.min(100, v)))} /></div>}
+            <p className="tenue">RQD usado en el Q y en el formato: <b>{c.rqd ?? '—'} %</b>{r.rqdManual != null ? ' (escrito en campo)' : ''}.</p>
           </section>
           {toggleZonas}
           {([['jn', 'Número de discontinuidades (Jn)', JN], ['jr', 'Número de rugosidad (Jr)', JR], ['ja', 'Número de alteración (Ja)', JA], ['jw', 'Agua subterránea (Jw)', JW]] as const).map(([k, t, ops]) => (
@@ -201,16 +209,26 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase 
   const tarjetaVistas = (<>
           {r.familias.some(f => f.dip != null && f.dipdir != null) && (() => {
             const rz = { HI: c.zonas.HI.total, CORONA: c.zonas.CORONA.total, HD: c.zonas.HD.total };
-            const pl = vistaPlanta(r, rz), se = r.ancho && r.alto ? vistaSeccion(r, rz) : null;
+            const pl = vistaPlanta(r, rz), an = analizarCunas(r), va = vistaCunas(r, rz, 'antes', 0.72), vd = vistaCunas(r, rz, 'despues', 0.72), gf = graficoFS(r, 1.7);
+            const se = va ? null : r.ancho && r.alto ? vistaSeccion(r, rz) : null, rs = an ? resumenCunas(an) : null;
             return <section className="tarjeta vistas">
               <h3>Vista planta y vista sección</h3>
               <p className="tenue">Calculadas con el dip / dip direction de cada estructura, el azimut, la sección y la excavación real. Así salen en el PDF.</p>
-              <div className="rejilla2">
-                {pl ? <div dangerouslySetInnerHTML={{ __html: aSvg(pl) }} /> : <p className="tenue">Falta el azimut para la planta.</p>}
-                {se ? <div dangerouslySetInnerHTML={{ __html: aSvg(se) }} /> : <p className="tenue">Falta ancho y alto para la sección.</p>}
-              </div>
-              {se && se.notas.length > 0 && <ul className="tenue">{se.notas.map((n, i) => <li key={i}>{n}</li>)}</ul>}
-              {se && <p className="tenue">Cuñas: análisis 2D en la sección del frente (como en la ficha). Para el factor de seguridad use Unwedge con estas orientaciones.</p>}
+              {pl ? <div className="vista-planta" dangerouslySetInnerHTML={{ __html: aSvg(pl) }} /> : <p className="tenue">Falta el azimut para la planta.</p>}
+              {va && vd ? <>
+                <h3>Sección: antes del desatado y con sostenimiento</h3>
+                <div className="rejilla2 secciones">
+                  <div dangerouslySetInnerHTML={{ __html: aSvg(va, 300, 417) }} />
+                  <div dangerouslySetInnerHTML={{ __html: aSvg(vd, 300, 417) }} />
+                </div>
+                {rs && <div className="resumen-cunas">
+                  <div className="rc antes"><small>Antes del desatado</small><b>{an!.bloques.length} cuñas</b><span>ALTO {rs.antes.ALTO} · MEDIO {rs.antes.MEDIO} · BAJO {rs.antes.BAJO}</span></div>
+                  <div className={`rc ${rs.despues.ALTO ? 'mal' : rs.despues.MEDIO ? 'medio' : 'bien'}`}><small>Con sostenimiento</small><b>FS mín {fsTxt(rs.fsMin ?? 0)}</b><span>ALTO {rs.despues.ALTO} · MEDIO {rs.despues.MEDIO} · BAJO {rs.despues.BAJO}</span></div>
+                </div>}
+                {gf && <div className="grafico-fs" dangerouslySetInnerHTML={{ __html: aSvg(gf, 600, 353) }} />}
+                {(va.notas.length > 0) && <ul className="tenue">{va.notas.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+                <p className="tenue">Análisis 2D en la sección del frente, con la red de diaclasas a su espaciamiento y solo dentro de la zona de influencia. El PDF trae una hoja con la tabla de cada cuña. Para el FS 3D de cuñas de tres planos use Unwedge.</p>
+              </> : se ? <div dangerouslySetInnerHTML={{ __html: aSvg(se) }} /> : <p className="tenue">Falta ancho, alto o 2 estructuras medidas para la sección.</p>}
             </section>;
           })()}
   </>);
@@ -245,6 +263,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase 
         <section className="tarjeta">
           <h3>Labor</h3>
           <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={v => set('labor', v)} /></Campo>
+          <Campo t="Sup. de geomecánica"><Lista valor={r.supervisor} opciones={listas.supervisores} on={v => setR(p => ({ ...p, supervisor: v, firmas: p.firmas.map((f, i) => (i === 0 && (!f.nombre || f.nombre === p.supervisor) ? { ...f, nombre: v } : f)) }))} /></Campo>
           <div className="rejilla2">
             <Campo t="Fecha"><input type="date" value={r.fecha} onChange={e => set('fecha', e.target.value)} /></Campo>
             <Campo t="Turno"><Segmentos valor={r.turno} opciones={['Día', 'Noche']} on={v => set('turno', v as Reporte['turno'])} /></Campo>
@@ -513,16 +532,21 @@ function Segmentos({ valor, opciones, on }: { valor: string; opciones: string[];
   return <div className="segmentos">{opciones.map(o => <button key={o} type="button" className={valor === o ? 'sel' : ''} onClick={() => on(valor === o ? '' : o)}>{o}</button>)}</div>;
 }
 function SelectorQ({ titulo, opciones, r, mismo, k, on }: { titulo: string; opciones: readonly OpcionQ[]; r: Reporte; mismo: boolean; k: 'jn' | 'jr' | 'ja' | 'jw' | 'srf'; on: (z: Zona, k: 'jn' | 'jr' | 'ja' | 'jw' | 'srf', v: number) => void }) {
+  // "Otro valor": si el valor no está en la tabla (o el usuario lo elige), se escribe a mano.
+  const [otro, setOtro] = useState<Partial<Record<Zona, boolean>>>({});
+  const esOtro = (z: Zona) => otro[z] || (r.q[z][k] != null && !opciones.some(o => o.valor === r.q[z][k]));
   return (
     <section className="tarjeta"><h3>{titulo}</h3>
       {(mismo ? (['CORONA'] as Zona[]) : ZONAS).map(z => (
         <div key={z} className="fila">
           {!mismo && <span className="etq">{NOMBRE_ZONA[z]}</span>}
-          <select className={r.sugeridos?.includes(`q.${k}`) ? 'sug' : ''} value={r.q[z][k] ?? ''} onChange={e => on(z, k, Number(e.target.value))}>
+          <select className={r.sugeridos?.includes(`q.${k}`) ? 'sug' : ''} value={esOtro(z) ? 'otro' : r.q[z][k] ?? ''}
+            onChange={e => { if (e.target.value === 'otro') { setOtro(o => ({ ...o, [z]: true })); return; } setOtro(o => ({ ...o, [z]: false })); if (e.target.value !== '') on(z, k, Number(e.target.value)); }}>
             <option value="">—</option>
             {opciones.map((o, i) => <option key={i} value={o.valor}>{o.valor} · {o.texto}{o.rango ? ` (${o.rango[0]}–${o.rango[1]})` : ''}</option>)}
+            <option value="otro">✏️ Otro valor (escribir)</option>
           </select>
-          <NumIn className="corto" valor={r.q[z][k]} on={v => v != null && on(z, k, v)} />
+          {esOtro(z) && <NumIn className="corto" placeholder="valor" valor={r.q[z][k]} on={v => v != null && on(z, k, v)} />}
         </div>
       ))}
     </section>

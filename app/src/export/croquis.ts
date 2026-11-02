@@ -20,7 +20,7 @@ export interface Vista { prims: Prim[]; caja: [number, number, number, number]; 
 export type RmrZonas = Partial<Record<Zona, number | null>>;
 
 const rad = (g: number) => (g * Math.PI) / 180, gra = (r: number) => (r * 180) / Math.PI;
-const TINTA = '#0D2A6B', GRIS = '#4A4A4A', ROJO = '#C00000', VERDE = '#1B7A3A';
+export const TINTA = '#0D2A6B', GRIS = '#4A4A4A', ROJO = '#C00000', VERDE = '#1B7A3A';
 const GAMMA = 2.7; // t/m³, peso unitario de la roca para el peso de las cuñas
 
 /** Familia numerada con su orientación medida. */
@@ -28,9 +28,9 @@ export interface Fam { n: number; abrev: string; dip: number; dipdir: number; po
 export const familiasMedidas = (r: Reporte): Fam[] =>
   r.familias.map((f: Familia, i) => ({ n: i + 1, abrev: f.abrev, dip: f.dip!, dipdir: f.dipdir!, potencia: f.potencia ?? null, persistencia: f.persistencia ?? null, espaciamiento: f.espaciamiento ?? null }))
     .filter(f => f.dip != null && f.dipdir != null);
-const dd3 = (x: number) => String(Math.round(((x % 360) + 360) % 360)).padStart(3, '0');
+export const dd3 = (x: number) => String(Math.round(((x % 360) + 360) % 360)).padStart(3, '0');
 export const rotulo = (f: Fam) => `${f.abrev}${f.n} ${Math.round(f.dip)}°/${dd3(f.dipdir)}°`;
-const estilo = (f: Fam) => f.abrev === 'F' ? { borde: ROJO, ancho: 1.1 } : f.abrev === 'V' ? { borde: VERDE, ancho: 0.9 } : f.abrev === 'C' ? { borde: TINTA, ancho: 0.7, trazos: [3, 1.5] } : { borde: '#111111', ancho: 0.5 };
+export const estilo = (f: Fam) => f.abrev === 'F' ? { borde: ROJO, ancho: 1.1 } : f.abrev === 'V' ? { borde: VERDE, ancho: 0.9 } : f.abrev === 'C' ? { borde: TINTA, ancho: 0.7, trazos: [3, 1.5] } : { borde: '#111111', ancho: 0.5 };
 
 /** Buzamiento aparente (°) de un plano en el plano vertical del frente, y si baja hacia la derecha. */
 export function aparente(dip: number, dipdir: number, azimut: number): { ang: number; bajaDerecha: boolean } {
@@ -53,13 +53,13 @@ export function dentro(p: P, pol: P[]): boolean {
   }
   return s;
 }
-const area = (pol: P[]) => Math.abs(pol.reduce((a, p, i) => { const q = pol[(i + 1) % pol.length]!; return a + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
-function cruce(a: P, da: P, b: P, db: P): P | null {
+export const area = (pol: P[]) => Math.abs(pol.reduce((a, p, i) => { const q = pol[(i + 1) % pol.length]!; return a + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
+export function cruce(a: P, da: P, b: P, db: P): P | null {
   const den = da[0] * db[1] - da[1] * db[0]; if (Math.abs(den) < 1e-9) return null;
   const t = ((b[0] - a[0]) * db[1] - (b[1] - a[1]) * db[0]) / den; return [a[0] + da[0] * t, a[1] + da[1] * t];
 }
 /** Partes de a→b dentro de `fuera` y fuera de `hueco` (muestreo fino). */
-function tramos(a: P, b: P, fuera: P[], hueco: P[] | null, n = 220): [P, P][] {
+export function tramos(a: P, b: P, fuera: P[], hueco: P[] | null, n = 220): [P, P][] {
   const out: [P, P][] = []; let ini: P | null = null, ult: P | null = null;
   for (let i = 0; i <= n; i++) {
     const p: P = [a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n];
@@ -93,7 +93,7 @@ export function seccionReal(B: number, H: number, sobre: Partial<Record<Zona, nu
 }
 
 /** Generador pseudoaleatorio con semilla (el mismo reporte siempre se dibuja igual). */
-function azar(semilla: string): () => number {
+export function azar(semilla: string): () => number {
   let h = 2166136261; for (const ch of semilla) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
   return () => { h = (h + 0x6d2b79f5) | 0; let t = Math.imul(h ^ (h >>> 15), 1 | h); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
@@ -356,12 +356,12 @@ function leyenda(prims: Prim[], r: Reporte, rmr: RmrZonas, o: P, mpp: number) {
   });
 }
 
-function flecha(a: P, b: P, t: number): P[] {
+export function flecha(a: P, b: P, t: number): P[] {
   const d: P = [b[0] - a[0], b[1] - a[1]], n = Math.hypot(...d) || 1, u: P = [d[0] / n, d[1] / n], w: P = [-u[1], u[0]];
   return [b, [b[0] - u[0] * t * 2 + w[0] * t * 0.7, b[1] - u[1] * t * 2 + w[1] * t * 0.7], [b[0] - u[0] * t * 2 - w[0] * t * 0.7, b[1] - u[1] * t * 2 - w[1] * t * 0.7]];
 }
 /** Barra de escala gráfica con su largo redondeado. */
-function escala(prims: Prim[], p: P, largo: number) {
+export function escala(prims: Prim[], p: P, largo: number) {
   const m = [1, 2, 5, 10, 20].reduce((a, b) => (b <= largo ? b : a), 1), x0 = p[0], y = p[1];
   prims.push({ t: 'poly', pts: [[x0, y], [x0 + m / 2, y], [x0 + m / 2, y + largo * 0.03], [x0, y + largo * 0.03]], cerrado: true, relleno: '#000000' });
   prims.push({ t: 'poly', pts: [[x0, y], [x0 + m, y], [x0 + m, y + largo * 0.03], [x0, y + largo * 0.03]], cerrado: true, borde: '#000000', ancho: 0.4 });
