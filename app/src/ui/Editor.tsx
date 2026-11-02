@@ -589,8 +589,9 @@ function Resumen({ r, c }: { r: Reporte; c: ReturnType<typeof calcular> }) {
 
 function Descargas({ r }: { r: Reporte }) {
   const [msg, setMsg] = useState<string | null>(null);
+  const [listo, setListo] = useState<{ datos: Uint8Array; nombre: string; mime: string; tipo: string } | null>(null);
   const bajar = async (tipo: 'xlsx' | 'pdf') => {
-    setMsg('Generando…');
+    setMsg('Generando…'); setListo(null);
     try {
       const plantilla = await fetch(`./plantilla/formato.${tipo}`).then(x => { if (!x.ok) throw new Error('No se encontró la plantilla'); return x.arrayBuffer(); });
       let aviso = '';
@@ -598,9 +599,18 @@ function Descargas({ r }: { r: Reporte }) {
       if (vistas && r.familias.some(f => f.dip != null && f.dipdir != null) && (!vistas.planta || !vistas.seccion))
         aviso = ` Ojo: el Excel salió sin ${!vistas.planta && !vistas.seccion ? 'las vistas' : !vistas.planta ? 'la vista en planta' : 'la vista en sección'}${vistas.errores?.length ? ` (${vistas.errores.join('; ')})` : '; revise azimut, ancho y alto'}.`;
       const datos = tipo === 'xlsx' ? await (await import('../export/xlsx')).generarXlsx(r, plantilla, vistas ?? {}) : await (await import('../export/pdf')).generarPdf(r, plantilla);
-      const res = await entregar(datos, nombreArchivo(r, tipo), tipo === 'xlsx' ? MIME_XLSX : MIME_PDF);
+      const nombre = nombreArchivo(r, tipo), mime = tipo === 'xlsx' ? MIME_XLSX : MIME_PDF;
+      const res = await entregar(datos, nombre, mime);
+      if (res === 'tocar') { setListo({ datos, nombre, mime, tipo: tipo === 'xlsx' ? 'Excel' : 'PDF' }); setMsg(`Listo. Toque el botón para guardar o enviar el ${tipo === 'xlsx' ? 'Excel' : 'PDF'}.${aviso}`); return; }
       setMsg(res === 'descargado' ? 'Archivo descargado.' + aviso : aviso.trim() || null);
-    } catch (e) { setMsg(`No se pudo generar: ${(e as Error).message}`); }
+    } catch (e) {
+      const m = (e as Error).message ?? String(e);
+      // Versión nueva publicada con la app abierta: faltan los archivos de la versión anterior. Se recarga y queda lista.
+      if (/dynamically imported module|Importing a module script failed|error loading dynamically|Failed to fetch/i.test(m)) {
+        setMsg('La app se actualizó: recargando… vuelva a tocar Descargar.'); setTimeout(() => location.reload(), 800); return;
+      }
+      setMsg(`No se pudo generar: ${m}`);
+    }
   };
   return (
     <section className="tarjeta">
@@ -610,6 +620,10 @@ function Descargas({ r }: { r: Reporte }) {
         <button className="btn primario" onClick={() => bajar('xlsx')}>Excel</button>
       </div>
       {msg && <p className="tenue">{msg}</p>}
+      {listo && <button className="btn primario grande" onClick={async () => {
+        const x = listo; const res = await entregar(x.datos, x.nombre, x.mime, true);
+        setListo(null); setMsg(res === 'descargado' ? 'Archivo descargado.' : null);
+      }}>📤 Guardar o enviar el {listo.tipo}</button>}
       <p className="tenue">Funciona sin señal. En el celular se abre el menú para guardar o enviar por WhatsApp o correo.</p>
     </section>
   );

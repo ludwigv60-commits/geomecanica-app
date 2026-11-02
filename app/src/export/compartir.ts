@@ -3,13 +3,18 @@ export function nombreArchivo(r: { labor: string; desde: string; fecha: string; 
   const base = ['IG', r.correlativo, r.labor, r.desde, r.fecha].filter(Boolean).join('_').replace(/[^\w.+-]+/g, '_');
   return `${base}.${ext}`;
 }
-export async function entregar(datos: Uint8Array, nombre: string, tipo: string): Promise<'compartido' | 'descargado'> {
+/** 'tocar' = el celular bloqueó el menú porque pasó mucho tiempo desde el toque: hay que pedir otro toque. */
+export async function entregar(datos: Uint8Array, nombre: string, tipo: string, ultimo = false): Promise<'compartido' | 'descargado' | 'tocar'> {
   const blob = new Blob([datos as Uint8Array<ArrayBuffer>], { type: tipo });
   const archivo = new File([blob], nombre, { type: tipo });
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
   if (nav.canShare?.({ files: [archivo] })) {
     try { await nav.share({ files: [archivo], title: nombre }); return 'compartido'; }
-    catch (e) { if ((e as Error).name === 'AbortError') return 'compartido'; }
+    catch (e) {
+      const n = (e as Error).name;
+      if (n === 'AbortError') return 'compartido';
+      if (n === 'NotAllowedError' && !ultimo) return 'tocar'; // iPhone/Android: el menú solo se abre justo después de un toque
+    }
   }
   const url = URL.createObjectURL(blob);
   const a = Object.assign(document.createElement('a'), { href: url, download: nombre });

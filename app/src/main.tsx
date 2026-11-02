@@ -4,4 +4,10 @@ import { App } from './ui/App';
 import './ui/estilos.css';
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('./sw.js').catch(() => {});
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  // Cuando llega una versión nueva, la app se recarga sola (los reportes ya están guardados en el celular).
+  const habia = !!navigator.serviceWorker.controller;
+  let recargado = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (habia && !recargado) { recargado = true; location.reload(); } });
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
