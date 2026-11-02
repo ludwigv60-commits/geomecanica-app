@@ -246,3 +246,7 @@ details.ajuste[open] > summary::after { content:'▾'; }
 .nivel { display:flex; flex-direction:column; align-items:center; gap:4px; margin:6px 0; }
 .nivel small { font-weight:600; }
 .nivel.chico { margin:0; }
+.guia-frente { display:flex; flex-direction:column; gap:6px; padding:10px; border:1px dashed var(--borde, #c9d2dc); border-radius:10px; }
+.afinar { display:flex; flex-direction:column; gap:8px; padding:10px; border:1px solid #b9a6e8; border-radius:10px; background:rgba(124,92,214,.06); }
+.afinar h3 { margin:0; font-size:15px; }
+.afinar-fila { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; justify-content:space-between; }

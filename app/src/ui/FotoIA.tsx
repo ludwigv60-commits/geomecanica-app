@@ -10,6 +10,7 @@ import { evaluar, mejorar, mensajeCalidad } from '../ia/calidad';
 import { aprender, esLabor } from '../ia/labor';
 import { detectarConRed } from '../ia/modelo-trazas';
 import { angulosPrevios } from '../ia/lineas';
+import { afinarFamilias, esperadas, familiaDeTraza, rellenarZona, zonaRmr } from '../ia/fotos-zonas';
 import { fotosConTrazas, paqueteEntrenamiento } from '../ia/datos-entrenamiento';
 import { entregar } from '../export/compartir';
 import { rumboExif } from '../ia/exif';
@@ -79,7 +80,7 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
     const nueva: FotoZona = { id: crypto.randomUUID(), zona, data, fecha: new Date().toISOString(), az, plunge, calidad: { apta: c.apta, motivos: c.motivos } };
     setR(p => ({
       ...p, fotos: [...(p.fotos ?? []), nueva],
-      // Azimut de la labor: promedio de las fotos del frente tomadas casi horizontales.
+      // Azimut de la labor: el de la primera foto del frente tomada casi horizontal.
       azimut: zona === 'FRENTE' && az != null && Math.abs(plunge ?? 0) < 35 ? azimutFrente([...(p.fotos ?? []), nueva]) ?? p.azimut : p.azimut,
     }));
     setSelId(nueva.id);
@@ -106,6 +107,7 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
   const analizarFoto = async () => {
     if (!img || !sel || !dims) return;
     if (!util(sel)) { setEstado('Esta foto no es una labor: la IA no la analiza. Si sí es labor, toque "Sí es labor".'); return; }
+    if (sel.zona !== 'FRENTE') return buscarFamilias();
     setEstado('Analizando la foto con IA… (puede tardar unos segundos)');
     await new Promise(r => setTimeout(r, 30));
     let segs: NonNullable<FotoZona['trazas']>['segmentos'] = [], ia: NonNullable<FotoZona['trazas']>['ia'], nFam = 0, extra = '';
@@ -151,6 +153,40 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
       : nFam
       ? `Sugerido por IA · confianza ${ia!.nivel}: ${nFam} estructura(s), numeradas de la más a la menos importante (trazas más largas).${extra}${med ? (ia?.nivel === 'baja' ? ' Confianza baja: NO se llenaron parámetros.' : ' Se llenaron en morado persistencia y Jn; Jv, RQD y espaciamiento salen del historial o de su conteo, porque la IA solo marca estructuras grandes (más de 1 m).') : ''} Revise: borre lo que no sea fractura y mida cada estructura con 🧭 (dip/dd para cuñas).`
       : `La IA no encontró trazas claras en la roca.${extra} Dibújelas con el dedo.`);
+  };
+
+  /** Hastiales y corona: la IA busca solo las familias que usted validó en el frente, en la dirección en que deben verse. */
+  const buscarFamilias = async (prefijo = '') => {
+    if (!img || !sel || !dims) return;
+    const nom = ZONAS_FOTO.find(z => z.id === sel.zona)!.nombre;
+    const esp = esperadas(r, sel.zona);
+    if (r.azimut == null) { setEstado('Falta el azimut de la labor: tome primero la foto del frente con 📷 o escríbalo en el paso 1.'); return; }
+    if (!esp.length) { setEstado(`Mida primero con 🧭 las familias del frente: con su dip y dip dir la IA las busca en la foto de ${nom}.`); return; }
+    setEstado(`Buscando sus familias en la foto de ${nom}…`);
+    await new Promise(res => setTimeout(res, 30));
+    try {
+      const t = await detectarConRed(img, esp.map(e => e.ang), { maxLineas: 8 });
+      const kx = dims.w / t.w, ky = dims.h / t.h;
+      const segs = t.segmentos.map(s => segmentoDe(s.x1 * kx, s.y1 * ky, s.x2 * kx, s.y2 * ky, -1))
+        .map(s => ({ ...s, familia: familiaDeTraza(s.ang, esp) })).filter(s => s.familia >= 0);
+      const ia = { metodo: 'red' as const, confianza: t.confianza, nivel: t.nivel, roca: t.roca, zonas: t.zonaFr };
+      setR(p => ({ ...p, fotos: (p.fotos ?? []).map(x => (x.id === sel.id ? { ...x, trazas: { w: dims.w, h: dims.h, ia, segmentos: [...(x.trazas?.segmentos ?? []).filter(s => s.mano).map(s => (x.trazas!.w === dims.w ? s : escalar(s, dims.w / x.trazas!.w))), ...segs] } } : x)) }));
+      const hall = [...new Set(segs.map(s => s.familia))].map(i => textoFamilia(r.familias, i).split(':')[0]);
+      const falta = esp.filter(e => !segs.some(s => s.familia === e.i)).map(e => textoFamilia(r.familias, e.i).split(':')[0]);
+      setEstado(prefijo + (segs.length
+        ? `🤖 En ${nom} encontré ${hall.join(', ')} (±15° de la dirección esperada).${falta.length ? ` No se ve ${falta.join(', ')}: dibújela si la ve.` : ''} Revise, borre o dibuje; con trazas en dos o más fotos la app afina la orientación abajo.`
+        : `No encontré sus familias en ${nom}. Si las ve, dibújelas con ✏️ y la app afina su orientación.`));
+    } catch (e) { console.warn('IA familias', e); setEstado('El modelo de IA no cargó en este celular. Dibuje las trazas con ✏️.'); }
+  };
+  const afinados = useMemo(() => afinarFamilias(r).filter(a => a.dip !== r.familias[a.i]?.dip || a.dipdir !== r.familias[a.i]?.dipdir), [r]);
+  const rellenar = () => {
+    const z = zonaRmr(zona); if (!z) return;
+    const nom = ZONAS_FOTO.find(x => x.id === zona)!.nombre;
+    const { r: nr, n } = rellenarZona(r, z);
+    if (n) setR(() => nr);
+    const msj = n ? `Se llenaron ${n} dato(s) de ${nom} con los mismos del frente (RMR, Q, litología); lo que usted escribió no cambia. ` : `${nom} ya tiene los mismos datos del frente (RMR, Q, litología). `;
+    setEstado(msj);
+    if (sel && img && !sel.trazas?.revisada) buscarFamilias(msj);
   };
 
   useEffect(() => {
@@ -279,6 +315,10 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
         {ZONAS_FOTO.map(z => { const n = fotos.filter(f => f.zona === z.id).length; return (
           <button key={z.id} className={zona === z.id ? 'sel' : ''} onClick={() => { setZona(z.id); setModo('ver'); }}>{z.nombre}<br /><small>{n ? `${n} foto${n > 1 ? 's' : ''} ✓` : 'falta'}</small></button>); })}
       </div>
+      {zona !== 'FRENTE' && <div className="guia-frente">
+        <p className="tenue">Las fotos de {ZONAS_FOTO.find(x => x.id === zona)!.nombre} son para ver: el azimut y los datos del reporte salen de la foto del frente.</p>
+        <button className="btn" onClick={rellenar}>📋 Rellenar con los datos del frente</button>
+      </div>}
       {deZona.length > 0 && <div className="miniaturas">
         {deZona.map(f => (
           <button key={f.id} className={f.id === sel?.id ? 'mini sel' : 'mini'} onClick={() => setSelId(f.id)}>
@@ -379,6 +419,15 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
           catch (e) { setEstado('No se pudo preparar el paquete.'); console.warn(e); }
         }}>📦 Enviar {fotosConTrazas(r).length} foto(s) con trazas para entrenar la IA</button>
       </>}
+      {afinados.length > 0 && <div className="afinar">
+        <h3>Afinar orientación con sus fotos <span className="sugerido">Sugerido por IA</span></h3>
+        {afinados.map(a => { const f = r.familias[a.i]!; return (
+          <div key={a.i} className="afinar-fila">
+            <span><b>{textoFamilia(r.familias, a.i).split(':')[0]}</b> medido {f.dip}°/{String(f.dipdir).padStart(3, '0')}° → con {a.fotos} fotos <b>{a.dip}°/{String(a.dipdir).padStart(3, '0')}°</b> ({a.cambio}° de diferencia)</span>
+            <button className="btn mini" onClick={() => setR(p => ({ ...p, familias: p.familias.map((x, j) => (j === a.i ? { ...x, dip: a.dip, dipdir: a.dipdir } : x)) }))}>Aceptar</button>
+          </div>); })}
+        <p className="tenue">Sale de las trazas de esa familia en el frente, los hastiales y la corona. Supone hastiales verticales paralelos al eje y corona horizontal; si la labor es muy irregular, quédese con lo medido.</p>
+      </div>}
       {props.length > 0 && !simple && <div className="propuestas">
         <h3>Propuesta de la IA <span className="sugerido">Sugerido por IA</span></h3>
         {baja && <p className="alerta">La detección de trazas de esta foto tiene confianza baja: los parámetros de la foto (Jv, RQD, espaciamiento) no se proponen. Corrija las trazas o llénelos usted.</p>}
@@ -395,12 +444,9 @@ function escalar<S extends { x1: number; y1: number; x2: number; y2: number; lar
   return { ...s, x1: s.x1 * k, y1: s.y1 * k, x2: s.x2 * k, y2: s.y2 * k, largo: s.largo * k, pts: s.pts?.map(([x, y]) => [x * k, y * k] as [number, number]) };
 }
 
-/** Azimut de la labor = promedio circular de las fotos del frente casi horizontales. */
+/** Azimut de la labor = el de la primera foto del frente tomada casi horizontal (las demás son solo para ver). */
 function azimutFrente(fotos: FotoZona[]): number | null {
-  const v = fotos.filter(f => f.zona === 'FRENTE' && f.az != null && Math.abs(f.plunge ?? 0) < 35).map(f => f.az!);
-  if (!v.length) return null;
-  let s = 0, c = 0; for (const a of v) { s += Math.sin(a * Math.PI / 180); c += Math.cos(a * Math.PI / 180); }
-  return Math.round((((Math.atan2(s, c) * 180 / Math.PI) + 360) % 360) * 10) / 10;
+  return fotos.find(f => f.zona === 'FRENTE' && f.az != null && Math.abs(f.plunge ?? 0) < 35)?.az ?? null;
 }
 const colorTipo = (a: string) => colorFamilia([{ abrev: a, dip: null, dipdir: null }], 0);
 /** Distancia del dedo a una traza (recta o arco). */

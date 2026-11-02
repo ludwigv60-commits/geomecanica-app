@@ -145,7 +145,7 @@ export async function zonasLabor(img: CanvasImageSource & { width: number; heigh
 
 /** Corre la red en el celular. Devuelve trazas en coordenadas de una imagen w×h (lado mayor LADO). */
 export type Deteccion = ResultadoRed & { roca: number; zonaSeg: number[]; frente: { x0: number; x1: number; y0: number; y1: number } | null; zonaFr: Record<string, number> };
-export async function detectarConRed(img: CanvasImageSource & { width: number; height: number }, prior?: number[] | null): Promise<Deteccion> {
+export async function detectarConRed(img: CanvasImageSource & { width: number; height: number }, prior?: number[] | null, op: { maxLineas?: number } = {}): Promise<Deteccion> {
   const { ort, sesion } = await import('./onnx');
   const [o, s] = await Promise.all([ort(), sesion('trazas.onnx')]);
   const { x, w, h } = preparar(img, LADO_RED);
@@ -154,7 +154,7 @@ export async function detectarConRed(img: CanvasImageSource & { width: number; h
   // Solo se cuentan trazas sobre roca (no shotcrete ni piso). Si la red de zonas falla, se usa toda la foto.
   const z = await zonasLabor(img, w, h).catch(() => null);
   const usarZona = z && z.fr.roca > 0.15;
-  const t = desdeMapa({ w, h, p }, { zona: usarZona ? z.zona : null, prior });
+  const t = desdeMapa({ w, h, p }, { zona: usarZona ? z.zona : null, prior, maxLineas: op.maxLineas });
   // Zona de cada traza (por su punto medio) y cuánto de cada zona se ve en la foto.
   const zonaSeg = t.segmentos.map(sg => (usarZona ? z.zona[Math.round((sg.y1 + sg.y2) / 2) * w + Math.round((sg.x1 + sg.x2) / 2)] ?? 0 : 1));
   const zonaFr: Record<string, number> = {};
