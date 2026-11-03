@@ -122,7 +122,7 @@ export function hojaModelo(r: Reporte, listas: Partial<Listas> | undefined, rec:
   put(fc, cF, 23, `${d.labor || 'Labor'}${d.azimut != null ? ` · Az ${Math.round(d.azimut)}°` : ''} · fallas, vetas y contactos en su posición`, { tam: 5.2, i: true });
 
   // ---- sección antes del desatado | con sostenimiento, cada una con su factor de seguridad ----
-  const b0 = fc + 1, s0 = b0 + 1, s1 = s0 + 15, sc = s1 + 1;
+  const b0 = fc + 1, s0 = b0 + 1, s1 = s0 + 13, sc = s1 + 1;
   alto(b0, b0, 12); banda(b0, 0, 11, 'SECCIÓN · ANTES DEL DESATADO'); banda(b0, 12, 23, 'SECCIÓN · CON SOSTENIMIENTO');
   alto(s0, s1, 11);
   put(s0, 0, 23, rec.seccion || rec.pdf?.seccion ? '' : 'Falta ancho, alto o estructuras', { tam: 6 }, s1);

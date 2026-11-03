@@ -1,6 +1,6 @@
 // Vistas planta y sección como imágenes PNG (para el Excel), dibujadas igual que en la app y el PDF.
 import type { FotoZona, Reporte } from '../model';
-import { colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
+import { alargar, colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
 import { calcular } from '../calc';
 import { vistaPlanta, vistaSeccion, type Vista } from './croquis';
 import { vistaCunas } from './cunas2d';
@@ -53,7 +53,7 @@ export async function vistasPng(r: Reporte, modelo = false): Promise<{ planta?: 
   const out: { planta?: Uint8Array; seccion?: Uint8Array; fs?: Uint8Array; errores?: string[] } = {};
   const err = (q: string, e: unknown) => { (out.errores ??= []).push(`${q}: ${e instanceof Error ? e.message : String(e)}`); };
   const k = 2; // doble resolución para que se vea nítido al imprimir
-  const [cP, cS] = modelo ? [{ w: 420, h: 165 }, { w: 594, h: 176 }] : [CAJA_PLANTA, CAJA_SECCION];
+  const [cP, cS] = modelo ? [{ w: 420, h: 165 }, { w: 594, h: 154 }] : [CAJA_PLANTA, CAJA_SECCION];
   const wP = cP.w * k, hP = cP.h * k, wS = cS.w * k, hS = cS.h * k;
   try {
     const pl = vistaPlanta(r, rmr, true);
@@ -85,13 +85,14 @@ export async function fotoConTrazas(r: Reporte, f: FotoZona, maxLado = 1600): Pr
   if (f.trazas) {
     const kt = w / f.trazas.w, s = Math.max(1, w / 700);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    for (const g of f.trazas.segmentos) {
+    const segs = alargar(f.trazas.segmentos, f.trazas.w, f.trazas.h);
+    for (const g of segs) {
       const pts = g.pts ?? [[g.x1, g.y1], [g.x2, g.y2]];
-      ctx.strokeStyle = colorFamilia(r.familias, g.familia); ctx.lineWidth = 7 * s; ctx.beginPath();
+      ctx.strokeStyle = colorFamilia(r.familias, g.familia); ctx.lineWidth = 5 * s; ctx.beginPath();
       pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * kt, y * kt) : ctx.moveTo(x * kt, y * kt))); ctx.stroke();
     }
     ctx.font = `700 ${Math.round(13 * s)}px Helvetica, Arial, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    for (const ro of rotulos(f.trazas.segmentos)) {
+    for (const ro of rotulos(segs)) {
       const t = textoFamilia(r.familias, ro.familia), tw = ctx.measureText(t).width;
       ctx.save(); ctx.translate(ro.x * kt, ro.y * kt); ctx.rotate(ro.ang * Math.PI / 180);
       ctx.fillStyle = '#fff'; ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.fillRect(-tw / 2 - 4 * s, -9 * s, tw + 8 * s, 18 * s); ctx.strokeRect(-tw / 2 - 4 * s, -9 * s, tw + 8 * s, 18 * s);

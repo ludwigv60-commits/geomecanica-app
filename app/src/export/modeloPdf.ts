@@ -30,7 +30,7 @@ export async function generarModeloPdf(r: Reporte, listas?: Partial<Listas>, rec
         if (a && d) { dibujarVista(page, f, fb, a, [x0, y0, x0 + w - 1.5, y1]); dibujarVista(page, f, fb, d, [x0 + w + 1.5, y0, x1, y1]); }
         else dibujarVista(page, f, fb, vistaSeccion(r, rmr), [x0, y0, x1, y1]);
       } : undefined,
-      frente: frente ? async c => { await dibujarFoto(doc, page, fb, r, frente, caja(c, 2), { grosor: 2.8, letra: 4.6 }).catch(() => false); } : undefined,
+      frente: frente ? async c => { await dibujarFoto(doc, page, fb, r, frente, caja(c, 2), { grosor: 2.2, letra: 4.4, alargar: true }).catch(() => false); } : undefined,
     },
   });
   await libroAPagina(L, doc, page, f, fb, fi);

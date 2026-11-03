@@ -4,7 +4,7 @@ import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } 
 import type { FotoZona, Reporte } from '../model';
 import { casillas } from './datos';
 import MAPA from './mapa-celdas.json';
-import { colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
+import { alargar, colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
 import { aPuntos, vistaPlanta, vistaSeccion, type Vista } from './croquis';
 import { COLOR_CAE, COLOR_RIESGO, analizarCunas, fsTxt, graficoFS, resumen, tablaCunas, vistaCunas } from './cunas2d';
 import { calcular } from '../calc';
@@ -111,7 +111,7 @@ export async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
 
 
 /** Dibuja una foto con sus trazas y rótulos centrada en la caja [x0, y0, x1, y1] (puntos, y hacia abajo). */
-export async function dibujarFoto(doc: PDFDocument, page: PDFPage, negrita: PDFFont, r: Reporte, f: FotoZona, [bx0, by0, bx1, by1]: [number, number, number, number], opc: { grosor?: number; letra?: number } = {}): Promise<boolean> {
+export async function dibujarFoto(doc: PDFDocument, page: PDFPage, negrita: PDFFont, r: Reporte, f: FotoZona, [bx0, by0, bx1, by1]: [number, number, number, number], opc: { grosor?: number; letra?: number; alargar?: boolean } = {}): Promise<boolean> {
   const H = page.getHeight();
   let bytes: Uint8Array, png = f.data.startsWith('data:image/png');
   if (f.data.startsWith('data:')) bytes = Uint8Array.from(atob(f.data.split(',')[1] ?? ''), ch => ch.charCodeAt(0));
@@ -127,12 +127,13 @@ export async function dibujarFoto(doc: PDFDocument, page: PDFPage, negrita: PDFF
   if (f.trazas) {
     const kt = w / f.trazas.w;
     const P = (px: number, py: number) => ({ x: x + px * kt, y: y + h - py * kt });
-    for (const sgm of f.trazas.segmentos) {
+    const segs = opc.alargar ? alargar(f.trazas.segmentos, f.trazas.w, f.trazas.h) : f.trazas.segmentos;
+    for (const sgm of segs) {
       const color = hex(colorFamilia(r.familias, sgm.familia));
       const pts = sgm.pts ?? [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]];
       for (let i = 1; i < pts.length; i++) page.drawLine({ start: P(pts[i - 1]![0], pts[i - 1]![1]), end: P(pts[i]![0], pts[i]![1]), thickness: opc.grosor ?? 1.8, color });
     }
-    for (const ro of rotulos(f.trazas.segmentos)) {
+    for (const ro of rotulos(segs)) {
       const t = limpiar(textoFamilia(r.familias, ro.familia)); const size = opc.letra ?? 7.5, pd = size * 0.3;
       const tw = negrita.widthOfTextAtSize(t, size); const c = P(ro.x, ro.y);
       const a = -ro.ang * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);

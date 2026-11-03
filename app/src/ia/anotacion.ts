@@ -45,3 +45,21 @@ export function simplificar(pts: [number, number][]): [number, number][] | undef
   if (out[out.length - 1] !== b) out.push(b);
   return out;
 }
+
+/** Para el reporte: alarga las trazas rectas (sin mover su centro ni su rumbo) hasta al menos `frac` de la
+ *  diagonal de la foto, recortadas al borde, como las trazas largas de las fichas VG. La traza guardada no cambia. */
+export function alargar<S extends Seg>(segs: S[], w: number, h: number, frac = 0.5): S[] {
+  const objetivo = Math.hypot(w, h) * frac;
+  return segs.map(s => {
+    if (s.pts && s.pts.length > 2) return s;
+    const L = Math.hypot(s.x2 - s.x1, s.y2 - s.y1); if (L < 1 || L >= objetivo) return s;
+    const ux = (s.x2 - s.x1) / L, uy = (s.y2 - s.y1) / L, cx = (s.x1 + s.x2) / 2, cy = (s.y1 + s.y2) / 2;
+    // cuánto se puede avanzar desde el centro, en cada sentido, sin salir de la foto
+    const hasta = (sg: number) => { let t = Infinity; const dx = ux * sg, dy = uy * sg;
+      if (dx > 1e-9) t = Math.min(t, (w - cx) / dx); if (dx < -1e-9) t = Math.min(t, -cx / dx);
+      if (dy > 1e-9) t = Math.min(t, (h - cy) / dy); if (dy < -1e-9) t = Math.min(t, -cy / dy); return Math.max(0, t); };
+    const m = objetivo / 2, t1 = Math.min(m, hasta(1)), t0 = Math.min(m, hasta(-1));
+    const a: [number, number] = [cx - ux * Math.max(t0, L / 2), cy - uy * Math.max(t0, L / 2)], b: [number, number] = [cx + ux * Math.max(t1, L / 2), cy + uy * Math.max(t1, L / 2)];
+    return { ...s, x1: a[0], y1: a[1], x2: b[0], y2: b[1], largo: Math.hypot(b[0] - a[0], b[1] - a[1]), pts: undefined };
+  });
+}
