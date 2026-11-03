@@ -616,7 +616,7 @@ function Descargas({ r, listas, onEnviar }: { r: Reporte; listas: Listas; onEnvi
           const v = await im.vistasPng(r, true).catch(() => ({} as { planta?: Uint8Array; seccion?: Uint8Array }));
           const fr = (r.fotos ?? []).find(x => x.zona === 'FRENTE') ?? r.fotos?.[0];
           const frente = fr ? await im.fotoConTrazas(r, fr).catch(() => null) : null;
-          datos = await mx.generarModeloXlsx(r, listas, { ...logos, planta: v.planta, seccion: v.seccion, frente: frente ?? undefined });
+          datos = await mx.generarModeloXlsx(r, listas, { ...logos, planta: v.planta, seccion: v.seccion, fs: (v as { fs?: Uint8Array }).fs, frente: frente ?? undefined });
         }
         const { nombreModelo } = await import('../export/modelo');
         const nombre = nombreModelo(r, tipo), mime = tipo === 'xlsx' ? MIME_XLSX : MIME_PDF, t = tipo === 'xlsx' ? 'Excel' : 'PDF';

@@ -3,7 +3,7 @@ import type { FotoZona, Reporte } from '../model';
 import { colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
 import { calcular } from '../calc';
 import { vistaPlanta, vistaSeccion, type Vista } from './croquis';
-import { vistaCunas } from './cunas2d';
+import { graficoFS, vistaCunas } from './cunas2d';
 
 /** Recuadros del formato .xlsx (A37:L55 y M37:X55) medidos en píxeles de Excel. */
 export const CAJA_PLANTA = { w: 565, h: 418 }, CAJA_SECCION = { w: 555, h: 418 };
@@ -48,12 +48,12 @@ async function lienzoAPng(w: number, h: number, pinta: (ctx: CanvasRenderingCont
 }
 
 /** `modelo`: vistas para la hoja única del reporte modelo (sección compacta, cajas de esa hoja). */
-export async function vistasPng(r: Reporte, modelo = false): Promise<{ planta?: Uint8Array; seccion?: Uint8Array; errores?: string[] }> {
+export async function vistasPng(r: Reporte, modelo = false): Promise<{ planta?: Uint8Array; seccion?: Uint8Array; fs?: Uint8Array; errores?: string[] }> {
   const z = calcular(r).zonas, rmr = { HI: z.HI.total, CORONA: z.CORONA.total, HD: z.HD.total };
-  const out: { planta?: Uint8Array; seccion?: Uint8Array; errores?: string[] } = {};
+  const out: { planta?: Uint8Array; seccion?: Uint8Array; fs?: Uint8Array; errores?: string[] } = {};
   const err = (q: string, e: unknown) => { (out.errores ??= []).push(`${q}: ${e instanceof Error ? e.message : String(e)}`); };
   const k = 2; // doble resolución para que se vea nítido al imprimir
-  const [cP, cS] = modelo ? [{ w: 173, h: 209 }, { w: 247, h: 209 }] : [CAJA_PLANTA, CAJA_SECCION];
+  const [cP, cS] = modelo ? [{ w: 272, h: 165 }, { w: 346, h: 143 }] : [CAJA_PLANTA, CAJA_SECCION];
   const wP = cP.w * k, hP = cP.h * k, wS = cS.w * k, hS = cS.h * k;
   try {
     const pl = vistaPlanta(r, rmr, true);
@@ -70,6 +70,10 @@ export async function vistasPng(r: Reporte, modelo = false): Promise<{ planta?: 
       out.seccion = await lienzoAPng(wS, hS, ctx => dibujarCanvas(ctx, se, 0, 0, wS, hS));
     }
   } catch (e) { err('sección', e); }
+  if (modelo) try {
+    const wF = 247 * k, hF = 88 * k, g = graficoFS(r, wF / hF, true);
+    if (g) out.fs = await lienzoAPng(wF, hF, ctx => dibujarCanvas(ctx, g, 0, 0, wF, hF));
+  } catch (e) { err('FS', e); }
   return out;
 }
 

@@ -5,7 +5,7 @@ import { hojaModelo, type RecursosModelo } from './modeloHoja';
 import { libroAPagina } from './libroPdf';
 import { dibujarFoto, dibujarVista, rmrDe } from './pdf';
 import { vistaPlanta, vistaSeccion } from './croquis';
-import { vistaCunas } from './cunas2d';
+import { analizarCunas, graficoFS, vistaCunas } from './cunas2d';
 
 export const A4: [number, number] = [595.28, 841.89];
 
@@ -26,6 +26,7 @@ export async function generarModeloPdf(r: Reporte, listas?: Partial<Listas>, rec
         if (a && d) { dibujarVista(page, f, fb, a, [x0, y0, x0 + w - 0.5, y1]); dibujarVista(page, f, fb, d, [x0 + w + 0.5, y0, x1, y1]); }
         else dibujarVista(page, f, fb, vistaSeccion(r, rmr), [x0, y0, x1, y1]);
       } : undefined,
+      fs: rec.fs !== undefined || !analizarCunas(r)?.bloques.length ? undefined : c => { const [x0, y0, x1, y1] = caja(c, 2); const g = graficoFS(r, (x1 - x0) / (y1 - y0), true); if (g) dibujarVista(page, f, fb, g, [x0, y0, x1, y1]); },
       frente: frente ? async c => { await dibujarFoto(doc, page, fb, r, frente, caja(c, 2)).catch(() => false); } : undefined,
     },
   });

@@ -37,7 +37,7 @@ export interface Bloque {
 }
 export interface Analisis {
   bloques: Bloque[]; lineas: { fam: Fam; a: P; b: P }[]; real: P[]; realD: P[]; nor: P[]; esp: Record<number, { s: number; s2d: number; fuente: string }>;
-  zi: ReturnType<typeof zonaInfluencia>; perno: ReturnType<typeof pernoInfo>; shot: number; notas: string[]; phi: Record<Zona, { v: number; fuente: string }>;
+  zi: ReturnType<typeof zonaInfluencia>; perno: ReturnType<typeof pernoInfo>; shot: number; notas: string[]; cortes: Record<number, number>; phi: Record<Zona, { v: number; fuente: string }>;
 }
 
 /** Espaciamiento (m) representativo de la clase del RMR (puntaje 20/15/10/8/5). */
@@ -75,7 +75,7 @@ function calcular(r: Reporte): Analisis | null {
   // ---- red de trazas de cada familia ----
   const eje: [number, number, number] = [Math.sin(rad(az)), Math.cos(rad(az)), 0];
   const rnd = azar(`${r.id}|${r.fecha}|cuñas`);
-  const esp: Analisis['esp'] = {}, lineas: Analisis['lineas'] = [];
+  const esp: Analisis['esp'] = {}, lineas: Analisis['lineas'] = [], cortes: Record<number, number> = {};
   const espRmr = espDeRmr(r.rmr.CORONA.espaciamiento ?? r.rmr.HI.espaciamiento ?? r.rmr.HD.espaciamiento);
   const R = Math.max(B, H) * 1.2, cx = 0, cy = H / 2;
   for (const f of fams) {
@@ -89,7 +89,17 @@ function calcular(r: Reporte): Analisis | null {
     const { ang, bajaDerecha } = aparente(f.dip, f.dipdir, az), t = rad(bajaDerecha ? -ang : ang), d: P = [Math.cos(t), Math.sin(t)], n: P = [-d[1], d[0]];
     const c0 = n[0] * cx + n[1] * cy, paso = Math.max(s2d, (2 * R) / MAX_LINEAS);
     // fallas, vetas y contactos: una sola traza (la estructura mapeada), no una red
-    const fija = f.abrev === 'SD' ? null : trazaSeccion(f, r); // falla/veta/contacto movida a mano en la planta
+    // falla/veta/contacto movida a mano en la planta: su traza en el frente; si en el frente queda fuera de la
+    // labor, se muestra en la sección del último avance donde sí la corta (es donde afecta a la excavación)
+    let fija = f.abrev === 'SD' ? null : trazaSeccion(f, r);
+    if (fija) {
+      const dist = (t: { o: P; d: P } | null) => t ? (t.o[0] * t.d[1] - (t.o[1] - H / 2) * t.d[0]) : 0;
+      const d0 = dist(fija), t1 = trazaSeccion(f, r, 1), pend = dist(t1) - d0, av = Math.max(0, r.avance ?? 0);
+      if (Math.abs(d0) > B / 2 + 0.3 && av > 0 && Math.abs(pend) > 1e-6) {
+        const sC = Math.min(av, Math.max(0, -d0 / pend)), tC = trazaSeccion(f, r, sC);
+        if (tC && Math.abs(dist(tC)) < Math.abs(d0)) { fija = tC; cortes[f.n] = sC; notas.push(Math.abs(dist(tC)) <= B / 2 + 0.3 ? `${f.abrev}${f.n} no corta el frente: se dibuja en la sección a ${sC.toFixed(1)} m detrás del frente, donde corta la labor.` : `${f.abrev}${f.n} no corta la labor en el último avance: se dibuja en su punto más cercano, a ${sC.toFixed(1)} m detrás del frente.`); }
+      }
+    }
     const azarF = f.abrev === 'SD' ? 0 : rnd(); // mismo orden de azar que antes: la red de diaclasas no cambia al mover una falla
     const offs = f.abrev === 'SD' ? (() => { const o: number[] = []; for (let c = c0 - R + rnd() * paso; c <= c0 + R; c += paso) o.push(c); return o; })() : [fija ? n[0] * fija.o[0] + n[1] * fija.o[1] : c0 + (azarF - 0.5) * B * 0.4];
     for (const c of offs) {
@@ -252,7 +262,7 @@ function calcular(r: Reporte): Analisis | null {
     const prof = dot([C[0] - real[b.ci]![0], C[1] - real[b.ci]![1]], nor[b.ci]!);
     if (prof < tD[b.ci]!) { b.cae = true; b.desatada = true; }
   }
-  return { bloques: bloques.map(({ id: _i, ci: _c, ...b }) => b), lineas, real, realD, nor, esp, zi, perno, shot, notas, phi };
+  return { bloques: bloques.map(({ id: _i, ci: _c, ...b }) => b), lineas, real, realD, nor, esp, zi, perno, shot, notas, cortes, phi };
 }
 
 /** Envolvente convexa (cadena monótona). */
@@ -299,7 +309,7 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
   const y0 = top - alto;
   const caja: Vista['caja'] = [-ancho / 2, y0, ancho / 2, top];
   const marco: P[] = [[caja[0], 0], [caja[2], 0], [caja[2], caja[3]], [caja[0], caja[3]]];
-  const prims: Prim[] = [], notas: string[] = [];
+  const prims: Prim[] = [], notas: string[] = [], rotF: Prim[] = [];
   const cC = colorTipo(rmr.CORONA ?? rmr.HI ?? rmr.HD);
   prims.push({ t: 'poly', pts: [[caja[0], caja[1]], [caja[2], caja[1]], [caja[2], caja[3]], [caja[0], caja[3]]], cerrado: true, relleno: '#FFFFFF' });
   prims.push({ t: 'poly', pts: marco, cerrado: true, relleno: cC, opac: 0.42 });
@@ -307,6 +317,17 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
   for (const l of a.lineas) {
     const st = estilo(l.fam);
     for (const [p, q] of tramos(l.a, l.b, marco, real, 200)) prims.push({ t: 'poly', pts: [p, q], borde: l.fam.abrev === 'SD' ? '#5B4636' : st.borde, ancho: l.fam.abrev === 'SD' ? 0.22 : st.ancho, opac: 1 });
+  }
+  // rótulo de cada falla, veta o contacto sobre su traza (arriba de la corona o en el borde de la ventana)
+  for (const l of a.lineas) if (l.fam.abrev !== 'SD') {
+    // punto de la traza en la roca, junto a la excavación (donde se lee mejor)
+    const tr = tramos(l.a, l.b, marco, real, 400); if (!tr.length) continue;
+    const ext = tr.flatMap(([u, w]) => [u, w]).filter(q => q[1] > 0.3);
+    if (!ext.length) continue;
+    const p = ext.reduce((m, q) => (Math.hypot(q[0], q[1] - H / 2) < Math.hypot(m[0], m[1] - H / 2) ? q : m), ext[0]!);
+    const st = estilo(l.fam), sC = a.cortes[l.fam.n];
+    const x = Math.min(caja[2] - (caja[2] - caja[0]) * 0.12, Math.max(caja[0] + (caja[2] - caja[0]) * 0.12, p[0])), y = Math.min(p[1], top - (top - caja[1]) * 0.12);
+    rotF.push({ t: 'texto', p: [x, y], s: `${l.fam.abrev}${l.fam.n} ${Math.round(l.fam.dip)}°/${dd3(l.fam.dipdir)}°${sC != null ? ` (a ${sC.toFixed(1)} m)` : ''}`, tam: compacto ? 4.4 : 5, negrita: true, color: st.borde, ancla: 'centro', fondo: true });
   }
   // zona de influencia
   const limite = a.real.map((p, i) => { const n = a.nor[i]!, d = n[1] > 0.5 ? zC : zH; return [p[0] + n[0] * d, p[1] + n[1] * d] as P; }).filter(p => p[1] > 0.05);
@@ -394,6 +415,7 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
     puestos.push(c);
     prims.push({ t: 'texto', p: [c[0], c[1] - 0.06], s: String(i + 1), tam: 3.6, negrita: true, color: '#111111', ancla: 'centro', fondo: true });
   });
+  prims.push(...rotF);
   for (const e of Object.entries(a.esp)) if (e[1].fuente !== 'medido') { notas.push(`Espaciamiento de ${nomFam(r, Number(e[0]))}: ${e[1].s} m (${e[1].fuente}); mídalo para un resultado más fino.`); }
   notas.push(...a.notas);
   return { prims, caja, notas };
@@ -402,10 +424,10 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
 /** Gráfico del factor de seguridad de cada cuña, antes (sin sostener) y después (con sostenimiento), en escala
  *  logarítmica, con las franjas de riesgo. Unidades del gráfico: x 0–100, y 0–60. */
 const orden = (a: Analisis) => [...a.bloques].sort((x, y) => x.fs0 - y.fs0 || (x.cae ? 0 : x.fs) - (y.cae ? 0 : y.fs) || y.peso - x.peso);
-export function graficoFS(r: Reporte, aspecto = 100 / 60): Vista | null {
+export function graficoFS(r: Reporte, aspecto = 100 / 60, compacto = false): Vista | null {
   const a = analizarCunas(r); if (!a || !a.bloques.length) return null;
   const bl = orden(a).slice(0, 40);
-  const AN = Math.max(70, 60 * aspecto), X0 = 9 * Math.min(1, 100 / AN) + 2, X1 = AN - 14, Y0 = 9, Y1 = 52, lo = Math.log10(0.1), hi = Math.log10(100);
+  const AN = Math.max(70, 60 * aspecto), X0 = 9 * Math.min(1, 100 / AN) + 2, X1 = AN - 14, Y0 = 9, Y1 = compacto ? 51 : 52, lo = Math.log10(0.1), hi = Math.log10(100);
   const Y = (fs: number) => Y0 + ((Math.log10(Math.min(100, Math.max(0.1, fs))) - lo) / (hi - lo)) * (Y1 - Y0);
   const prims: Prim[] = [{ t: 'poly', pts: [[0, 0], [AN, 0], [AN, 60], [0, 60]], cerrado: true, relleno: '#FFFFFF' }];
   const banda = (a0: number, a1: number, c: string) => prims.push({ t: 'poly', pts: [[X0, Y(a0)], [X1, Y(a0)], [X1, Y(a1)], [X0, Y(a1)]], cerrado: true, relleno: c, opac: 0.13 });
@@ -431,8 +453,8 @@ export function graficoFS(r: Reporte, aspecto = 100 / 60): Vista | null {
   prims.push({ t: 'poly', pts: [[X0, Y1], [X0, Y0], [X1, Y0]], borde: '#000000', ancho: 0.5 });
   prims.push({ t: 'texto', p: [X1 + 0.8, (Y(2) + Y1) / 2], s: 'RIESGO BAJO', tam: 4.4, negrita: true, ancla: 'izq', color: COLOR_RIESGO.BAJO });
   prims.push({ t: 'texto', p: [X1 + 0.8, (Y0 + Y(1.5)) / 2], s: 'RIESGO ALTO', tam: 4.4, negrita: true, ancla: 'izq', color: COLOR_RIESGO.ALTO });
-  prims.push({ t: 'texto', p: [X0, 56.5], s: 'FACTOR DE SEGURIDAD POR CUÑA (2D, por metro de labor)', tam: 6, negrita: true, ancla: 'izq', color: '#0D2A6B' });
-  prims.push({ t: 'texto', p: [X0, 53.3], s: 'Barra clara: antes del desatado (sin sostener) · barra fuerte: con shotcrete y pernos · D: cae y se desata', tam: 4.4, ancla: 'izq', color: '#333333' });
+  if (!compacto) prims.push({ t: 'texto', p: [X0, 56.5], s: 'FACTOR DE SEGURIDAD POR CUÑA (2D, por metro de labor)', tam: 6, negrita: true, ancla: 'izq', color: '#0D2A6B' });
+  prims.push({ t: 'texto', p: [X0, compacto ? 55.5 : 53.3], s: 'Barra clara: antes del desatado (sin sostener) · barra fuerte: con shotcrete y pernos · D: cae y se desata', tam: 4.4, ancla: 'izq', color: '#333333' });
   prims.push({ t: 'texto', p: [(X0 + X1) / 2, 1.6], s: 'Cuñas ordenadas de menor a mayor FS sin sostener (n° de la tabla)', tam: 4.4, ancla: 'centro', color: '#333333' });
   prims.push({ t: 'texto', p: [2.2, (Y0 + Y1) / 2], s: 'FS', tam: 5, negrita: true, ancla: 'centro' });
   return { prims, caja: [0, 0, AN, 60], notas: [] };

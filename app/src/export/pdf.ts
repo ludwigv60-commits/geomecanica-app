@@ -122,7 +122,7 @@ export async function dibujarFoto(doc: PDFDocument, page: PDFPage, negrita: PDFF
   const im = png ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
   const k = Math.min((bx1 - bx0) / im.width, (by1 - by0) / im.height);
   const w = im.width * k, h = im.height * k;
-  const x = bx0 + (bx1 - bx0 - w) / 2, y = H - by0 - h;
+  const x = bx0 + (bx1 - bx0 - w) / 2, y = H - by0 - h - (by1 - by0 - h) / 2;
   page.drawImage(im, { x, y, width: w, height: h });
   if (f.trazas) {
     const kt = w / f.trazas.w;

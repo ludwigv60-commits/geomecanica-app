@@ -21,13 +21,14 @@ export interface Vista { prims: Prim[]; caja: [number, number, number, number]; 
 export interface Manija { n: number; abrev: string; o: P; d: P; R: number; u: P; v: P }
 
 /** Traza en la sección del frente (x a la derecha, y desde el piso) del plano que pasa por pos (planta, a media altura). */
-export function trazaSeccion(f: { dip: number; dipdir: number; pos?: { s: number; t: number } }, r: { azimut: number | null; alto: number | null }): { o: P; d: P } | null {
+/** Traza del plano en la sección transversal a `sSec` m detrás del frente (0 = el frente). */
+export function trazaSeccion(f: { dip: number; dipdir: number; pos?: { s: number; t: number } }, r: { azimut: number | null; alto: number | null }, sSec = 0): { o: P; d: P } | null {
   if (!f.pos || r.azimut == null) return null;
   const H = r.alto ?? 5, az = rad(r.azimut), u: P = [Math.sin(az), Math.cos(az)], v: P = [Math.cos(az), -Math.sin(az)];
   const N = [Math.sin(rad(f.dip)) * Math.sin(rad(f.dipdir)), Math.sin(rad(f.dip)) * Math.cos(rad(f.dipdir)), Math.cos(rad(f.dip))] as const;
   const a = N[0] * v[0] + N[1] * v[1], nu = N[0] * u[0] + N[1] * u[1], b = N[2];
   // plano: a·(x − t0) − nu·s0 + b·(y − H/2) = 0, en la sección del frente (s = 0)
-  const c = a * f.pos.t + nu * f.pos.s + b * H / 2, n2 = a * a + b * b;
+  const c = a * f.pos.t + nu * (f.pos.s + sSec) + b * H / 2, n2 = a * a + b * b;
   if (n2 < 1e-9) return null; // plano paralelo al frente: no corta la sección
   const p0: P = [0, H / 2], k = (a * p0[0] + b * p0[1] - c) / n2;
   const o: P = [p0[0] - k * a, p0[1] - k * b], m = Math.sqrt(n2);
