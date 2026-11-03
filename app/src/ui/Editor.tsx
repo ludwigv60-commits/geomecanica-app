@@ -647,12 +647,12 @@ function Descargas({ r, listas, onEnviar }: { r: Reporte; listas: Listas; onEnvi
   };
   return (
     <section className="tarjeta">
-      <h3>Descargar el formato oficial lleno</h3>
+      <h3>1 · Formato AESA <small className="tenue">el reporte de siempre, sin combinar</small></h3>
       <div className="rejilla2">
-        <button className="btn primario" onClick={() => bajar('pdf')}>PDF</button>
-        <button className="btn primario" onClick={() => bajar('xlsx')}>Excel</button>
+        <button className="btn primario" onClick={() => bajar('pdf')}>📄 PDF formato</button>
+        <button className="btn primario" onClick={() => bajar('xlsx')}>📊 Excel formato</button>
       </div>
-      <h3>Reporte modelo <small className="tenue">ficha VG + formato, con cobertura · A4</small></h3>
+      <h3>2 · Reporte modelo <small className="tenue">formato + ficha VG en 1 hoja A4, con cobertura</small></h3>
       <div className="rejilla2">
         <button className="btn" onClick={() => bajar('pdf', true)}>📄 PDF modelo</button>
         <button className="btn" onClick={() => bajar('xlsx', true)}>📊 Excel modelo</button>
