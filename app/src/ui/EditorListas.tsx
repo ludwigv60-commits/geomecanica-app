@@ -2,7 +2,7 @@ import { NumIn } from './NumIn';
 import { olvidarSesion } from '../ia/onnx';
 import { useEffect, useState } from 'react';
 import type { Listas } from '../model';
-import { RAMPAS, type ParamCobertura, type Rampa } from '../core/cobertura';
+import { COBERTURAS_VG, RAMPAS, type ParamCobertura, type Rampa } from '../core/cobertura';
 import { guardarConfig, leerConfig } from '../store';
 
 const NOMBRES: Record<'labores' | 'supervisores' | 'litologias' | 'riesgos', string> = { labores: 'Labores', supervisores: 'Supervisores de geomecánica', litologias: 'Litologías', riesgos: 'Niveles de riesgo' };
@@ -43,8 +43,8 @@ export function EditorListas({ listas, historialBD = 0, onHistorial, onGuardar, 
         <ModeloPrivado />
         <section className="tarjeta">
           <h3>Cobertura por rampa</h3>
-          <p className="ayuda">Como la hoja "coberturas" del formato VG: cobertura = (base + PK − PK de inicio) · sen(ángulo). Son datos de la mina: quedan solo en este celular.</p>
-          {RAMPAS.map(rp => { const c = l.coberturas?.[rp]; const pon = (k: keyof ParamCobertura, v: number | null) => {
+          <p className="ayuda">Como la hoja "coberturas" del formato VG: cobertura = (base + PK − PK de inicio) · sen(ángulo). Ya vienen los valores de los formatos VG; cámbielos solo si la tabla cambia.</p>
+          {RAMPAS.map(rp => { const c = l.coberturas?.[rp] ?? COBERTURAS_VG[rp]; const pon = (k: keyof ParamCobertura, v: number | null) => {
             const n: Partial<ParamCobertura> = { ...c, [k]: v ?? undefined };
             const t = { ...l.coberturas } as Partial<Record<Rampa, ParamCobertura>>;
             if (n.base == null && n.pkInicio == null && n.angulo == null) delete t[rp]; else t[rp] = { base: n.base ?? 0, pkInicio: n.pkInicio ?? 0, angulo: n.angulo ?? 0 };

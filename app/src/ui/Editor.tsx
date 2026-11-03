@@ -620,7 +620,7 @@ function Descargas({ r, listas, onEnviar }: { r: Reporte; listas: Listas; onEnvi
         }
         const { nombreModelo } = await import('../export/modelo');
         const nombre = nombreModelo(r, tipo), mime = tipo === 'xlsx' ? MIME_XLSX : MIME_PDF, t = tipo === 'xlsx' ? 'Excel' : 'PDF';
-        const rp = rampaDe(r), aviso = rp && !listas.coberturas?.[rp] ? ` Ojo: sin cobertura (falta la tabla de la rampa ${rp} en ⚙️ Listas).` : !rp ? ' Ojo: sin cobertura (marque la rampa).' : '';
+        const rp = rampaDe(r), aviso = !rp ? ' Ojo: sin cobertura (marque la rampa).' : '';
         const res = await entregar(datos, nombre, mime);
         if (res === 'tocar') { setListo({ datos, nombre, mime, tipo: `${t} del reporte modelo` }); setMsg(`Listo. Toque el botón para guardar o enviar.${aviso}`); return; }
         setMsg(res === 'descargado' ? 'Archivo descargado.' + aviso : aviso.trim() || null);

@@ -15,7 +15,9 @@ describe('cobertura', () => {
     const c = cobertura({ rampa: 'Sur', desde: '0+822.8', hasta: '0+826.7' }, T)!;
     expect(c.pk).toBeCloseTo(824.75); expect(c.m).toBeCloseTo(Math.round((80 + 824 - 10) * s * 10) / 10);
     expect(cobertura({ rampa: '', desde: '1', hasta: '' }, T)).toBeNull();
-    expect(cobertura({ rampa: 'Norte', desde: '1', hasta: '' }, {})).toBeNull();
+    // sin tabla en Listas usa la integrada de los formatos VG
+    expect(cobertura({ rampa: 'Norte', desde: '0+943.6', hasta: '0+947.3' }, {})!.m).toBe(132.5);
+    expect(cobertura({ rampa: 'Sur', desde: '0+943.6', hasta: '0+947.3' })!.m).toBe(129);
   });
   it('deduce la rampa del nombre', () => {
     expect(rampaDeLabor('Rampa Norte')).toBe('Norte'); expect(rampaDeLabor('RP SUR')).toBe('Sur'); expect(rampaDeLabor('Cámara 2')).toBe('');
