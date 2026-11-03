@@ -289,7 +289,7 @@ export function resumen(a: Analisis) {
 
 const nomZona = (z: Bloque['zona']) => (z === 'CORONA' ? 'corona' : z === 'HI' ? 'H.I.' : 'H.D.');
 const nomFam = (r: Reporte, n: number) => { const f = familiasMedidas(r).find(x => x.n === n); return f ? `${f.abrev}${n}` : `${n}`; };
-export const fsTxt = (fs: number) => (fs >= 99 ? '>99' : fs < 0.05 ? '0' : fs.toFixed(fs < 10 ? 2 : 1));
+export const fsTxt = (fs: number) => (fs > 10 ? '>10' : fs < 0.05 ? '0' : fs.toFixed(2));
 
 /** Vista de la sección para el análisis: ANTES del desatado (sin sostener) o DESPUÉS (shotcrete + pernos).
  *  `aspecto` = ancho/alto del recuadro donde va (la mitad del recuadro del formato ≈ 136/215). */

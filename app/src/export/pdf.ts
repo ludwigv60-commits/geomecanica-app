@@ -111,7 +111,7 @@ export async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
 
 
 /** Dibuja una foto con sus trazas y rótulos centrada en la caja [x0, y0, x1, y1] (puntos, y hacia abajo). */
-export async function dibujarFoto(doc: PDFDocument, page: PDFPage, negrita: PDFFont, r: Reporte, f: FotoZona, [bx0, by0, bx1, by1]: [number, number, number, number]): Promise<boolean> {
+export async function dibujarFoto(doc: PDFDocument, page: PDFPage, negrita: PDFFont, r: Reporte, f: FotoZona, [bx0, by0, bx1, by1]: [number, number, number, number], opc: { grosor?: number; letra?: number } = {}): Promise<boolean> {
   const H = page.getHeight();
   let bytes: Uint8Array, png = f.data.startsWith('data:image/png');
   if (f.data.startsWith('data:')) bytes = Uint8Array.from(atob(f.data.split(',')[1] ?? ''), ch => ch.charCodeAt(0));
@@ -130,14 +130,14 @@ export async function dibujarFoto(doc: PDFDocument, page: PDFPage, negrita: PDFF
     for (const sgm of f.trazas.segmentos) {
       const color = hex(colorFamilia(r.familias, sgm.familia));
       const pts = sgm.pts ?? [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]];
-      for (let i = 1; i < pts.length; i++) page.drawLine({ start: P(pts[i - 1]![0], pts[i - 1]![1]), end: P(pts[i]![0], pts[i]![1]), thickness: 1.8, color });
+      for (let i = 1; i < pts.length; i++) page.drawLine({ start: P(pts[i - 1]![0], pts[i - 1]![1]), end: P(pts[i]![0], pts[i]![1]), thickness: opc.grosor ?? 1.8, color });
     }
     for (const ro of rotulos(f.trazas.segmentos)) {
-      const t = limpiar(textoFamilia(r.familias, ro.familia)); const size = 7.5;
+      const t = limpiar(textoFamilia(r.familias, ro.familia)); const size = opc.letra ?? 7.5, pd = size * 0.3;
       const tw = negrita.widthOfTextAtSize(t, size); const c = P(ro.x, ro.y);
       const a = -ro.ang * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
-      const ox = -tw / 2 - 3, oy = -size / 2 - 2; // esquina inferior izquierda de la caja, girada
-      page.drawRectangle({ x: c.x + ox * cos - oy * sin, y: c.y + ox * sin + oy * cos, width: tw + 6, height: size + 4, color: rgb(1, 1, 1), borderColor: rgb(0.2, 0.2, 0.2), borderWidth: 0.4, rotate: degrees(-ro.ang) });
+      const ox = -tw / 2 - pd, oy = -size / 2 - pd * 0.6; // esquina inferior izquierda de la caja, girada
+      page.drawRectangle({ x: c.x + ox * cos - oy * sin, y: c.y + ox * sin + oy * cos, width: tw + 2 * pd, height: size + 1.2 * pd, color: rgb(1, 1, 1), opacity: 0.85, borderColor: rgb(0.2, 0.2, 0.2), borderWidth: 0.4, rotate: degrees(-ro.ang) });
       const tx = -tw / 2, ty = -size * 0.35;
       page.drawText(t, { x: c.x + tx * cos - ty * sin, y: c.y + tx * sin + ty * cos, size, font: negrita, color: rgb(0, 0, 0), rotate: degrees(-ro.ang) });
     }

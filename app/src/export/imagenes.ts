@@ -3,7 +3,7 @@ import type { FotoZona, Reporte } from '../model';
 import { colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
 import { calcular } from '../calc';
 import { vistaPlanta, vistaSeccion, type Vista } from './croquis';
-import { graficoFS, vistaCunas } from './cunas2d';
+import { vistaCunas } from './cunas2d';
 
 /** Recuadros del formato .xlsx (A37:L55 y M37:X55) medidos en píxeles de Excel. */
 export const CAJA_PLANTA = { w: 565, h: 418 }, CAJA_SECCION = { w: 555, h: 418 };
@@ -53,14 +53,14 @@ export async function vistasPng(r: Reporte, modelo = false): Promise<{ planta?: 
   const out: { planta?: Uint8Array; seccion?: Uint8Array; fs?: Uint8Array; errores?: string[] } = {};
   const err = (q: string, e: unknown) => { (out.errores ??= []).push(`${q}: ${e instanceof Error ? e.message : String(e)}`); };
   const k = 2; // doble resolución para que se vea nítido al imprimir
-  const [cP, cS] = modelo ? [{ w: 272, h: 165 }, { w: 346, h: 143 }] : [CAJA_PLANTA, CAJA_SECCION];
+  const [cP, cS] = modelo ? [{ w: 420, h: 165 }, { w: 594, h: 176 }] : [CAJA_PLANTA, CAJA_SECCION];
   const wP = cP.w * k, hP = cP.h * k, wS = cS.w * k, hS = cS.h * k;
   try {
     const pl = vistaPlanta(r, rmr, true);
     if (pl) out.planta = await lienzoAPng(wP, hP, ctx => dibujarCanvas(ctx, pl, 0, 0, wP, hP));
   } catch (e) { err('planta', e); }
   try {
-    const a = vistaCunas(r, rmr, 'antes', (wS / 2) / hS, modelo), d = vistaCunas(r, rmr, 'despues', (wS / 2) / hS, modelo);
+    const a = vistaCunas(r, rmr, 'antes', (wS / 2) / hS), d = vistaCunas(r, rmr, 'despues', (wS / 2) / hS);
     if (a && d) out.seccion = await lienzoAPng(wS, hS, ctx => {   // antes | después del sostenimiento
       dibujarCanvas(ctx, a, 0, 0, wS / 2, hS); dibujarCanvas(ctx, d, wS / 2, 0, wS / 2, hS);
       ctx.strokeStyle = '#000'; ctx.lineWidth = 1.2 * k; ctx.beginPath(); ctx.moveTo(wS / 2, 0); ctx.lineTo(wS / 2, hS); ctx.stroke();
@@ -70,10 +70,6 @@ export async function vistasPng(r: Reporte, modelo = false): Promise<{ planta?: 
       out.seccion = await lienzoAPng(wS, hS, ctx => dibujarCanvas(ctx, se, 0, 0, wS, hS));
     }
   } catch (e) { err('sección', e); }
-  if (modelo) try {
-    const wF = 247 * k, hF = 88 * k, g = graficoFS(r, wF / hF, true);
-    if (g) out.fs = await lienzoAPng(wF, hF, ctx => dibujarCanvas(ctx, g, 0, 0, wF, hF));
-  } catch (e) { err('FS', e); }
   return out;
 }
 
@@ -91,7 +87,7 @@ export async function fotoConTrazas(r: Reporte, f: FotoZona, maxLado = 1600): Pr
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     for (const g of f.trazas.segmentos) {
       const pts = g.pts ?? [[g.x1, g.y1], [g.x2, g.y2]];
-      ctx.strokeStyle = colorFamilia(r.familias, g.familia); ctx.lineWidth = 3 * s; ctx.beginPath();
+      ctx.strokeStyle = colorFamilia(r.familias, g.familia); ctx.lineWidth = 7 * s; ctx.beginPath();
       pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * kt, y * kt) : ctx.moveTo(x * kt, y * kt))); ctx.stroke();
     }
     ctx.font = `700 ${Math.round(13 * s)}px Helvetica, Arial, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
