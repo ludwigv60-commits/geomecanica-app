@@ -354,10 +354,18 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
       prims.push({ t: 'poly', pts: zig, borde: '#1F4E9E', ancho: 0.35 });
     }
     if (a.perno) {
-      let ult = -Infinity, s = 0;
+      // pernos de UNA fila: si la indicación dice "Filas = 7x8" (tresbolillo) se dibuja la fila mayor con
+      // ese número exacto de pernos, repartidos parejo en el contorno sostenido; si no, cada `esp` m
+      const mf = sost.match(/filas?\s*=?\s*(\d+)\s*[x×]\s*(\d+)/) ?? sost.match(/(\d+)\s*pernos?\s*(?:por|\/)\s*fila/);
+      const nFila = mf ? Math.max(Number(mf[1]), Number(mf[2] ?? 0)) : 0;
+      const acum: number[] = [0];
+      for (let i = 1; i < real.length; i++) acum.push(acum[i - 1]! + (real[i]![1] >= H * 0.18 && real[i - 1]![1] >= H * 0.18 ? Math.hypot(real[i]![0] - real[i - 1]![0], real[i]![1] - real[i - 1]![1]) : 0));
+      const Ssost = acum.at(-1)!, metas = nFila ? Array.from({ length: nFila }, (_, k) => (Ssost * (k + 0.5)) / nFila) : null;
+      let ult = -Infinity, s = 0, km = 0;
       for (let i = 1; i < real.length - 1; i++) {
         s += Math.hypot(real[i]![0] - real[i - 1]![0], real[i]![1] - real[i - 1]![1]);
-        const p = real[i]!, n = a.nor[i]!; if (p[1] < H * 0.18 || s - ult < a.perno.esp) continue; ult = s;
+        const p = real[i]!, n = a.nor[i]!; if (p[1] < H * 0.18) continue;
+        if (metas) { if (km >= metas.length || acum[i]! < metas[km]!) continue; km++; } else { if (s - ult < a.perno.esp) continue; ult = s; }
         prims.push({ t: 'poly', pts: [[p[0] - n[0] * e, p[1] - n[1] * e], [p[0] + n[0] * a.perno.largo, p[1] + n[1] * a.perno.largo]], borde: '#000000', ancho: 1.1 });
         prims.push({ t: 'poly', pts: [[p[0] - n[0] * e - n[1] * 0.11, p[1] - n[1] * e + n[0] * 0.11], [p[0] - n[0] * e + n[1] * 0.11, p[1] - n[1] * e - n[0] * 0.11]], borde: '#000000', ancho: 1.4 });
       }
@@ -366,7 +374,7 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
   // títulos
   const w = caja[2] - caja[0], xL = caja[0] + w * 0.04, ln = alto * 0.03;
   const tit = compacto ? (modo === 'antes' ? 'ANTES DEL DESATADO' : 'DESPUÉS: SOSTENIDO') : modo === 'antes' ? 'ANTES DEL DESATADO' : 'DESPUÉS: CON SOSTENIMIENTO';
-  const sub = modo === 'antes' ? 'sin pernos ni shotcrete · análisis de cuñas' : [a.shot > 0 ? `shotcrete ${(a.shot * 100).toFixed(0)} cm` : 'sin shotcrete', a.perno ? `${a.perno.tipo.toLowerCase()} ${a.perno.pies != null ? a.perno.pies + "'" : a.perno.largo.toFixed(1) + ' m'} ${a.perno.esp}×${a.perno.esp} m` : 'sin pernos', /malla/.test(sost) ? 'malla' : ''].filter(Boolean).join(' · ');
+  const sub = modo === 'antes' ? 'sin pernos ni shotcrete · análisis de cuñas' : [a.shot > 0 ? `shotcrete ${(a.shot * 100).toFixed(0)} cm` : 'sin shotcrete', a.perno ? `${a.perno.tipo.toLowerCase()} ${a.perno.pies != null ? a.perno.pies + "'" : a.perno.largo.toFixed(1) + ' m'} ${a.perno.esp}×${a.perno.esp} m${(() => { const m = sost.match(/filas?\s*=?\s*(\d+)\s*[x×]\s*(\d+)/); return m ? ` · filas ${m[1]}/${m[2]} (se ve la de ${Math.max(+m[1]!, +m[2]!)})` : ''; })()}` : 'sin pernos', /malla/.test(sost) ? 'malla' : ''].filter(Boolean).join(' · ');
   prims.push({ t: 'texto', p: [xL, top - ln * 1.1], s: tit, tam: compacto ? 5.2 : 6.2, negrita: true, color: modo === 'antes' ? '#9E1B1B' : '#1B5E20', ancla: 'izq', fondo: true });
   prims.push({ t: 'texto', p: [xL, top - ln * 2.05], s: sub, tam: compacto ? 3.8 : 4.6, color: '#222222', ancla: 'izq', fondo: true });
   // panel de resultados bajo el piso (en modo compacto el resumen va en la leyenda de la hoja)
