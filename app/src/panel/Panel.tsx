@@ -6,7 +6,7 @@ import { LISTAS_INICIALES, nuevoReporte, type FotoZona, type Listas, type Report
 import { calcular } from '../calc';
 import { TIPOS, tipoRoca } from '../core/rmr';
 import { usarEntrega } from '../export/compartir';
-import { leerPaquete } from '../export/envio';
+import { APP_ORIGEN, APP_URL, leerPaquete, type MsgEnvio, type Paquete } from '../export/envio';
 
 /* Capacidades del artefacto (tipos mínimos de lo que se usa). */
 type Snap = { id: string; exists: boolean; data(): Record<string, unknown> | undefined };
@@ -94,18 +94,26 @@ export function Panel() {
 
   const subir = async (files: FileList | null) => {
     if (!files?.length || !db) return;
+    try { await importar(await Promise.all([...files].map(async f => leerPaquete(await f.text())))); }
+    catch (e) { setMsg(`No se pudo subir: ${(e as Error).message}`); }
+  };
+
+  /** Guarda en la base los mapeos de uno o más envíos. Devuelve los ids guardados y el texto del resultado. */
+  const importar = async (paquetes: Paquete[], avance: (t: string) => void = () => {}): Promise<{ ids: string[]; texto: string }> => {
+    if (!db) throw new Error('Sin conexión con la base del panel');
     setOcupado(true);
     let nuevos = 0, actualizados = 0, saltados = 0, fotosSub = 0;
+    const ids: string[] = [];
     const listasNuevas: Partial<Listas> = {};
     try {
-      for (const file of [...files]) {
-        const p = leerPaquete(await file.text());
+      for (const p of paquetes) {
         for (const [k, v] of Object.entries(p.listas ?? {})) if (Array.isArray(v)) (listasNuevas as Record<string, unknown[]>)[k] = [...new Set([...((listasNuevas as Record<string, unknown[]>)[k] ?? []), ...v])];
         for (const [i, r] of p.reportes.entries()) {
-          setMsg(`Subiendo ${r.labor || 'mapeo'} ${r.desde ?? ''} (${i + 1} de ${p.reportes.length})…`);
+          const t = `Subiendo ${r.labor || 'mapeo'} ${r.desde ?? ''} (${i + 1} de ${p.reportes.length})…`;
+          setMsg(t); avance(t);
           const ex = ultimos.current.find(m => m.id === r.id);
           // si alguien lo editó en el panel después de la última modificación del celular, se respeta el panel
-          if (ex?.panel?.editadoEn && ex.panel.editadoEn > (r.modificado ?? '')) { saltados++; continue; }
+          if (ex?.panel?.editadoEn && ex.panel.editadoEn > (r.modificado ?? '')) { saltados++; ids.push(r.id); continue; }
           const fotos: FotoZona[] = [];
           for (const f of r.fotos ?? []) {
             const prev = ex?.fotos?.find(x => x.id === f.id && !x.data.startsWith('data:'));
@@ -116,7 +124,7 @@ export function Panel() {
             fotos.push({ ...f, data: up.url }); fotosSub++;
           }
           await escribir(r.id, { ...r, importado: undefined, fotos, panel: { subidoPor: uid ?? undefined, subidoEn: new Date().toISOString(), dispositivo: p.dispositivo } });
-          ex ? actualizados++ : nuevos++;
+          ex ? actualizados++ : nuevos++; ids.push(r.id);
         }
       }
       if (Object.keys(listasNuevas).length) {
@@ -124,11 +132,39 @@ export function Panel() {
         for (const [k, v] of Object.entries(listasNuevas)) l[k] = Array.isArray(l[k]) ? [...new Set([...(l[k] as unknown[]), ...(v as unknown[])])] : v;
         await db.doc('config/listas').set(json(l)).catch(() => {});
       }
-      setMsg(`Listo: ${nuevos} nuevo(s), ${actualizados} actualizado(s)${saltados ? `, ${saltados} sin cambiar (se editaron aquí después)` : ''} · ${fotosSub} foto(s) subidas.${!assets ? ' No tiene permiso para subir fotos: pida acceso de colaborador.' : ''}`);
+      const texto = `Listo: ${nuevos} nuevo(s), ${actualizados} actualizado(s)${saltados ? `, ${saltados} sin cambiar (se editaron aquí después)` : ''} · ${fotosSub} foto(s) subidas.${!assets ? ' No tiene permiso para subir fotos: pida acceso de colaborador.' : ''}`;
+      setMsg(texto);
+      return { ids, texto };
     } catch (e) {
       const m = (e as DbErr).message ?? String(e);
-      setMsg(`No se pudo subir: ${m}${(e as DbErr).code === 'invalid_argument' ? ' (puede que no tenga permiso para escribir: pida acceso de colaborador al dueño del panel)' : ''}`);
+      throw new Error(`${m}${(e as DbErr).code === 'invalid_argument' ? ' (puede que no tenga permiso para escribir: pida acceso de colaborador al dueño del panel)' : ''}`);
     } finally { setOcupado(false); }
+  };
+
+  /** "📲 Recibir del celular": abre la app en otra ventana y ella pasa sus mapeos pendientes por mensaje. */
+  const ventana = useRef<Window | null>(null);
+  const importarRef = useRef(importar); importarRef.current = importar;
+  useEffect(() => {
+    const alRecibir = async (e: MessageEvent) => {
+      const w = ventana.current;
+      if (!w || e.source !== w || e.origin !== APP_ORIGEN) return;
+      const m = e.data as MsgEnvio;
+      const responder = (x: MsgEnvio) => w.postMessage(x, APP_ORIGEN);
+      if (m?.tipo === 'geo-listo') { setMsg(m.pendientes ? `Recibiendo ${m.pendientes} mapeo(s) del celular…` : 'Revisando los mapeos del celular…'); responder({ tipo: 'geo-pedir' }); }
+      else if (m?.tipo === 'geo-paquete') {
+        try {
+          const r = await importarRef.current([leerPaquete(m.paquete)], texto => responder({ tipo: 'geo-progreso', texto }));
+          responder({ tipo: 'geo-recibido', ids: r.ids, enviadoEn: m.paquete.enviadoEn, texto: r.texto });
+        } catch (x) { const t = `No se pudo guardar: ${(x as Error).message}`; setMsg(t); responder({ tipo: 'geo-error', texto: t }); }
+      } else if (m?.tipo === 'geo-recibido' && !m.ids.length) setMsg(`Del celular: ${m.texto}`);
+    };
+    addEventListener('message', alRecibir);
+    return () => removeEventListener('message', alRecibir);
+  }, []);
+  const recibir = () => {
+    const w = window.open(`${APP_URL}?panel=1`, '_blank');
+    if (!w) { setMsg('El navegador no dejó abrir la app. Permita ventanas emergentes para este panel o use "📥 Subir mapeos" con el archivo.'); return; }
+    ventana.current = w; setMsg('Abriendo la app del celular…');
   };
 
   const borrar = async (r: Reporte) => {
@@ -185,7 +221,8 @@ export function Panel() {
       </header>
       <main className="panel-cuerpo">
         <section className="panel-barra">
-          <label className={`btn primario panel-subir${ocupado || !db ? ' apagado' : ''}`}>📥 Subir mapeos
+          <button className="btn primario" disabled={ocupado || !db} onClick={recibir}>📲 Recibir del celular</button>
+          <label className={`btn panel-subir${ocupado || !db ? ' apagado' : ''}`}>📥 Subir mapeos
             <input id="subir" type="file" accept=".json,application/json,text/plain" multiple hidden disabled={ocupado || !db} onChange={e => { subir(e.target.files); e.target.value = ''; }} /></label>
           <input id="buscar" className="panel-buscar" placeholder="Buscar labor, PK, supervisor, fecha…" value={q} onChange={e => setQ(e.target.value)} />
           <select id="labor" value={labor} onChange={e => setLabor(e.target.value)}><option value="">Todas las labores</option>{labores.map(l => <option key={l}>{l}</option>)}</select>
