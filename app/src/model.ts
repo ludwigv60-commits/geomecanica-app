@@ -28,6 +28,8 @@ export interface Reporte {
   foto?: string;           // foto del frente (JPEG reducido)
   sugeridos?: string[];
   importado?: boolean;     // viene de la BD de mapeos (historial, solo lectura)
+  enviado?: string;        // fecha en que se preparó el envío al panel de mapeos
+  panel?: { subidoPor?: string; subidoEn?: string; dispositivo?: string; editadoEn?: string };
   sobreexc?: Partial<Record<Zona, number | null>>; // m medidos: + sobreexcavación, − subexcavación
   trazasFoto?: Trazas;     // (versión anterior, se migra a fotos)
   fotos?: FotoZona[];    // campos llenados por la IA y aún no confirmados

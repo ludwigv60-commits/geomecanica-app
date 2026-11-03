@@ -102,8 +102,11 @@ async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
       page = doc.addPage([W, H]); slot = 0;
       page.drawText(limpiar(`Anexo: fotos de campo · ${r.labor} ${r.desde}${r.hasta ? ` a ${r.hasta}` : ''} · ${r.fecha}`), { x: m, y: H - m, size: 10, font: negrita });
     }
-    const bytes = Uint8Array.from(atob(f.data.split(',')[1] ?? ''), ch => ch.charCodeAt(0));
-    const im = f.data.startsWith('data:image/png') ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+    // la foto viene incrustada (celular) o como enlace a un archivo (panel de mapeos)
+    let bytes: Uint8Array, png = f.data.startsWith('data:image/png');
+    if (f.data.startsWith('data:')) bytes = Uint8Array.from(atob(f.data.split(',')[1] ?? ''), ch => ch.charCodeAt(0));
+    else { const resp = await fetch(f.data); if (!resp.ok) continue; png = (resp.headers.get('content-type') ?? '').includes('png'); bytes = new Uint8Array(await resp.arrayBuffer()); }
+    const im = png ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
     const k = Math.min((W - 2 * m) / im.width, (altoCaja - 24) / im.height);
     const w = im.width * k, h = im.height * k;
     const top = H - m - 20 - slot * altoCaja;
@@ -175,7 +178,7 @@ function anexoCunas(doc: PDFDocument, font: PDFFont, negrita: PDFFont, r: Report
   const T = (s: string, x: number, y: number, size: number, f = font, color = rgb(0, 0, 0)) => page.drawText(limpiar(s), { x, y: Hp - y, size, font: f, color });
   T(`ANÁLISIS DE CUÑAS EN LA SECCIÓN · ${r.labor} ${r.desde}${r.hasta ? ` a ${r.hasta}` : ''} · ${r.fecha}`, m, m + 4, 10.5, negrita, hex('#0D2A6B'));
   const rs = resumen(a);
-  partirLineas(limpiar(`${a.bloques.length} cuñas potenciales dentro de la zona de influencia${a.zi ? ` (${Math.round(a.zi.pct * 100)} %, roca ${a.zi.tipo})` : ''}. Antes del desatado: ${rs.caen} CAEN (FS<1, ${rs.pesoCae.toFixed(2)} t/m; ${rs.caida} en caída libre), ${rs.antes.ALTO - rs.caen} ALTO, ${rs.antes.MEDIO} MEDIO, ${rs.antes.BAJO} BAJO. Después del desatado quedan ${rs.quedan}; con sostenimiento FS mínimo ${fsTxt(rs.fsMin ?? 0)}: ${rs.despues.ALTO} ALTO, ${rs.despues.MEDIO} MEDIO, ${rs.despues.BAJO} BAJO.`), font, 7, W - 2 * m)
+  partirLineas(limpiar(`${a.bloques.length} cuñas potenciales dentro de la zona de influencia${a.zi ? ` (${Math.round(a.zi.pct * 100)} %, roca ${a.zi.tipo})` : ''}. Antes del desatado: ${rs.caen} CAEN (FS<1, ${rs.pesoCae.toFixed(2)} t/m; ${rs.caida} en caída libre), ${rs.antes.ALTO - rs.caen} ALTO, ${rs.antes.MEDIO} MEDIO, ${rs.antes.BAJO} BAJO. El desatado perfila el contorno y saca ${rs.desatadas} cuñas en total; quedan ${rs.quedan}; con sostenimiento FS mínimo ${fsTxt(rs.fsMin ?? 0)}: ${rs.despues.ALTO} ALTO, ${rs.despues.MEDIO} MEDIO, ${rs.despues.BAJO} BAJO.`), font, 7, W - 2 * m)
     .forEach((l, i) => T(l, m, m + 17 + i * 8.5, 7));
   const y0 = m + 34, hV = 330, wV = (W - 2 * m - 8) / 2;
   const va = vistaCunas(r, rmr, 'antes', wV / hV), vd = vistaCunas(r, rmr, 'despues', wV / hV);
@@ -196,7 +199,7 @@ function anexoCunas(doc: PDFDocument, font: PDFFont, negrita: PDFFont, r: Report
     for (const [t, w] of cols) { page.drawRectangle({ x, y: Hp - yT - fa, width: w * esc, height: fa, color: hex('#0D2A6B') }); T(t, x + 1.2, yT + fa - 2.4, tam, negrita, rgb(1, 1, 1)); x += w * esc; }
     lista.forEach((f, i) => {
       const y = yT + fa * (i + 1); let x1 = x0;
-      const vals = [String(f.n), f.zona, f.familias, f.prof.toFixed(2), f.peso.toFixed(2), f.modo, fsTxt(f.fs0), f.cae ? 'CAE' : f.riesgo0, f.cae ? 'desatada' : fsTxt(f.fs), f.cae ? '-' : f.riesgo];
+      const vals = [String(f.n), f.zona, f.familias, f.prof.toFixed(2), f.peso.toFixed(2), f.modo, fsTxt(f.fs0), f.cae && !f.desatada ? 'CAE' : f.riesgo0, f.cae ? 'desatada' : fsTxt(f.fs), f.cae ? '-' : f.riesgo];
       if (i % 2) page.drawRectangle({ x: x0, y: Hp - y - fa, width: anchoT * esc, height: fa, color: hex('#F2F4F8') });
       vals.forEach((v, k) => {
         const w = cols[k]![1] * esc, esR = k === 7 || k === 9;

@@ -19,9 +19,9 @@ import { aplicarPlantilla, plantillaTipo, revisarTipo } from '../ia/plantilla-ro
 import type { TipoRoca } from '../core/rmr';
 
 
-type Props = { inicial: Reporte; listas: Listas; historial: Reporte[]; onGuardar: (r: Reporte) => Promise<void>; onSalir: () => void; onBase?: () => void };
+type Props = { inicial: Reporte; listas: Listas; historial: Reporte[]; onGuardar: (r: Reporte) => Promise<void>; onSalir: () => void; onBase?: () => void; modoInicial?: 'campo' | 'detalle'; textoGuardado?: string; onEnviar?: (r: Reporte) => void };
 
-export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase }: Props) {
+export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase, modoInicial, textoGuardado = 'Guardado en el celular', onEnviar }: Props) {
   const [msgBase, setMsgBase] = useState<string | null>(null);
   const [midiendo, setMidiendo] = useState<number | null>(null);
   const [enCadena, setEnCadena] = useState(false); // medir pendientes en orden
@@ -29,7 +29,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase 
   const [abierta, setAbierta] = useState<string | null>(inicial.labor ? null : 'cab');
   const [mismoEnZonas, setMismo] = useState(true);
   const [estado, setEstado] = useState('Guardado');
-  const [modo, setModo] = useState<'campo' | 'detalle'>(inicial.importado ? 'detalle' : 'campo');
+  const [modo, setModo] = useState<'campo' | 'detalle'>(modoInicial ?? (inicial.importado ? 'detalle' : 'campo'));
   const [paso, setPaso] = useState(0);
   const [midiendoAz, setMidiendoAz] = useState(false);
   const c = useMemo(() => calcular(r), [r]);
@@ -53,7 +53,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase 
   useEffect(() => {
     if (primera.current) { primera.current = false; return; }
     setEstado('Guardando…');
-    const t = setTimeout(() => onGuardar(r).then(() => setEstado('Guardado en el celular')), 400);
+    const t = setTimeout(() => onGuardar(r).then(() => setEstado(textoGuardado), e => setEstado(`No se guardó: ${(e as Error)?.message ?? e}`)), 400);
     return () => clearTimeout(t);
   }, [r]);
 
@@ -223,7 +223,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase 
                 </div>
                 {rs && <div className="resumen-cunas">
                   <div className="rc antes"><small>Antes del desatado</small><b>{an!.bloques.length} cuñas</b><span>CAEN {rs.caen} · ALTO {rs.antes.ALTO - rs.caen} · MEDIO {rs.antes.MEDIO} · BAJO {rs.antes.BAJO}</span></div>
-                  <div className={`rc ${rs.despues.ALTO ? 'mal' : rs.despues.MEDIO ? 'medio' : 'bien'}`}><small>Desatado y sostenido</small><b>{rs.quedan ? `FS mín ${fsTxt(rs.fsMin ?? 0)}` : 'Sin cuñas sueltas'}</b><span>{rs.caen} desatadas · quedan {rs.quedan}: ALTO {rs.despues.ALTO} · MEDIO {rs.despues.MEDIO} · BAJO {rs.despues.BAJO}</span></div>
+                  <div className={`rc ${rs.despues.ALTO ? 'mal' : rs.despues.MEDIO ? 'medio' : 'bien'}`}><small>Desatado y sostenido</small><b>{rs.quedan ? `FS mín ${fsTxt(rs.fsMin ?? 0)}` : 'Sin cuñas sueltas'}</b><span>{rs.desatadas} desatadas · quedan {rs.quedan}: ALTO {rs.despues.ALTO} · MEDIO {rs.despues.MEDIO} · BAJO {rs.despues.BAJO}</span></div>
                 </div>}
                 {gf && <div className="grafico-fs" dangerouslySetInnerHTML={{ __html: aSvg(gf, 600, 353) }} />}
                 {(va.notas.length > 0) && <ul className="tenue">{va.notas.map((n, i) => <li key={i}>{n}</li>)}</ul>}
@@ -351,7 +351,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase 
               <input placeholder="Nombre" value={f.nombre} onChange={e => set('firmas', r.firmas.map((x, j) => j === i ? { ...x, nombre: e.target.value, fecha: x.fecha || r.fecha } : x))} /></div>
           ))}
         </section>
-        <Resumen r={r} c={c} />
+        <Resumen r={r} c={c} onEnviar={onEnviar} />
         <button className="btn" onClick={() => { setModo('detalle'); window.scrollTo({ top: 0 }); }}>Ver y editar todo el formato</button>
       </>}
     </main>
@@ -497,7 +497,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase 
         <Seccion titulo="Consejos de la IA" resumen={avisos.length ? `${avisos.length} aviso(s)` : 'sin avisos'} abierta={abierta} setAbierta={setAbierta} id="ia">
           {avisos.length ? <ul className="consejos">{avisos.map(a => <li key={a}>{a}</li>)}</ul> : <p className="ok">Nada que observar por ahora.</p>}
         </Seccion>
-        <Seccion titulo="Revisar y descargar" resumen="PDF · Excel" abierta={abierta} setAbierta={setAbierta} id="res"><Resumen r={r} c={c} /></Seccion>
+        <Seccion titulo="Revisar y descargar" resumen="PDF · Excel" abierta={abierta} setAbierta={setAbierta} id="res"><Resumen r={r} c={c} onEnviar={onEnviar} /></Seccion>
         {!r.importado && <button className="btn" onClick={() => { setModo('campo'); window.scrollTo({ top: 0 }); }}>Volver al modo campo (4 pasos)</button>}
       </main>}
       {modo === 'campo' ? <nav className="pie-campo">
@@ -563,7 +563,7 @@ function TablaRmr({ c }: { c: ReturnType<typeof calcular> }) {
     </section>
   );
 }
-function Resumen({ r, c }: { r: Reporte; c: ReturnType<typeof calcular> }) {
+function Resumen({ r, c, onEnviar }: { r: Reporte; c: ReturnType<typeof calcular>; onEnviar?: (r: Reporte) => void }) {
   const faltan: string[] = [];
   if (!r.labor) faltan.push('labor');
   if (r.avance == null) faltan.push('avance');
@@ -582,12 +582,12 @@ function Resumen({ r, c }: { r: Reporte; c: ReturnType<typeof calcular> }) {
         <p>RMR de diseño {c.rmrFinal ?? '—'} → ST-{c.tipoFinal ?? '—'}</p>
         <ul>{r.sostenimiento.map(l => <li key={l}>{l}</li>)}</ul>
       </section>
-      <Descargas r={r} />
+      <Descargas r={r} onEnviar={onEnviar} />
     </>
   );
 }
 
-function Descargas({ r }: { r: Reporte }) {
+function Descargas({ r, onEnviar }: { r: Reporte; onEnviar?: (r: Reporte) => void }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [listo, setListo] = useState<{ datos: Uint8Array; nombre: string; mime: string; tipo: string } | null>(null);
   const bajar = async (tipo: 'xlsx' | 'pdf') => {
@@ -624,6 +624,7 @@ function Descargas({ r }: { r: Reporte }) {
         const x = listo; const res = await entregar(x.datos, x.nombre, x.mime, true);
         setListo(null); setMsg(res === 'descargado' ? 'Archivo descargado.' : null);
       }}>📤 Guardar o enviar el {listo.tipo}</button>}
+      {onEnviar && <button className="btn" onClick={() => onEnviar(r)}>☁️ Enviar este mapeo al panel</button>}
       <p className="tenue">Funciona sin señal. En el celular se abre el menú para guardar o enviar por WhatsApp o correo.</p>
     </section>
   );

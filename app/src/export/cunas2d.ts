@@ -33,6 +33,7 @@ export interface Bloque {
   zona: 'CORONA' | 'HI' | 'HD'; familias: number[]; pol: P[]; area: number; peso: number; prof: number; base: number; phi: number;
   modo: 'caida' | 'desliza'; psi: number; fs0: number; fs: number; riesgo0: Nivel; riesgo: Nivel; pernos: number; anclan: boolean;
   cae: boolean; // FS sin sostener < 1: cae al desatar
+  desatada?: boolean; // no caía sola, pero el desatador la saca al perfilar el contorno
 }
 export interface Analisis {
   bloques: Bloque[]; lineas: { fam: Fam; a: P; b: P }[]; real: P[]; realD: P[]; nor: P[]; esp: Record<number, { s: number; s2d: number; fuente: string }>;
@@ -147,7 +148,7 @@ function calcular(r: Reporte): Analisis | null {
   });
 
   // ---- celdas cerradas pegadas al contorno = cuñas ----
-  const g: P = [0, -1], bloques: (Bloque & { id: number })[] = [], dot = (u: P, v: P) => u[0] * v[0] + u[1] * v[1];
+  const g: P = [0, -1], bloques: (Bloque & { id: number; ci: number })[] = [], dot = (u: P, v: P) => u[0] * v[0] + u[1] * v[1];
   const cola = new Int32Array(NT), vec = [-1, 1, -nx, nx];
   let id = 0;
   for (let k0 = 0; k0 < NT && bloques.length < MAX_BLOQUES; k0++) {
@@ -207,11 +208,12 @@ function calcular(r: Reporte): Analisis | null {
     // contorno para dibujar: envolvente de los píxeles del borde (lo que cae dentro de la excavación se tapa en blanco)
     const pts: P[] = [];
     for (const k of borde) { const i = k % nx, j = (k - i) / nx, x = xc(i), y = yc(j), h = px * 0.5; pts.push([x - h, y - h], [x + h, y - h], [x + h, y + h], [x - h, y + h]); }
-    bloques.push({ id: yo, zona, familias: [...new Set(caraN.map(c => c.fam))], pol: envolvente(pts), area: ar, peso: W, prof, base: Lb, phi: ph, modo: m.modo, psi: m.psi, fs0, fs, riesgo0: nivel(fs0), riesgo: nivel(fs), pernos: nP, anclan, cae: fs0 < 1 });
+    bloques.push({ id: yo, ci, zona, familias: [...new Set(caraN.map(c => c.fam))], pol: envolvente(pts), area: ar, peso: W, prof, base: Lb, phi: ph, modo: m.modo, psi: m.psi, fs0, fs, riesgo0: nivel(fs0), riesgo: nivel(fs), pernos: nP, anclan, cae: fs0 < 1 });
   }
-  // ---- contorno después del desatado: sin las cuñas que caen (el contorno avanza hasta su cara) ----
+  // ---- contorno después del desatado ----
+  // 1) Lo que cae (FS < 1) deja su realce: profundidad t de cada punto del contorno hasta la cara de la cuña.
   const caen = new Set(bloques.filter(b => b.cae).map(b => b.id));
-  const realD = real.map((p, i) => {
+  const t0 = real.map((p, i) => {
     const n = nor[i]!; let ult = -1, salto = 0;
     for (let t = 0; t < 2 * Math.max(zC, zH) + 0.3; t += px * 0.5) {
       const x = p[0] + n[0] * t, y = p[1] + n[1] * t;
@@ -222,9 +224,33 @@ function calcular(r: Reporte): Analisis | null {
       if (l === BAR && salto < 4) { salto++; continue; }
       break;
     }
-    return ult >= 0 ? [p[0] + n[0] * (ult + px * 0.5), p[1] + n[1] * (ult + px * 0.5)] as P : p;
+    return ult >= 0 ? ult + px * 0.5 : 0;
   });
-  return { bloques: bloques.map(({ id: _i, ...b }) => b), lineas, real, realD, nor, esp, zi, perno, shot, notas, phi };
+  // 2) El desatador no deja huecos: con la barretina saca también la roca suelta de los bordes y deja el contorno
+  //    redondeado (perfil de "taza"), con algo de las puntas. Radio de alcance ≈ 0.35 m; en roca fracturada
+  //    (con cuñas cerca) se cae además una capa fina, mayor cuanto menor es el espaciamiento.
+  const sArc: number[] = []; real.forEach((p, i) => sArc.push(i ? sArc[i - 1]! + Math.hypot(p[0] - real[i - 1]![0], p[1] - real[i - 1]![1]) : 0));
+  const ventana = (i: number, w: number, f: (j: number, d: number) => void) => {
+    for (let j = i; j >= 0 && sArc[i]! - sArc[j]! <= w; j--) f(j, sArc[i]! - sArc[j]!);
+    for (let j = i + 1; j < real.length && sArc[j]! - sArc[i]! <= w; j++) f(j, sArc[j]! - sArc[i]!);
+  };
+  const ALC = 0.35;
+  const taza = t0.map((_, i) => { let m = 0; ventana(i, ALC * 1.6, (j, d) => { m = Math.max(m, t0[j]! * Math.max(0, 1 - (d / (ALC * 1.6)) ** 2)); }); return m; });
+  const sMin = Math.min(...Object.values(esp).map(e => e.s), 1);
+  const capa = Math.min(0.06, Math.max(0.01, 0.12 * sMin));
+  const fract = real.map((_, i) => { let c = 0; ventana(i, 0.6, j => { if (t0[j]! > 0) c = 1; }); return c; });
+  const suave = (v: number[], sg: number) => v.map((_, i) => { let a = 0, w = 0; ventana(i, sg * 2.5, (j, d) => { const k = Math.exp(-0.5 * (d / sg) ** 2); a += v[j]! * k; w += k; }); return w ? a / w : v[i]!; });
+  let tD = suave(taza.map((t, i) => Math.max(t, fract[i]! * capa)), 0.12);
+  tD = suave(tD.map((t, i) => Math.max(t, 0.35 * t0[i]!)), 0.04);  // conserva un poco de las puntas, ya matizadas
+  tD = tD.map((t, i) => (real[i]![1] < 0.3 ? t * Math.max(0, (real[i]![1] - 0.12) / 0.18) : t)); // se apaga hacia el piso
+  const realD = real.map((p, i) => [p[0] + nor[i]![0] * tD[i]!, p[1] + nor[i]![1] * tD[i]!] as P);
+  // 3) Las cuñas que quedan dentro del contorno desatado también se fueron con el desatado.
+  for (const b of bloques) if (!b.cae) {
+    const C: P = [b.pol.reduce((u, p) => u + p[0], 0) / b.pol.length, b.pol.reduce((u, p) => u + p[1], 0) / b.pol.length];
+    const prof = dot([C[0] - real[b.ci]![0], C[1] - real[b.ci]![1]], nor[b.ci]!);
+    if (prof < tD[b.ci]!) { b.cae = true; b.desatada = true; }
+  }
+  return { bloques: bloques.map(({ id: _i, ci: _c, ...b }) => b), lineas, real, realD, nor, esp, zi, perno, shot, notas, phi };
 }
 
 /** Envolvente convexa (cadena monótona). */
@@ -246,7 +272,7 @@ export function resumen(a: Analisis) {
   const mayor = a.bloques.reduce<Bloque | null>((m, b) => (!m || b.peso > m.peso ? b : m), null);
   const peor = quedan.reduce<Bloque | null>((m, b) => (!m || b.fs < m.fs ? b : m), null);
   return { antes: cuenta(a.bloques, 'riesgo0'), despues: cuenta(quedan, 'riesgo'), fsMin: fs.length ? Math.min(...fs) : null, fs0Min: fs0.length ? Math.min(...fs0) : null, mayor, peor,
-    caida: a.bloques.filter(b => b.modo === 'caida').length, caen: a.bloques.length - quedan.length, quedan: quedan.length, pesoCae: a.bloques.filter(b => b.cae).reduce((s, b) => s + b.peso, 0) };
+    caida: a.bloques.filter(b => b.modo === 'caida').length, caen: a.bloques.filter(b => b.cae && !b.desatada).length, desatadas: a.bloques.length - quedan.length, quedan: quedan.length, pesoCae: a.bloques.filter(b => b.cae && !b.desatada).reduce((s, b) => s + b.peso, 0) };
 }
 
 const nomZona = (z: Bloque['zona']) => (z === 'CORONA' ? 'corona' : z === 'HI' ? 'H.I.' : 'H.D.');
@@ -283,7 +309,7 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
   // antes: todas las cuñas (las que caen, en rojo oscuro); después: solo las que quedan, ya sostenidas
   for (const b of a.bloques) {
     if (modo === 'despues' && b.cae) continue;
-    const c = modo === 'antes' ? (b.cae ? COLOR_CAE : COLOR_RIESGO[b.riesgo0]) : COLOR_RIESGO[b.riesgo];
+    const c = modo === 'antes' ? (b.cae && !b.desatada ? COLOR_CAE : COLOR_RIESGO[b.riesgo0]) : COLOR_RIESGO[b.riesgo];
     prims.push({ t: 'poly', pts: b.pol, cerrado: true, relleno: c, opac: modo === 'antes' ? 0.78 : 0.55, borde: '#2B1B12', ancho: 0.25 });
   }
   prims.push({ t: 'poly', pts: [...real], cerrado: true, relleno: '#FFFFFF' });
@@ -333,7 +359,7 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
     if (rs.mayor) lin.push({ s: `Mayor: ${nomZona(rs.mayor.zona)} ${rs.mayor.familias.map(x => nomFam(r, x)).join('+')} · h ${rs.mayor.prof.toFixed(2)} m · ${rs.mayor.peso.toFixed(2)} t/m` });
     lin.push({ s: cnt.ALTO ? '→ Desatar y sostener de inmediato' : '→ Desatar y verificar', c: cnt.ALTO ? COLOR_RIESGO.ALTO : '#222222', b: true });
   } else {
-    if (rs.caen) lin.push({ s: `${rs.caen} desatadas · contorno nuevo (trazos = antes)`, b: true });
+    if (rs.desatadas) lin.push({ s: `${rs.desatadas} desatadas · contorno perfilado (trazos = antes)`, b: true });
     lin.push({ s: rs.quedan ? `${rs.quedan} quedan · FS mín ${fsTxt(rs.fsMin ?? 0)} · ${rs.peor ? `${nomZona(rs.peor.zona)} ${rs.peor.familias.map(x => nomFam(r, x)).join('+')}` : ''}` : 'No quedan cuñas sueltas', b: true });
     lin.push({ s: `RIESGO ALTO ${cnt.ALTO} · MEDIO ${cnt.MEDIO} · BAJO ${cnt.BAJO}`, c: cnt.ALTO ? COLOR_RIESGO.ALTO : cnt.MEDIO ? '#B26B00' : COLOR_RIESGO.BAJO, b: true });
     lin.push({ s: `Shotcrete: ${(2 * a.shot * TAU).toFixed(1)} t/m de corte en los bordes` });
@@ -389,7 +415,7 @@ export function graficoFS(r: Reporte, aspecto = 100 / 60): Vista | null {
   bl.forEach((b, i) => {
     const x = X0 + paso * (i + 0.5);
     const barra = (x0: number, fs: number, c: string, op: number) => prims.push({ t: 'poly', pts: [[x0, Y0], [x0 + wB, Y0], [x0 + wB, Y(fs)], [x0, Y(fs)]], cerrado: true, relleno: c, opac: op, borde: '#333333', ancho: 0.2 });
-    barra(x - wB, b.fs0 < 0.1 ? 0.1 : b.fs0, b.cae ? COLOR_CAE : COLOR_RIESGO[b.riesgo0], 0.55);
+    barra(x - wB, b.fs0 < 0.1 ? 0.1 : b.fs0, b.cae && !b.desatada ? COLOR_CAE : COLOR_RIESGO[b.riesgo0], 0.55);
     if (b.cae) prims.push({ t: 'texto', p: [x + wB / 2, Y0 + 1], s: 'D', tam: 3.6, ancla: 'centro', color: '#555555', negrita: true });
     else barra(x, b.fs, COLOR_RIESGO[b.riesgo], 0.95);
     if (b.fs0 < 0.1) prims.push({ t: 'texto', p: [x - wB / 2, Y0 + 1], s: '0', tam: 3.6, ancla: 'centro', color: '#9E1B1B', negrita: true });
@@ -410,7 +436,7 @@ export function tablaCunas(r: Reporte) {
   const a = analizarCunas(r); if (!a) return [];
   return orden(a).slice(0, 40).map((b, i) => ({
     n: i + 1, zona: nomZona(b.zona), familias: b.familias.map(x => nomFam(r, x)).join(' + '), prof: b.prof, peso: b.peso,
-    modo: b.modo === 'caida' ? 'caída libre' : `desliza ${Math.round(b.psi)}°`, fs0: b.fs0, fs: b.fs, riesgo0: b.riesgo0, riesgo: b.riesgo, cae: b.cae,
+    modo: b.modo === 'caida' ? 'caída libre' : `desliza ${Math.round(b.psi)}°`, fs0: b.fs0, fs: b.fs, riesgo0: b.riesgo0, riesgo: b.riesgo, cae: b.cae, desatada: !!b.desatada,
   }));
 }
 

@@ -4,7 +4,12 @@ export function nombreArchivo(r: { labor: string; desde: string; fecha: string; 
   return `${base}.${ext}`;
 }
 /** 'tocar' = el celular bloqueó el menú porque pasó mucho tiempo desde el toque: hay que pedir otro toque. */
+type Entrega = (datos: Uint8Array, nombre: string, tipo: string) => Promise<'compartido' | 'descargado'>;
+let alterna: Entrega | null = null;
+/** El panel de mapeos (dentro de Claude) entrega los archivos a su manera. */
+export const usarEntrega = (f: Entrega) => { alterna = f; };
 export async function entregar(datos: Uint8Array, nombre: string, tipo: string, ultimo = false): Promise<'compartido' | 'descargado' | 'tocar'> {
+  if (alterna) return alterna(datos, nombre, tipo);
   const blob = new Blob([datos as Uint8Array<ArrayBuffer>], { type: tipo });
   const archivo = new File([blob], nombre, { type: tipo });
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
