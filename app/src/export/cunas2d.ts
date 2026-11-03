@@ -17,6 +17,7 @@
 // Es un análisis 2D de la sección: para el factor de seguridad 3D de una cuña con tres planos use Unwedge.
 import { rmrTotal, tipoRoca, type Zona } from '../core/rmr';
 import type { Reporte } from '../model';
+import { sostenimientoGlobal } from './global';
 import {
   aSvg, aparente, azar, trazaSeccion, colorTipo, dd3, espesorShotcrete, estilo, familiasMedidas, pernoInfo, seccionReal, seccionTeorica,
   tramos, zonaInfluencia, type Fam, type P, type Prim, type RmrZonas, type Vista,
@@ -395,11 +396,16 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
     lin.push({ s: cnt.ALTO ? '→ Desatar y sostener de inmediato' : '→ Desatar y verificar', c: cnt.ALTO ? COLOR_RIESGO.ALTO : '#222222', b: true });
   } else {
     if (rs.desatadas) lin.push({ s: `${rs.desatadas} desatadas · contorno perfilado (trazos = antes)`, b: true });
-    lin.push({ s: rs.quedan ? `${rs.quedan} quedan · FS mín ${fsTxt(rs.fsMin ?? 0)} · ${rs.peor ? `${nomZona(rs.peor.zona)} ${rs.peor.familias.map(x => nomFam(r, x)).join('+')}` : ''}` : 'No quedan cuñas sueltas', b: true });
+    lin.push({ s: rs.quedan ? `Cuñas que quedan ${rs.quedan} · FS mín ${fsTxt(rs.fsMin ?? 0)} · ${rs.peor ? `${nomZona(rs.peor.zona)} ${rs.peor.familias.map(x => nomFam(r, x)).join('+')}` : ''}` : 'No quedan cuñas sueltas', b: true });
     lin.push({ s: `RIESGO ALTO ${cnt.ALTO} · MEDIO ${cnt.MEDIO} · BAJO ${cnt.BAJO}`, c: cnt.ALTO ? COLOR_RIESGO.ALTO : cnt.MEDIO ? '#B26B00' : COLOR_RIESGO.BAJO, b: true });
-    lin.push({ s: `Shotcrete: ${(2 * a.shot * TAU).toFixed(1)} t/m de corte en los bordes` });
-    if (a.perno) lin.push({ s: `Pernos: ${a.perno.cap} t c/u · ${a.bloques.filter(b => !b.cae && b.anclan).length} de ${rs.quedan} cuñas quedan ancladas` });
-    lin.push({ s: cnt.ALTO || cnt.MEDIO ? '→ Reforzar donde sale ALTO/MEDIO' : '→ Sostenimiento adecuado', c: cnt.ALTO || cnt.MEDIO ? COLOR_RIESGO.ALTO : '#1B5E20', b: true });
+    // sostenimiento de TODA la excavación (carga de la zona aflojada y esfuerzos por cobertura), no solo de cuñas
+    const g = sostenimientoGlobal(r, a), fsG = g ? Math.min(g.fs, 99) : null;
+    if (g) {
+      lin.push({ s: `SOSTENIMIENTO GLOBAL: FS ${fsG! > 10 ? '>10' : fsG!.toFixed(1)} = capacidad ${g.capacidad.toFixed(2)} MPa (shotcrete ${g.capShot.toFixed(2)} + pernos ${g.capPernos.toFixed(2)}) ÷ carga ${g.carga.toFixed(2)} MPa`, c: g.fs < 1.5 ? COLOR_RIESGO.ALTO : g.fs < 2 ? '#B26B00' : '#1B5E20', b: true });
+      lin.push({ s: g.cobertura != null ? `Cobertura ${g.cobertura} m: esfuerzo ${g.p0!.toFixed(1)} MPa · resistencia del macizo ${g.scm.toFixed(1)} MPa (GSI ${Math.round(g.gsi)}) · ${g.deformacion! < 1 ? 'sin deformación, manda la gravedad' : `deformación ${g.deformacion!.toFixed(1)} %`}` : `Carga por ${g.cargaFuente} · ${g.nota}` });
+    }
+    const malo = cnt.ALTO || cnt.MEDIO || (g != null && g.fs < 1.5);
+    lin.push({ s: malo ? '→ Reforzar el sostenimiento' : '→ Sostenimiento adecuado', c: malo ? COLOR_RIESGO.ALTO : '#1B5E20', b: true });
   }
   lin.forEach((l, k) => { if (l.s) prims.push({ t: 'texto', p: [xL, fila(k)], s: l.s, tam: 4.6, color: l.c ?? '#111111', negrita: l.b, ancla: 'izq' }); });
   // leyenda de colores
