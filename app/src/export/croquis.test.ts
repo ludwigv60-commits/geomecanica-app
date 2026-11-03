@@ -21,3 +21,17 @@ describe('planta y sección', () => {
     expect(vistaPlanta({ ...r, azimut: null }, { CORONA: 51 })).toBeNull();
   });
 });
+
+import { trazaSeccion } from './croquis';
+describe('trazaSeccion', () => {
+  it('plano vertical paralelo al avance: traza vertical en x = t', () => {
+    const t = trazaSeccion({ dip: 90, dipdir: 90, pos: { s: -2, t: 1.2 } }, { azimut: 0, alto: 5 })!;
+    expect(t.o[0]).toBeCloseTo(1.2); expect(Math.abs(t.d[0])).toBeCloseTo(0);
+  });
+  it('mover la estructura a la derecha mueve su traza en la sección', () => {
+    const a = trazaSeccion({ dip: 60, dipdir: 120, pos: { s: 0, t: 0 } }, { azimut: 30, alto: 5 })!;
+    const b = trazaSeccion({ dip: 60, dipdir: 120, pos: { s: 0, t: 1 } }, { azimut: 30, alto: 5 })!;
+    const n = [-a.d[1], a.d[0]] as const, off = (o: number[]) => n[0] * o[0]! + n[1] * o[1]!;
+    expect(Math.abs(off(b.o) - off(a.o))).toBeGreaterThan(0.5);
+  });
+});

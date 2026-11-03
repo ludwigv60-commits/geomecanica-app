@@ -1,9 +1,10 @@
+import { RAMPAS, cobertura, rampaDe } from '../core/cobertura';
 import { NumIn } from './NumIn';
 import { enLista, riesgoPropuesto } from '../ia/riesgo';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ABREVS, ITEMS_VERIF, migrar, type Familia, type Listas, type Reporte, type Verif } from '../model';
 import { rqdDesdeJv } from '../core/rqd';
-import { completar, jvDeFamilias } from '../ia/autollenado';
+import { completar, jvDeFamilias, pk } from '../ia/autollenado';
 import { AJUSTES_ORIENTACION, NOMBRE_ZONA, PARAMETROS, TIPOS, ZONAS, type ParamId, type Zona } from '../core/rmr';
 import { JA, JN, JR, JW, SRF, claseQ, type OpcionQ } from '../core/q';
 import { calcular } from '../calc';
@@ -13,7 +14,8 @@ import { consejos } from '../ia/sugerencias';
 import { redactarCondicion } from '../ia/redaccion';
 import { textoFamilia } from '../ia/anotacion';
 import { entregar, nombreArchivo, MIME_PDF, MIME_XLSX } from '../export/compartir';
-import { aSvg, vistaPlanta, vistaSeccion } from '../export/croquis';
+import { aSvg, vistaSeccion } from '../export/croquis';
+import { PlantaEditable } from './PlantaEditable';
 import { analizarCunas, fsTxt, graficoFS, resumen as resumenCunas, vistaCunas } from '../export/cunas2d';
 import { aplicarPlantilla, plantillaTipo, revisarTipo } from '../ia/plantilla-roca';
 import type { TipoRoca } from '../core/rmr';
@@ -209,12 +211,12 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
   const tarjetaVistas = (<>
           {r.familias.some(f => f.dip != null && f.dipdir != null) && (() => {
             const rz = { HI: c.zonas.HI.total, CORONA: c.zonas.CORONA.total, HD: c.zonas.HD.total };
-            const pl = vistaPlanta(r, rz), an = analizarCunas(r), va = vistaCunas(r, rz, 'antes', 0.72), vd = vistaCunas(r, rz, 'despues', 0.72), gf = graficoFS(r, 1.7);
+            const an = analizarCunas(r), va = vistaCunas(r, rz, 'antes', 0.72), vd = vistaCunas(r, rz, 'despues', 0.72), gf = graficoFS(r, 1.7);
             const se = va ? null : r.ancho && r.alto ? vistaSeccion(r, rz) : null, rs = an ? resumenCunas(an) : null;
             return <section className="tarjeta vistas">
               <h3>Vista planta y vista sección</h3>
               <p className="tenue">Calculadas con el dip / dip direction de cada estructura, el azimut, la sección y la excavación real. Así salen en el PDF.</p>
-              {pl ? <div className="vista-planta" dangerouslySetInnerHTML={{ __html: aSvg(pl) }} /> : <p className="tenue">Falta el azimut para la planta.</p>}
+              <PlantaEditable r={r} rz={rz} onMover={cs => setR(p => ({ ...p, familias: p.familias.map((f, i) => { const x = cs.find(c => c.n === i + 1); return x ? { ...f, pos: x.pos } : f; }) }))} />
               {va && vd ? <>
                 <h3>Sección: antes del desatado y con sostenimiento</h3>
                 <div className="rejilla2 secciones">
@@ -257,12 +259,21 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
   const PASOS = ['Datos', 'Foto', 'Resultado', 'Formato'];
   const listoPaso = [!!(r.labor && r.azimut != null && r.tipoGeologo), listo.fotos && r.familias.some(f => f.dip != null), c.rmrFinal != null, listo.fir];
   const irPaso = (i: number) => { setPaso(i); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const ponerLabor = (v: string) => set('labor', v);
+  const rampa = rampaDe(r);
+  const cob = cobertura(r, listas.coberturas);
+  const campoRampa = <>
+    <Campo t="Rampa (para la cobertura)"><Segmentos valor={rampa} opciones={RAMPAS} on={v => set('rampa', v as Reporte['rampa'])} /></Campo>
+    {rampa && <p className="tenue">{cob ? <>Cobertura <b>{cob.m} m</b> en PK {cob.pk.toFixed(1)}{pk(r.hasta) != null ? ' (promedio de Desde y Hasta)' : ' (PK inicial)'}.</>
+      : pk(r.desde) == null ? 'La cobertura sale al escribir el PK Desde.' : `Falta la tabla de cobertura de la rampa ${rampa}: cárguela en ⚙️ Listas.`}</p>}
+  </>;
   const campo = (
     <main className="contenido campo">
       {paso === 0 && <>
         <section className="tarjeta">
           <h3>Labor</h3>
-          <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={v => set('labor', v)} /></Campo>
+          <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={ponerLabor} /></Campo>
+          {campoRampa}
           <Campo t="Sup. de geomecánica"><Lista valor={r.supervisor} opciones={listas.supervisores} on={v => setR(p => ({ ...p, supervisor: v, firmas: p.firmas.map((f, i) => (i === 0 && (!f.nombre || f.nombre === p.supervisor) ? { ...f, nombre: v } : f)) }))} /></Campo>
           <div className="rejilla2">
             <Campo t="Fecha"><input type="date" value={r.fecha} onChange={e => set('fecha', e.target.value)} /></Campo>
@@ -351,7 +362,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
               <input placeholder="Nombre" value={f.nombre} onChange={e => set('firmas', r.firmas.map((x, j) => j === i ? { ...x, nombre: e.target.value, fecha: x.fecha || r.fecha } : x))} /></div>
           ))}
         </section>
-        <Resumen r={r} c={c} onEnviar={onEnviar} />
+        <Resumen r={r} c={c} listas={listas} onEnviar={onEnviar} />
         <button className="btn" onClick={() => { setModo('detalle'); window.scrollTo({ top: 0 }); }}>Ver y editar todo el formato</button>
       </>}
     </main>
@@ -371,7 +382,8 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
         <Seccion titulo="Datos de la labor" listo={listo.cab} resumen={[r.labor, r.desde, r.avance != null ? `${r.avance} m` : ""].filter(Boolean).join(" · ") || 'Se llena una sola vez'} abierta={abierta} setAbierta={setAbierta} id="cab">
           <p className="nota">Se llenan una sola vez y valen para todo el reporte: Frente, H.I., Corona y H.D.</p>
           <Campo t="N° correlativo (sale en el formato)"><input inputMode="numeric" value={r.correlativo} onChange={e => set('correlativo', e.target.value)} /></Campo>
-          <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={v => set('labor', v)} /></Campo>
+          <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={ponerLabor} /></Campo>
+          {campoRampa}
           <Campo t="Sup. de geomecánica"><Lista valor={r.supervisor} opciones={listas.supervisores} on={v => set('supervisor', v)} /></Campo>
           <div className="rejilla2">
             <Campo t="Fecha"><input type="date" value={r.fecha} onChange={e => set('fecha', e.target.value)} /></Campo>
@@ -497,7 +509,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
         <Seccion titulo="Consejos de la IA" resumen={avisos.length ? `${avisos.length} aviso(s)` : 'sin avisos'} abierta={abierta} setAbierta={setAbierta} id="ia">
           {avisos.length ? <ul className="consejos">{avisos.map(a => <li key={a}>{a}</li>)}</ul> : <p className="ok">Nada que observar por ahora.</p>}
         </Seccion>
-        <Seccion titulo="Revisar y descargar" resumen="PDF · Excel" abierta={abierta} setAbierta={setAbierta} id="res"><Resumen r={r} c={c} onEnviar={onEnviar} /></Seccion>
+        <Seccion titulo="Revisar y descargar" resumen="PDF · Excel" abierta={abierta} setAbierta={setAbierta} id="res"><Resumen r={r} c={c} listas={listas} onEnviar={onEnviar} /></Seccion>
         {!r.importado && <button className="btn" onClick={() => { setModo('campo'); window.scrollTo({ top: 0 }); }}>Volver al modo campo (4 pasos)</button>}
       </main>}
       {modo === 'campo' ? <nav className="pie-campo">
@@ -563,7 +575,7 @@ function TablaRmr({ c }: { c: ReturnType<typeof calcular> }) {
     </section>
   );
 }
-function Resumen({ r, c, onEnviar }: { r: Reporte; c: ReturnType<typeof calcular>; onEnviar?: (r: Reporte) => void }) {
+function Resumen({ r, c, listas, onEnviar }: { r: Reporte; c: ReturnType<typeof calcular>; listas: Listas; onEnviar?: (r: Reporte) => void }) {
   const faltan: string[] = [];
   if (!r.labor) faltan.push('labor');
   if (r.avance == null) faltan.push('avance');
@@ -582,17 +594,35 @@ function Resumen({ r, c, onEnviar }: { r: Reporte; c: ReturnType<typeof calcular
         <p>RMR de diseño {c.rmrFinal ?? '—'} → ST-{c.tipoFinal ?? '—'}</p>
         <ul>{r.sostenimiento.map(l => <li key={l}>{l}</li>)}</ul>
       </section>
-      <Descargas r={r} onEnviar={onEnviar} />
+      <Descargas r={r} listas={listas} onEnviar={onEnviar} />
     </>
   );
 }
 
-function Descargas({ r, onEnviar }: { r: Reporte; onEnviar?: (r: Reporte) => void }) {
+function Descargas({ r, listas, onEnviar }: { r: Reporte; listas: Listas; onEnviar?: (r: Reporte) => void }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [listo, setListo] = useState<{ datos: Uint8Array; nombre: string; mime: string; tipo: string } | null>(null);
-  const bajar = async (tipo: 'xlsx' | 'pdf') => {
+  const bajar = async (tipo: 'xlsx' | 'pdf', modelo = false) => {
     setMsg('Generando…'); setListo(null);
     try {
+      if (modelo) {
+        let datos: Uint8Array;
+        if (tipo === 'pdf') datos = await (await import('../export/modeloPdf')).generarModeloPdf(r, listas);
+        else {
+          const im = await import('../export/imagenes');
+          const v = await im.vistasPng(r).catch(() => ({} as { planta?: Uint8Array; seccion?: Uint8Array }));
+          const fr = (r.fotos ?? []).find(x => x.zona === 'FRENTE') ?? r.fotos?.[0];
+          const frente = fr ? await im.fotoConTrazas(r, fr).catch(() => null) : null;
+          datos = await (await import('../export/modeloXlsx')).generarModeloXlsx(r, listas, { planta: v.planta, seccion: v.seccion, frente: frente ?? undefined });
+        }
+        const { nombreModelo } = await import('../export/modelo');
+        const nombre = nombreModelo(r, tipo), mime = tipo === 'xlsx' ? MIME_XLSX : MIME_PDF, t = tipo === 'xlsx' ? 'Excel' : 'PDF';
+        const rp = rampaDe(r), aviso = rp && !listas.coberturas?.[rp] ? ` Ojo: sin cobertura (falta la tabla de la rampa ${rp} en ⚙️ Listas).` : !rp ? ' Ojo: sin cobertura (marque la rampa).' : '';
+        const res = await entregar(datos, nombre, mime);
+        if (res === 'tocar') { setListo({ datos, nombre, mime, tipo: `${t} del reporte modelo` }); setMsg(`Listo. Toque el botón para guardar o enviar.${aviso}`); return; }
+        setMsg(res === 'descargado' ? 'Archivo descargado.' + aviso : aviso.trim() || null);
+        return;
+      }
       const plantilla = await fetch(`./plantilla/formato.${tipo}`).then(x => { if (!x.ok) throw new Error('No se encontró la plantilla'); return x.arrayBuffer(); });
       let aviso = '';
       const vistas = tipo === 'xlsx' ? await (await import('../export/imagenes')).vistasPng(r).catch(e => ({ errores: [String(e)] } as { errores: string[]; planta?: undefined; seccion?: undefined })) : null;
@@ -618,6 +648,11 @@ function Descargas({ r, onEnviar }: { r: Reporte; onEnviar?: (r: Reporte) => voi
       <div className="rejilla2">
         <button className="btn primario" onClick={() => bajar('pdf')}>PDF</button>
         <button className="btn primario" onClick={() => bajar('xlsx')}>Excel</button>
+      </div>
+      <h3>Reporte modelo <small className="tenue">ficha VG + formato, con cobertura · A4</small></h3>
+      <div className="rejilla2">
+        <button className="btn" onClick={() => bajar('pdf', true)}>📄 PDF modelo</button>
+        <button className="btn" onClick={() => bajar('xlsx', true)}>📊 Excel modelo</button>
       </div>
       {msg && <p className="tenue">{msg}</p>}
       {listo && <button className="btn primario grande" onClick={async () => {

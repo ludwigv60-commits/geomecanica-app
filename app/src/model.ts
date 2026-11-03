@@ -1,6 +1,7 @@
 // Modelo de un reporte = un formato PRT-JS-CLD-16 lleno.
 import type { PuntajesZona, Zona } from './core/rmr';
 import type { ParametrosQ } from './core/q';
+import type { ParamCobertura, Rampa } from './core/cobertura';
 
 export type Verif = 'CUMPLE' | 'NO CUMPLE' | 'NO APLICA' | '';
 export const ITEMS_VERIF = ['SHOTCRETE', 'PERNO', 'MALLA', 'MARCO RETICULADO', 'SACRIFICIO'] as const;
@@ -18,7 +19,7 @@ export interface FotoZona {
   trazas?: Trazas;
 }
 
-export interface Familia { abrev: string; dip: number | null; dipdir: number | null; potencia?: number | null; espaciamiento?: number | null; persistencia?: number | null } // potencia (m) de F/V; espaciamiento (m) entre diaclasas de la familia; persistencia (m) = largo de la traza
+export interface Familia { abrev: string; dip: number | null; dipdir: number | null; potencia?: number | null; espaciamiento?: number | null; persistencia?: number | null; pos?: { s: number; t: number } } // pos: dónde pasa la falla/veta/contacto en la planta (m: s a lo largo del avance desde el frente, t a la derecha del eje), movida a mano // potencia (m) de F/V; espaciamiento (m) entre diaclasas de la familia; persistencia (m) = largo de la traza
 
 export interface Reporte {
   id: string;
@@ -35,6 +36,7 @@ export interface Reporte {
   fotos?: FotoZona[];    // campos llenados por la IA y aún no confirmados
   correlativo: string;
   labor: string;
+  rampa?: Rampa | '';       // rampa donde está la labor (cámaras en rampa): define la cobertura. Sin marcar = según el nombre de la labor; '' = ninguna
   supervisor: string;
   fecha: string;            // AAAA-MM-DD
   turno: 'Día' | 'Noche' | '';
@@ -84,7 +86,7 @@ export function nuevoReporte(prev?: Reporte, correlativo = ''): Reporte {
   const hoy = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   return {
     id: crypto.randomUUID(), creado: ahora, modificado: ahora, sincronizado: false,
-    correlativo, labor: prev?.labor ?? '', supervisor: prev?.supervisor ?? '',
+    correlativo, labor: prev?.labor ?? '', rampa: prev?.rampa, supervisor: prev?.supervisor ?? '',
     fecha: hoy, turno: h >= 7 && h < 19 ? 'Día' : 'Noche', desde: prev?.hasta ?? '', hasta: '', avance: null,
     ancho: prev?.ancho ?? null, alto: prev?.alto ?? null, azimut: null, nivelRiesgo: '',
     rmr: z3(() => ({})), ajuste: z3(() => null), rmrDisenoManual: null, jv: null,
@@ -101,7 +103,7 @@ export function nuevoReporte(prev?: Reporte, correlativo = ''): Reporte {
   };
 }
 
-export interface Listas { labores: string[]; supervisores: string[]; litologias: string[]; riesgos: string[]; declinacion?: number; convergencia?: number }
+export interface Listas { labores: string[]; supervisores: string[]; litologias: string[]; riesgos: string[]; declinacion?: number; convergencia?: number; coberturas?: Partial<Record<Rampa, ParamCobertura>> }
 export const LISTAS_INICIALES: Listas = {
   labores: ['Rampa Norte', 'Rampa Sur'],
   supervisores: ['Kliutsmann Julca Miranda'],

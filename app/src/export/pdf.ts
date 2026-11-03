@@ -1,7 +1,7 @@
 // Llena el PDF del formato oficial en blanco escribiendo en las posiciones exactas de cada celda.
 // Las posiciones (mapa-celdas.json) se midieron sobre el mismo PDF que genera la plantilla Excel.
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
-import type { Reporte } from '../model';
+import type { FotoZona, Reporte } from '../model';
 import { casillas } from './datos';
 import MAPA from './mapa-celdas.json';
 import { colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
@@ -13,9 +13,9 @@ const TINTA = rgb(0.05, 0.2, 0.62); // azul lapicero, como en los reportes llena
 const celdas = MAPA.celdas as unknown as Record<string, [number, number, number, number]>;
 
 /** Quita lo que la fuente estándar (WinAnsi) no puede dibujar. */
-const limpiar = (s: string) => s.replace(/[≤]/g, '<=').replace(/[≥]/g, '>=').replace(/[−–—]/g, '-').replace(/[^\x20-\x7E\xA0-\xFF•\n]/g, '');
+export const limpiar = (s: string) => s.replace(/[≤]/g, '<=').replace(/[≥]/g, '>=').replace(/[−–—]/g, '-').replace(/[^\x20-\x7E\xA0-\xFF•\n]/g, '');
 
-function partirLineas(t: string, font: PDFFont, size: number, ancho: number): string[] {
+export function partirLineas(t: string, font: PDFFont, size: number, ancho: number): string[] {
   const out: string[] = [];
   for (const parrafo of t.split('\n')) {
     let linea = '';
@@ -87,11 +87,11 @@ export async function generarPdf(r: Reporte, plantilla: ArrayBuffer | Uint8Array
   return doc.save();
 }
 
-const NOMBRE_ZONA_FOTO: Record<string, string> = { FRENTE: 'Frente', HI: 'Hastial izquierdo', CORONA: 'Corona', HD: 'Hastial derecho' };
-const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
+export const NOMBRE_ZONA_FOTO: Record<string, string> = { FRENTE: 'Frente', HI: 'Hastial izquierdo', CORONA: 'Corona', HD: 'Hastial derecho' };
+export const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
 
 /** Anexo: fotos por zona con sus trazas, azimut e inclinación de la cámara (Módulo 18). */
-async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
+export async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
   const fotos = (r.fotos ?? []).slice(0, 12);
   if (!fotos.length) return;
   const negrita = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -102,44 +102,51 @@ async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
       page = doc.addPage([W, H]); slot = 0;
       page.drawText(limpiar(`Anexo: fotos de campo · ${r.labor} ${r.desde}${r.hasta ? ` a ${r.hasta}` : ''} · ${r.fecha}`), { x: m, y: H - m, size: 10, font: negrita });
     }
-    // la foto viene incrustada (celular) o como enlace a un archivo (panel de mapeos)
-    let bytes: Uint8Array, png = f.data.startsWith('data:image/png');
-    if (f.data.startsWith('data:')) bytes = Uint8Array.from(atob(f.data.split(',')[1] ?? ''), ch => ch.charCodeAt(0));
-    else {
-      try { const resp = await fetch(f.data); if (!resp.ok) continue; png = (resp.headers.get('content-type') ?? '').includes('png'); bytes = new Uint8Array(await resp.arrayBuffer()); }
-      catch { continue; }
-    }
-    const im = png ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-    const k = Math.min((W - 2 * m) / im.width, (altoCaja - 24) / im.height);
-    const w = im.width * k, h = im.height * k;
     const top = H - m - 20 - slot * altoCaja;
-    const x = m + (W - 2 * m - w) / 2, y = top - 16 - h;
     page.drawText(limpiar(`${NOMBRE_ZONA_FOTO[f.zona] ?? f.zona}${f.az != null ? ` · cámara azimut ${f.az}° UTM, inclinación ${f.plunge ?? '-'}°` : ''}${f.calidad && !f.calidad.apta ? ' · FOTO NO APTA' : ''}`), { x: m, y: top - 10, size: 8.5, font });
-    page.drawImage(im, { x, y, width: w, height: h });
-    if (f.trazas) {
-      const kt = w / f.trazas.w;
-      const P = (px: number, py: number) => ({ x: x + px * kt, y: y + h - py * kt });
-      for (const sgm of f.trazas.segmentos) {
-        const color = hex(colorFamilia(r.familias, sgm.familia));
-        const pts = sgm.pts ?? [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]];
-        for (let i = 1; i < pts.length; i++) page.drawLine({ start: P(pts[i - 1]![0], pts[i - 1]![1]), end: P(pts[i]![0], pts[i]![1]), thickness: 1.8, color });
-      }
-      for (const ro of rotulos(f.trazas.segmentos)) {
-        const t = limpiar(textoFamilia(r.familias, ro.familia)); const size = 7.5;
-        const tw = negrita.widthOfTextAtSize(t, size); const c = P(ro.x, ro.y);
-        const a = -ro.ang * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
-        const ox = -tw / 2 - 3, oy = -size / 2 - 2; // esquina inferior izquierda de la caja, girada
-        page.drawRectangle({ x: c.x + ox * cos - oy * sin, y: c.y + ox * sin + oy * cos, width: tw + 6, height: size + 4, color: rgb(1, 1, 1), borderColor: rgb(0.2, 0.2, 0.2), borderWidth: 0.4, rotate: degrees(-ro.ang) });
-        const tx = -tw / 2, ty = -size * 0.35;
-        page.drawText(t, { x: c.x + tx * cos - ty * sin, y: c.y + tx * sin + ty * cos, size, font: negrita, color: rgb(0, 0, 0), rotate: degrees(-ro.ang) });
-      }
-    }
+    if (!(await dibujarFoto(doc, page, negrita, r, f, [m, H - top + 16, W - m, H - top + altoCaja - 8]))) continue;
     slot++;
   }
 }
 
+
+/** Dibuja una foto con sus trazas y rótulos centrada en la caja [x0, y0, x1, y1] (puntos, y hacia abajo). */
+export async function dibujarFoto(doc: PDFDocument, page: PDFPage, negrita: PDFFont, r: Reporte, f: FotoZona, [bx0, by0, bx1, by1]: [number, number, number, number]): Promise<boolean> {
+  const H = page.getHeight();
+  let bytes: Uint8Array, png = f.data.startsWith('data:image/png');
+  if (f.data.startsWith('data:')) bytes = Uint8Array.from(atob(f.data.split(',')[1] ?? ''), ch => ch.charCodeAt(0));
+  else {
+    try { const resp = await fetch(f.data); if (!resp.ok) return false; png = (resp.headers.get('content-type') ?? '').includes('png'); bytes = new Uint8Array(await resp.arrayBuffer()); }
+    catch { return false; }
+  }
+  const im = png ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+  const k = Math.min((bx1 - bx0) / im.width, (by1 - by0) / im.height);
+  const w = im.width * k, h = im.height * k;
+  const x = bx0 + (bx1 - bx0 - w) / 2, y = H - by0 - h;
+  page.drawImage(im, { x, y, width: w, height: h });
+  if (f.trazas) {
+    const kt = w / f.trazas.w;
+    const P = (px: number, py: number) => ({ x: x + px * kt, y: y + h - py * kt });
+    for (const sgm of f.trazas.segmentos) {
+      const color = hex(colorFamilia(r.familias, sgm.familia));
+      const pts = sgm.pts ?? [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]];
+      for (let i = 1; i < pts.length; i++) page.drawLine({ start: P(pts[i - 1]![0], pts[i - 1]![1]), end: P(pts[i]![0], pts[i]![1]), thickness: 1.8, color });
+    }
+    for (const ro of rotulos(f.trazas.segmentos)) {
+      const t = limpiar(textoFamilia(r.familias, ro.familia)); const size = 7.5;
+      const tw = negrita.widthOfTextAtSize(t, size); const c = P(ro.x, ro.y);
+      const a = -ro.ang * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
+      const ox = -tw / 2 - 3, oy = -size / 2 - 2; // esquina inferior izquierda de la caja, girada
+      page.drawRectangle({ x: c.x + ox * cos - oy * sin, y: c.y + ox * sin + oy * cos, width: tw + 6, height: size + 4, color: rgb(1, 1, 1), borderColor: rgb(0.2, 0.2, 0.2), borderWidth: 0.4, rotate: degrees(-ro.ang) });
+      const tx = -tw / 2, ty = -size * 0.35;
+      page.drawText(t, { x: c.x + tx * cos - ty * sin, y: c.y + tx * sin + ty * cos, size, font: negrita, color: rgb(0, 0, 0), rotate: degrees(-ro.ang) });
+    }
+  }
+  return true;
+}
+
 /** Dibuja una vista (en metros) dentro de un rectángulo del PDF [x0, y0, x1, y1] (puntos, y hacia abajo). */
-function dibujarVista(page: PDFPage, font: PDFFont, negrita: PDFFont, vista: Vista, caja: [number, number, number, number]) {
+export function dibujarVista(page: PDFPage, font: PDFFont, negrita: PDFFont, vista: Vista, caja: [number, number, number, number]) {
   const H = page.getHeight(), v = aPuntos(vista, caja);
   for (const p of v.polys) {
     const d = p.pts.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(2)} ${q[1].toFixed(2)}`).join(' ') + (p.cerrado ? ' Z' : '');
@@ -153,7 +160,7 @@ function dibujarVista(page: PDFPage, font: PDFFont, negrita: PDFFont, vista: Vis
     page.drawText(s, { x, y: H - t.p[1], size, font: f, color: hex(t.color ?? '#000000') });
   }
 }
-const rmrDe = (r: Reporte) => { const z = calcular(r).zonas; return { HI: z.HI.total, CORONA: z.CORONA.total, HD: z.HD.total }; };
+export const rmrDe = (r: Reporte) => { const z = calcular(r).zonas; return { HI: z.HI.total, CORONA: z.CORONA.total, HD: z.HD.total }; };
 
 /** Vista planta y vista sección en los recuadros del formato. La sección va en dos: ANTES del desatado
  *  (sin sostener, con las cuñas y su riesgo) y DESPUÉS (con shotcrete y pernos, con su FS). */
@@ -174,7 +181,7 @@ function croquis(page: PDFPage, font: PDFFont, negrita: PDFFont, r: Reporte) {
 }
 
 /** Hoja de análisis de cuñas: las dos secciones en grande, el gráfico de FS y la tabla de cada cuña. */
-function anexoCunas(doc: PDFDocument, font: PDFFont, negrita: PDFFont, r: Reporte) {
+export function anexoCunas(doc: PDFDocument, font: PDFFont, negrita: PDFFont, r: Reporte) {
   const a = analizarCunas(r); if (!a || !a.bloques.length) return;
   const rmr = rmrDe(r), [W, Hp] = [595.28, 841.89], m = 30;
   const page = doc.addPage([W, Hp]);

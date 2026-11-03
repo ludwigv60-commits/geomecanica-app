@@ -16,7 +16,23 @@ export type P = [number, number];
 export type Prim =
   | { t: 'poly'; pts: P[]; cerrado?: boolean; relleno?: string; borde?: string; ancho?: number; opac?: number; trazos?: number[] }
   | { t: 'texto'; p: P; s: string; tam?: number; color?: string; ancla?: 'izq' | 'centro' | 'der'; negrita?: boolean; fondo?: boolean };
-export interface Vista { prims: Prim[]; caja: [number, number, number, number]; notas: string[] } // caja en m: xmin, ymin, xmax, ymax
+export interface Vista { prims: Prim[]; caja: [number, number, number, number]; notas: string[]; manijas?: Manija[] }
+/** Estructura que se puede mover a mano en la planta: pasa por `o` con dirección `d` (coordenadas de la vista). */
+export interface Manija { n: number; abrev: string; o: P; d: P; R: number; u: P; v: P }
+
+/** Traza en la sección del frente (x a la derecha, y desde el piso) del plano que pasa por pos (planta, a media altura). */
+export function trazaSeccion(f: { dip: number; dipdir: number; pos?: { s: number; t: number } }, r: { azimut: number | null; alto: number | null }): { o: P; d: P } | null {
+  if (!f.pos || r.azimut == null) return null;
+  const H = r.alto ?? 5, az = rad(r.azimut), u: P = [Math.sin(az), Math.cos(az)], v: P = [Math.cos(az), -Math.sin(az)];
+  const N = [Math.sin(rad(f.dip)) * Math.sin(rad(f.dipdir)), Math.sin(rad(f.dip)) * Math.cos(rad(f.dipdir)), Math.cos(rad(f.dip))] as const;
+  const a = N[0] * v[0] + N[1] * v[1], nu = N[0] * u[0] + N[1] * u[1], b = N[2];
+  // plano: a·(x − t0) − nu·s0 + b·(y − H/2) = 0, en la sección del frente (s = 0)
+  const c = a * f.pos.t + nu * f.pos.s + b * H / 2, n2 = a * a + b * b;
+  if (n2 < 1e-9) return null; // plano paralelo al frente: no corta la sección
+  const p0: P = [0, H / 2], k = (a * p0[0] + b * p0[1] - c) / n2;
+  const o: P = [p0[0] - k * a, p0[1] - k * b], m = Math.sqrt(n2);
+  return { o, d: [b / m, -a / m] };
+} // caja en m: xmin, ymin, xmax, ymax
 export type RmrZonas = Partial<Record<Zona, number | null>>;
 
 const rad = (g: number) => (g * Math.PI) / 180, gra = (r: number) => (r * 180) / Math.PI;
@@ -24,9 +40,9 @@ export const TINTA = '#0D2A6B', GRIS = '#4A4A4A', ROJO = '#C00000', VERDE = '#1B
 const GAMMA = 2.7; // t/m³, peso unitario de la roca para el peso de las cuñas
 
 /** Familia numerada con su orientación medida. */
-export interface Fam { n: number; abrev: string; dip: number; dipdir: number; potencia: number | null; persistencia?: number | null; espaciamiento?: number | null }
+export interface Fam { n: number; abrev: string; dip: number; dipdir: number; potencia: number | null; persistencia?: number | null; espaciamiento?: number | null; pos?: { s: number; t: number } }
 export const familiasMedidas = (r: Reporte): Fam[] =>
-  r.familias.map((f: Familia, i) => ({ n: i + 1, abrev: f.abrev, dip: f.dip!, dipdir: f.dipdir!, potencia: f.potencia ?? null, persistencia: f.persistencia ?? null, espaciamiento: f.espaciamiento ?? null }))
+  r.familias.map((f: Familia, i) => ({ n: i + 1, abrev: f.abrev, dip: f.dip!, dipdir: f.dipdir!, potencia: f.potencia ?? null, persistencia: f.persistencia ?? null, espaciamiento: f.espaciamiento ?? null, pos: f.pos }))
     .filter(f => f.dip != null && f.dipdir != null);
 export const dd3 = (x: number) => String(Math.round(((x % 360) + 360) % 360)).padStart(3, '0');
 export const rotulo = (f: Fam) => `${f.abrev}${f.n} ${Math.round(f.dip)}°/${dd3(f.dipdir)}°`;
@@ -270,7 +286,7 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | nu
   const lineas = fams.map((f, k) => {
     const rumbo = rad(f.dipdir - 90), d: P = [Math.sin(rumbo), Math.cos(rumbo)];
     // cada estructura pasa por el último avance, repartidas a lo ancho para que no se tapen
-    const fr = (k + 0.5) / Math.max(1, fams.length), o = en(-av * 0.5 - (fr - 0.5) * B * 0.9, B * (-0.32 + 0.64 * fr));
+    const fr = (k + 0.5) / Math.max(1, fams.length), o = f.pos ? en(f.pos.s, f.pos.t) : en(-av * 0.5 - (fr - 0.5) * B * 0.9, B * (-0.32 + 0.64 * fr));
     const a: P = [o[0] - d[0] * R, o[1] - d[1] * R], b: P = [o[0] + d[0] * R, o[1] + d[1] * R];
     trazos.push([a, b]);
     return { f, d, o, a, b };
@@ -319,6 +335,7 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | nu
     }
   }
   leyenda(prims, r, rmr, [caja[0] + w * 0.015, caja[1] + h * 0.02], mpp);
+  const manijas: Manija[] = lineas.filter(l => l.f.abrev !== 'SD').map(l => ({ n: l.f.n, abrev: l.f.abrev, o: l.o, d: l.d, R, u, v }));
   if (norte) {
     const nx = caja[2] - w * 0.07, ny = caja[3] - h * 0.06;
     prims.push({ t: 'poly', pts: [[nx, ny - h * 0.13], [nx - w * 0.018, ny - h * 0.13], [nx, ny]], cerrado: true, relleno: '#000000' }, { t: 'poly', pts: [[nx, ny - h * 0.13], [nx + w * 0.018, ny - h * 0.13], [nx, ny]], cerrado: true, borde: '#000000', ancho: 0.5 });
@@ -326,7 +343,7 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | nu
   }
   prims.push({ t: 'texto', p: [caja[0] + w * 0.03, caja[3] - h * 0.07], s: `${r.labor || 'Labor'} · Az ${Math.round(r.azimut)}°`, tam: 5.5, negrita: true, color: GRIS, ancla: 'izq' });
   escala(prims, [caja[0] + w * 0.04, caja[3] - h * 0.17], w * 0.22);
-  return { prims, caja, notas: [] };
+  return { prims, caja, notas: [], manijas };
 }
 
 /** Leyenda compacta (planta): tipos de roca presentes, estructuras, contornos, cuñas y sostenimiento. */
@@ -556,7 +573,9 @@ export function vistaSeccion(r: Reporte, rmr: RmrZonas): Vista {
     const linea = (o: P): P[] => [[o[0] - d[0] * L, o[1] - d[1] * L], [o[0] + d[0] * L, o[1] + d[1] * L]];
     const visible = (o: P) => { const [a, b] = linea(o); return tramos(a!, b!, marco, real, 160).reduce((t, [p, q]) => t + Math.hypot(q[0] - p[0], q[1] - p[1]), 0); };
     let o: P = [0, H * 0.5], mejorV = -1;
-    for (let i = 0; i <= 8; i++) for (let j = 0; j <= 4; j++) {
+    const fija = trazaSeccion(f, r); // movida a mano en la planta: pasa donde la puso el ingeniero
+    if (fija) { o = fija.o; d[0] = fija.d[0]; d[1] = fija.d[1]; nn[0] = -d[1]; nn[1] = d[0]; }
+    else for (let i = 0; i <= 8; i++) for (let j = 0; j <= 4; j++) {
       const c: P = [(-0.4 + 0.1 * i) * B + (k % 2 ? 0.05 : -0.05) * B * k, (0.2 + 0.15 * j) * H];
       const v = visible(c); if (v > mejorV + 0.05) { mejorV = v; o = c; }
     }

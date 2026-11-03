@@ -18,7 +18,7 @@
 import { rmrTotal, tipoRoca, type Zona } from '../core/rmr';
 import type { Reporte } from '../model';
 import {
-  aSvg, aparente, azar, colorTipo, dd3, espesorShotcrete, estilo, familiasMedidas, pernoInfo, seccionReal, seccionTeorica,
+  aSvg, aparente, azar, trazaSeccion, colorTipo, dd3, espesorShotcrete, estilo, familiasMedidas, pernoInfo, seccionReal, seccionTeorica,
   tramos, zonaInfluencia, type Fam, type P, type Prim, type RmrZonas, type Vista,
 } from './croquis';
 
@@ -89,7 +89,9 @@ function calcular(r: Reporte): Analisis | null {
     const { ang, bajaDerecha } = aparente(f.dip, f.dipdir, az), t = rad(bajaDerecha ? -ang : ang), d: P = [Math.cos(t), Math.sin(t)], n: P = [-d[1], d[0]];
     const c0 = n[0] * cx + n[1] * cy, paso = Math.max(s2d, (2 * R) / MAX_LINEAS);
     // fallas, vetas y contactos: una sola traza (la estructura mapeada), no una red
-    const offs = f.abrev === 'SD' ? (() => { const o: number[] = []; for (let c = c0 - R + rnd() * paso; c <= c0 + R; c += paso) o.push(c); return o; })() : [c0 + (rnd() - 0.5) * B * 0.4];
+    const fija = f.abrev === 'SD' ? null : trazaSeccion(f, r); // falla/veta/contacto movida a mano en la planta
+    const azarF = f.abrev === 'SD' ? 0 : rnd(); // mismo orden de azar que antes: la red de diaclasas no cambia al mover una falla
+    const offs = f.abrev === 'SD' ? (() => { const o: number[] = []; for (let c = c0 - R + rnd() * paso; c <= c0 + R; c += paso) o.push(c); return o; })() : [fija ? n[0] * fija.o[0] + n[1] * fija.o[1] : c0 + (azarF - 0.5) * B * 0.4];
     for (const c of offs) {
       const o: P = [n[0] * c + d[0] * (d[0] * cx + d[1] * cy), n[1] * c + d[1] * (d[0] * cx + d[1] * cy)];
       lineas.push({ fam: f, a: [o[0] - d[0] * R * 1.5, o[1] - d[1] * R * 1.5], b: [o[0] + d[0] * R * 1.5, o[1] + d[1] * R * 1.5] });

@@ -1,5 +1,6 @@
 // Vistas planta y sección como imágenes PNG (para el Excel), dibujadas igual que en la app y el PDF.
-import type { Reporte } from '../model';
+import type { FotoZona, Reporte } from '../model';
+import { colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
 import { calcular } from '../calc';
 import { vistaPlanta, vistaSeccion, type Vista } from './croquis';
 import { vistaCunas } from './cunas2d';
@@ -68,4 +69,33 @@ export async function vistasPng(r: Reporte): Promise<{ planta?: Uint8Array; secc
     }
   } catch (e) { err('sección', e); }
   return out;
+}
+
+/** Foto con sus trazas y rótulos como JPEG (para el Excel del reporte modelo). */
+export async function fotoConTrazas(r: Reporte, f: FotoZona, maxLado = 1600): Promise<Uint8Array | null> {
+  const img = await new Promise<HTMLImageElement | null>(ok => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ok(null); i.src = f.data; });
+  if (!img) return null;
+  const k = Math.min(1, maxLado / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+  const cv = Object.assign(document.createElement('canvas'), { width: w, height: h });
+  const ctx = cv.getContext('2d'); if (!ctx) return null;
+  ctx.drawImage(img, 0, 0, w, h);
+  if (f.trazas) {
+    const kt = w / f.trazas.w, s = Math.max(1, w / 700);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const g of f.trazas.segmentos) {
+      const pts = g.pts ?? [[g.x1, g.y1], [g.x2, g.y2]];
+      ctx.strokeStyle = colorFamilia(r.familias, g.familia); ctx.lineWidth = 3 * s; ctx.beginPath();
+      pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * kt, y * kt) : ctx.moveTo(x * kt, y * kt))); ctx.stroke();
+    }
+    ctx.font = `700 ${Math.round(13 * s)}px Helvetica, Arial, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const ro of rotulos(f.trazas.segmentos)) {
+      const t = textoFamilia(r.familias, ro.familia), tw = ctx.measureText(t).width;
+      ctx.save(); ctx.translate(ro.x * kt, ro.y * kt); ctx.rotate(ro.ang * Math.PI / 180);
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.fillRect(-tw / 2 - 4 * s, -9 * s, tw + 8 * s, 18 * s); ctx.strokeRect(-tw / 2 - 4 * s, -9 * s, tw + 8 * s, 18 * s);
+      ctx.fillStyle = '#000'; ctx.fillText(t, 0, 0); ctx.restore();
+    }
+  }
+  const b = await new Promise<Blob | null>(ok => cv.toBlob(ok, 'image/jpeg', 0.9));
+  return b ? new Uint8Array(await b.arrayBuffer()) : null;
 }
