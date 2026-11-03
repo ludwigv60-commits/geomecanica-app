@@ -298,9 +298,3 @@ details.ajuste[open] > summary::after { content:'▾'; }
 .envio-ok { display:flex; flex-direction:column; gap:8px; padding:12px; border-radius:12px; background:#E8F5E9; border:1px solid #A5D6A7; color:#1B5E20; }
 .envio-ok .btn { margin:0; text-align:center; }
 .chip.enviado { background:#E3F2FD; border-color:#90CAF9; color:#0D47A1; margin-left:6px; }
-.envio-ok.aviso { background:#FFF8E1; border-color:#FFE082; color:#5D4037; }
-.receptor-caja { display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; padding:24px 16px; border-radius:14px; background:#E3F2FD; border:1px solid #90CAF9; color:#0D47A1; }
-.receptor-caja b { font-size:40px; }
-.receptor-caja p { margin:0; font-size:17px; }
-.receptor-caja.ok { background:#E8F5E9; border-color:#A5D6A7; color:#1B5E20; }
-.receptor-caja.error { background:#FFEBEE; border-color:#EF9A9A; color:#B71C1C; }

@@ -1,6 +1,6 @@
 // Funciona sin señal: al abrir la app con señal se guarda TODO en el celular (lista generada al compilar).
-const CACHE = 'geomecanica-245d2edf17';
-const ARCHIVOS = ["./","./assets/_commonjsHelpers-Cpj98o6Y.js","./assets/datos-CyGm9y6I.js","./assets/imagenes-BPyG_VeN.js","./assets/index-Bu1fi_U1.js","./assets/index-SR5gkJaQ.css","./assets/jszip.min-DfF06lK4.js","./assets/ort-wasm-simd-threaded-DDx2apAW.wasm","./assets/ort.wasm.bundle.min-CfTt_KA_.js","./assets/paquete-BIofFyIh.js","./assets/pdf-CNF16ZFF.js","./assets/xlsx-CDgoKIIB.js","./icon-192.png","./icon-512.png","./index.html","./manifest.webmanifest","./modelos/labor.onnx","./modelos/trazas.onnx","./modelos/zona.onnx","./plantilla/formato.pdf","./plantilla/formato.xlsx"];
+const CACHE = 'geomecanica-53c947aa3f';
+const ARCHIVOS = ["./","./assets/_commonjsHelpers-Cpj98o6Y.js","./assets/datos-BTkuoqoa.js","./assets/imagenes-BQHkWpAX.js","./assets/index-BOsmsG2j.js","./assets/index-D_YosSHQ.css","./assets/jszip.min-DfF06lK4.js","./assets/ort-wasm-simd-threaded-DDx2apAW.wasm","./assets/ort.wasm.bundle.min-CfTt_KA_.js","./assets/paquete-Bu5tom3v.js","./assets/pdf-BnVQMOC1.js","./assets/xlsx-CFvIrOgl.js","./icon-192.png","./icon-512.png","./index.html","./manifest.webmanifest","./modelos/labor.onnx","./modelos/trazas.onnx","./modelos/zona.onnx","./plantilla/formato.pdf","./plantilla/formato.xlsx"];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS))); });
 // Se conserva también la versión anterior: una pantalla abierta antes de actualizar todavía pide sus archivos
 // (PDF, Excel) y, si se borraran, la descarga fallaría hasta reabrir la app.

@@ -1,32 +1,12 @@
 // Envío de mapeos al panel (artefacto privado en Claude).
-// Envío directo (sin archivos): "Enviar" abre el panel; en el panel "📲 Recibir del celular" abre la app en una
-// ventana y la app le pasa los mapeos pendientes por mensaje entre ventanas (postMessage). Ningún servidor externo.
-// Si eso no es posible (APK, ícono del iPhone), queda el envío como archivo ("📥 Subir mapeos" en el panel).
+// El celular trabaja sin señal y fuera de Claude, y el panel no puede abrir ni recibir datos de otras ventanas,
+// así que el envío es un archivo: la app lo arma (mapeos + fotos + listas) y en el panel se sube con "📥 Subir mapeos".
 import type { Listas, Reporte } from '../model';
 import { entregar } from './compartir';
 
 export const PANEL_URL = 'https://claude.ai/artifact/KpFptt8mrvLPkxn8pNGUcd';
 export const PANEL_LISTO = true;
 const FORMATO = 'mapeos-geomecanica/1';
-export const APP_URL = 'https://ludwigv60-commits.github.io/geomecanica-app/formulario/';
-export const APP_ORIGEN = new URL(APP_URL).origin;
-/** Orígenes desde los que Claude sirve el panel. */
-export const esOrigenPanel = (o: string) => o === 'https://claude.ai' || /^https:\/\/([a-z0-9-]+\.)+claudeusercontent\.com$/.test(o);
-/** Mensajes entre la app y el panel. */
-export type MsgEnvio =
-  | { tipo: 'geo-listo'; pendientes: number }
-  | { tipo: 'geo-pedir'; todos?: boolean }
-  | { tipo: 'geo-paquete'; paquete: Paquete }
-  | { tipo: 'geo-progreso'; texto: string }
-  | { tipo: 'geo-recibido'; ids: string[]; enviadoEn: string; texto: string }
-  | { tipo: 'geo-error'; texto: string };
-/** La app corre aislada (APK o ícono del iPhone): no comparte datos con el navegador donde se abre el panel. */
-export function appAislada(): boolean {
-  const w = window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } };
-  if (w.Capacitor?.isNativePlatform?.()) return true;
-  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
-  return ios && ((navigator as unknown as { standalone?: boolean }).standalone === true || matchMedia('(display-mode: standalone)').matches);
-}
 
 function dispositivo(): string {
   try {

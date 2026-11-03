@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { nuevoReporte, siguienteCorrelativo, LISTAS_INICIALES, type Listas, type Reporte } from '../model';
 import { borrarReporte, guardarListas, guardarReporte, leerConfig, leerListas, listarReportes, marcarEnviado, pedirPersistencia } from '../store';
-import { PANEL_LISTO, PANEL_URL, appAislada, enviarMapeos } from '../export/envio';
+import { PANEL_LISTO, PANEL_URL, enviarMapeos } from '../export/envio';
 import { Editor } from './Editor';
 import { EditorListas } from './EditorListas';
 import { TIPOS, tipoRoca } from '../core/rmr';
@@ -21,16 +21,8 @@ export function App() {
   const recargar = () => listarReportes().then(setReportes);
   const [envio, setEnvio] = useState<string | null>(null);
   const pendiente = (r: Reporte) => !r.enviado || r.modificado > r.enviado;
-  const [directo, setDirecto] = useState<Reporte[] | null>(null);
-  /** Envío directo: abre el panel; allí "📲 Recibir del celular" toma los mapeos de esta app sin archivos. */
-  const enviarDirecto = (lista: Reporte[]) => {
-    if (!lista.length) return;
-    setEnvio(null); setDirecto(lista);
-    if (!appAislada()) window.open(PANEL_URL, '_blank', 'noopener');
-  };
   const enviar = async (lista: Reporte[]) => {
     if (!lista.length) return;
-    setDirecto(null);
     setEnvio('Preparando el envío…');
     try {
       const { enviadoEn } = await enviarMapeos(lista, listas);
@@ -38,16 +30,6 @@ export function App() {
       setEnvio(`listo:${lista.length}`);
     } catch (e) { setEnvio(`No se pudo preparar el envío: ${(e as Error).message}`); }
   };
-  const avisoDirecto = directo && (appAislada()
-    ? <div className="envio-ok aviso"><b>☁️ Enviar {directo.length} mapeo(s) al panel</b>
-        <span>Esta app está instalada aparte del navegador, así que no puede pasarle los mapeos al panel directamente. Envíelos como archivo y en el panel toque <b>📥 Subir mapeos</b>. Para el envío directo use la app abierta en el navegador (Chrome o Safari).</span>
-        <button className="btn primario" onClick={() => enviar(directo)}>📤 Enviar como archivo</button>
-        <button className="btn mini" onClick={() => setDirecto(null)}>Cerrar</button></div>
-    : <div className="envio-ok"><b>☁️ Se abrió el panel de mapeos</b>
-        <span>En el panel toque <b>📲 Recibir del celular</b>. Los mapeos pendientes pasan solos y quedan marcados como enviados.</span>
-        <a className="btn primario" href={PANEL_URL} target="_blank" rel="noopener">Abrir el panel otra vez</a>
-        <button className="btn mini" onClick={() => enviar(directo)}>Enviar como archivo</button>
-        <button className="btn mini" onClick={() => { setDirecto(null); recargar(); }}>Cerrar</button></div>);
   const avisoEnvio = envio && (envio.startsWith('listo:')
     ? <div className="envio-ok"><b>☁️ {envio.slice(6)} mapeo(s) listos para el panel</b>
         <span>Ahora abra el panel, toque <b>📥 Subir mapeos</b> y elija el archivo que guardó.</span>
@@ -68,7 +50,7 @@ export function App() {
     <Editor inicial={vista.r} listas={listas} historial={[...reportes, ...bd]}
       onGuardar={async r => { await guardarReporte(r); await recargar(); }}
       onSalir={() => { recargar(); setVista({ v: 'lista' }); }} onBase={recargarBd}
-      onEnviar={!PANEL_LISTO ? undefined : async r => { const ais = appAislada(); if (!ais) window.open(PANEL_URL, '_blank', 'noopener'); await guardarReporte(r); await recargar(); if (ais) await enviar([r]); }} />
+      onEnviar={!PANEL_LISTO ? undefined : async r => { await guardarReporte(r); await recargar(); await enviar([r]); }} />
   );
   if (vista.v === 'listas') return (
     <EditorListas listas={listas} historialBD={bd.length} onHistorial={recargarBd} onGuardar={async l => { await guardarListas(l); setListas(l); setVista({ v: 'lista' }); }}
@@ -87,9 +69,9 @@ export function App() {
         {aviso && <p className="alerta" onClick={() => setAviso(null)}>{aviso}</p>}
         {reportes.length > 0 && PANEL_LISTO && <div className="enviar-panel">
           {(() => { const p = reportes.filter(pendiente); return p.length
-            ? <button className="btn" onClick={() => enviarDirecto(p)}>☁️ Enviar {p.length} mapeo{p.length > 1 ? 's' : ''} al panel</button>
-            : <button className="btn" onClick={() => enviarDirecto(reportes)}>☁️ Todo enviado · reenviar todo</button>; })()}
-          {avisoDirecto}{avisoEnvio}
+            ? <button className="btn" onClick={() => enviar(p)}>☁️ Enviar {p.length} mapeo{p.length > 1 ? 's' : ''} al panel</button>
+            : <button className="btn" onClick={() => enviar(reportes)}>☁️ Todo enviado · reenviar todo</button>; })()}
+          {avisoEnvio}
         </div>}
         {reportes.length === 0 && <div className="vacio"><b>⛏️</b>Todavía no hay reportes.<br />Toque <b style={{ display: 'inline', fontSize: 'inherit' }}>+ Nuevo reporte</b> para empezar.</div>}
         <ul className="lista">

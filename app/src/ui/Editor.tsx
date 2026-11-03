@@ -1,4 +1,3 @@
-import { appAislada } from '../export/envio';
 import { NumIn } from './NumIn';
 import { enLista, riesgoPropuesto } from '../ia/riesgo';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -625,7 +624,7 @@ function Descargas({ r, onEnviar }: { r: Reporte; onEnviar?: (r: Reporte) => voi
         const x = listo; const res = await entregar(x.datos, x.nombre, x.mime, true);
         setListo(null); setMsg(res === 'descargado' ? 'Archivo descargado.' : null);
       }}>📤 Guardar o enviar el {listo.tipo}</button>}
-      {onEnviar && <button className="btn" onClick={() => { onEnviar(r); if (!appAislada()) setMsg('Se abrió el panel: allí toque 📲 Recibir del celular y el mapeo pasa solo.'); }}>☁️ Enviar este mapeo al panel</button>}
+      {onEnviar && <button className="btn" onClick={() => onEnviar(r)}>☁️ Enviar este mapeo al panel</button>}
       <p className="tenue">Funciona sin señal. En el celular se abre el menú para guardar o enviar por WhatsApp o correo.</p>
     </section>
   );

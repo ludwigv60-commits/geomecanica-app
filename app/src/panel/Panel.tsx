@@ -6,7 +6,7 @@ import { LISTAS_INICIALES, nuevoReporte, type FotoZona, type Listas, type Report
 import { calcular } from '../calc';
 import { TIPOS, tipoRoca } from '../core/rmr';
 import { usarEntrega } from '../export/compartir';
-import { APP_ORIGEN, APP_URL, leerPaquete, type MsgEnvio, type Paquete } from '../export/envio';
+import { leerPaquete, type Paquete } from '../export/envio';
 
 /* Capacidades del artefacto (tipos mínimos de lo que se usa). */
 type Snap = { id: string; exists: boolean; data(): Record<string, unknown> | undefined };
@@ -141,31 +141,6 @@ export function Panel() {
     } finally { setOcupado(false); }
   };
 
-  /** "📲 Recibir del celular": abre la app en otra ventana y ella pasa sus mapeos pendientes por mensaje. */
-  const ventana = useRef<Window | null>(null);
-  const importarRef = useRef(importar); importarRef.current = importar;
-  useEffect(() => {
-    const alRecibir = async (e: MessageEvent) => {
-      const w = ventana.current;
-      if (!w || e.source !== w || e.origin !== APP_ORIGEN) return;
-      const m = e.data as MsgEnvio;
-      const responder = (x: MsgEnvio) => w.postMessage(x, APP_ORIGEN);
-      if (m?.tipo === 'geo-listo') { setMsg(m.pendientes ? `Recibiendo ${m.pendientes} mapeo(s) del celular…` : 'Revisando los mapeos del celular…'); responder({ tipo: 'geo-pedir' }); }
-      else if (m?.tipo === 'geo-paquete') {
-        try {
-          const r = await importarRef.current([leerPaquete(m.paquete)], texto => responder({ tipo: 'geo-progreso', texto }));
-          responder({ tipo: 'geo-recibido', ids: r.ids, enviadoEn: m.paquete.enviadoEn, texto: r.texto });
-        } catch (x) { const t = `No se pudo guardar: ${(x as Error).message}`; setMsg(t); responder({ tipo: 'geo-error', texto: t }); }
-      } else if (m?.tipo === 'geo-recibido' && !m.ids.length) setMsg(`Del celular: ${m.texto}`);
-    };
-    addEventListener('message', alRecibir);
-    return () => removeEventListener('message', alRecibir);
-  }, []);
-  const recibir = () => {
-    const w = window.open(`${APP_URL}?panel=1`, '_blank');
-    if (!w) { setMsg('El navegador no dejó abrir la app. Permita ventanas emergentes para este panel o use "📥 Subir mapeos" con el archivo.'); return; }
-    ventana.current = w; setMsg('Abriendo la app del celular…');
-  };
 
   const borrar = async (r: Reporte) => {
     if (confirmar !== r.id) { setConfirmar(r.id); setTimeout(() => setConfirmar(c => (c === r.id ? null : c)), 4000); return; }
@@ -221,8 +196,7 @@ export function Panel() {
       </header>
       <main className="panel-cuerpo">
         <section className="panel-barra">
-          <button className="btn primario" disabled={ocupado || !db} onClick={recibir}>📲 Recibir del celular</button>
-          <label className={`btn panel-subir${ocupado || !db ? ' apagado' : ''}`}>📥 Subir mapeos
+          <label className={`btn primario panel-subir${ocupado || !db ? ' apagado' : ''}`}>📥 Subir mapeos
             <input id="subir" type="file" accept=".json,application/json,text/plain" multiple hidden disabled={ocupado || !db} onChange={e => { subir(e.target.files); e.target.value = ''; }} /></label>
           <input id="buscar" className="panel-buscar" placeholder="Buscar labor, PK, supervisor, fecha…" value={q} onChange={e => setQ(e.target.value)} />
           <select id="labor" value={labor} onChange={e => setLabor(e.target.value)}><option value="">Todas las labores</option>{labores.map(l => <option key={l}>{l}</option>)}</select>
