@@ -4,7 +4,7 @@ import { PDFDocument } from 'pdf-lib';
 import { nuevoReporte, type Reporte } from '../model';
 import { codigoSLT, datosModelo } from './modelo';
 import { generarModeloPdf } from './modeloPdf';
-import { generarModeloXlsx } from './modeloXlsx';
+import { generarModeloXlsx, logosDePlantilla } from './modeloXlsx';
 import JSZip from 'jszip';
 
 function ejemplo(): Reporte {
@@ -32,17 +32,19 @@ describe('reporte modelo', () => {
   it('genera el PDF en A4', async () => {
     const r = ejemplo();
     const foto = process.env.FOTO_PRUEBA; if (foto && existsSync(foto)) r.fotos = [{ id: 'f', zona: 'FRENTE', fecha: '', data: 'data:image/jpeg;base64,' + readFileSync(foto).toString('base64') }];
-    const pdf = await generarModeloPdf(r, { coberturas: T });
+    const logos = await logosDePlantilla(readFileSync('public/plantilla/formato.xlsx'));
+    expect(logos.logoAesa?.length).toBeGreaterThan(1000); expect(logos.logoMarcobre?.length).toBeGreaterThan(1000);
+    const pdf = await generarModeloPdf(r, { coberturas: T }, logos);
     const doc = await PDFDocument.load(pdf);
-    expect(doc.getPageCount()).toBeGreaterThanOrEqual(3);
+    expect(doc.getPageCount()).toBe(1);
     for (const p of doc.getPages()) { expect(Math.round(p.getWidth())).toBe(595); expect(Math.round(p.getHeight())).toBe(842); }
     if (process.env.SALIDA_MODELO) writeFileSync(process.env.SALIDA_MODELO, pdf);
   });
   it('genera el Excel en A4', async () => {
-    const x = await generarModeloXlsx(ejemplo(), { coberturas: T });
+    const x = await generarModeloXlsx(ejemplo(), { coberturas: T }, await logosDePlantilla(readFileSync('public/plantilla/formato.xlsx')));
     const z = await JSZip.loadAsync(x);
     const hoja = await z.file('xl/worksheets/sheet1.xml')!.async('string');
-    expect(hoja).toContain('paperSize="9"'); expect(hoja).toContain('S3-L3-T3-R3-F4-A3-W1');
+    expect(hoja).toContain('paperSize="9"'); expect(hoja).toContain('fitToHeight="1"'); expect(hoja).toContain('S3-L3-T3-R3-F4-A3-W1');
     if (process.env.SALIDA_MODELO) writeFileSync(process.env.SALIDA_MODELO.replace('.pdf', '.xlsx'), x);
   });
 });

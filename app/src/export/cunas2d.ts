@@ -283,16 +283,19 @@ export const fsTxt = (fs: number) => (fs >= 99 ? '>99' : fs < 0.05 ? '0' : fs.to
 
 /** Vista de la sección para el análisis: ANTES del desatado (sin sostener) o DESPUÉS (shotcrete + pernos).
  *  `aspecto` = ancho/alto del recuadro donde va (la mitad del recuadro del formato ≈ 136/215). */
-export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues', aspecto = 136 / 215): Vista | null {
+export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues', aspecto = 136 / 215, compacto = false): Vista | null {
   const a = analizarCunas(r); if (!a || !r.ancho || !r.alto) return null;
   const B = r.ancho, H = r.alto, real = modo === 'despues' ? a.realD : a.real, fams = familiasMedidas(r);
   const lado = Math.max(...a.real.map(p => Math.abs(p[0]))), techo = Math.max(...a.real.map(p => p[1]));
   const zC = a.zi?.corona ?? 0.6, zH = a.zi?.hastial ?? 0.6;
   // ventana: el túnel con su zona de influencia arriba y, bajo el piso, espacio para el panel de resultados
-  const filas = 9.5 + Math.ceil(fams.length / 2), top = techo + zC + Math.max(0.5, H * 0.16);
+  const filas = compacto ? 0.6 : 9.5 + Math.ceil(fams.length / 2);
+  let top = techo + zC + Math.max(0.5, H * 0.16);
   let ancho = 2 * (lado + zH) + B * 0.16, alto = ancho / aspecto;
   const altoMin = (top + 0.12) / (1 - filas * 0.03);
   if (alto < altoMin) { alto = altoMin; ancho = alto * aspecto; }
+  // compacto: el túnel centrado en la caja (sin panel abajo)
+  if (compacto) { const sobra = alto - (top + 0.12); if (sobra > 0) top += sobra / 2; }
   const y0 = top - alto;
   const caja: Vista['caja'] = [-ancho / 2, y0, ancho / 2, top];
   const marco: P[] = [[caja[0], 0], [caja[2], 0], [caja[2], caja[3]], [caja[0], caja[3]]];
@@ -341,11 +344,12 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
   }
   // títulos
   const w = caja[2] - caja[0], xL = caja[0] + w * 0.04, ln = alto * 0.03;
-  const tit = modo === 'antes' ? 'ANTES DEL DESATADO' : 'DESPUÉS: CON SOSTENIMIENTO';
+  const tit = compacto ? (modo === 'antes' ? 'ANTES DEL DESATADO' : 'DESPUÉS: SOSTENIDO') : modo === 'antes' ? 'ANTES DEL DESATADO' : 'DESPUÉS: CON SOSTENIMIENTO';
   const sub = modo === 'antes' ? 'sin pernos ni shotcrete · análisis de cuñas' : [a.shot > 0 ? `shotcrete ${(a.shot * 100).toFixed(0)} cm` : 'sin shotcrete', a.perno ? `${a.perno.tipo.toLowerCase()} ${a.perno.pies != null ? a.perno.pies + "'" : a.perno.largo.toFixed(1) + ' m'} ${a.perno.esp}×${a.perno.esp} m` : 'sin pernos', /malla/.test(sost) ? 'malla' : ''].filter(Boolean).join(' · ');
-  prims.push({ t: 'texto', p: [xL, top - ln * 1.1], s: tit, tam: 6.2, negrita: true, color: modo === 'antes' ? '#9E1B1B' : '#1B5E20', ancla: 'izq', fondo: true });
-  prims.push({ t: 'texto', p: [xL, top - ln * 2.05], s: sub, tam: 4.6, color: '#222222', ancla: 'izq', fondo: true });
-  // panel de resultados bajo el piso
+  prims.push({ t: 'texto', p: [xL, top - ln * 1.1], s: tit, tam: compacto ? 5.2 : 6.2, negrita: true, color: modo === 'antes' ? '#9E1B1B' : '#1B5E20', ancla: 'izq', fondo: true });
+  prims.push({ t: 'texto', p: [xL, top - ln * 2.05], s: sub, tam: compacto ? 3.8 : 4.6, color: '#222222', ancla: 'izq', fondo: true });
+  // panel de resultados bajo el piso (en modo compacto el resumen va en la leyenda de la hoja)
+  if (!compacto) {
   const rs = resumen(a), cnt = modo === 'antes' ? rs.antes : rs.despues, n = a.bloques.length;
   prims.push({ t: 'poly', pts: [[caja[0], caja[1]], [caja[2], caja[1]], [caja[2], -0.12], [caja[0], -0.12]], cerrado: true, relleno: '#FFFFFF', opac: 0.96 });
   prims.push({ t: 'poly', pts: [[caja[0], -0.12], [caja[2], -0.12]], borde: '#7F7F7F', ancho: 0.4 });
@@ -380,6 +384,7 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
   // estructuras (2 por fila) con su espaciamiento, al pie del panel
   const ft = fams.map(f => { const e = a.esp[f.n]; return `${f.abrev}${f.n} ${Math.round(f.dip)}°/${dd3(f.dipdir)}°${e ? ` s ${e.s} m` : ''}`; });
   for (let k = 0; k < ft.length; k += 2) prims.push({ t: 'texto', p: [xL, ly - ln * (1.1 + (k / 2) * 0.95)], s: ft.slice(k, k + 2).join('   ·   '), tam: 4.2, color: '#333333', ancla: 'izq' });
+  }
   // número de cada cuña (el mismo de la tabla y del gráfico)
   const puestos: P[] = [], sep = w * 0.04;
   orden(a).slice(0, 40).forEach((b, i) => {

@@ -47,18 +47,20 @@ async function lienzoAPng(w: number, h: number, pinta: (ctx: CanvasRenderingCont
   return Uint8Array.from(bin, c => c.charCodeAt(0));
 }
 
-export async function vistasPng(r: Reporte): Promise<{ planta?: Uint8Array; seccion?: Uint8Array; errores?: string[] }> {
+/** `modelo`: vistas para la hoja única del reporte modelo (sección compacta, cajas de esa hoja). */
+export async function vistasPng(r: Reporte, modelo = false): Promise<{ planta?: Uint8Array; seccion?: Uint8Array; errores?: string[] }> {
   const z = calcular(r).zonas, rmr = { HI: z.HI.total, CORONA: z.CORONA.total, HD: z.HD.total };
   const out: { planta?: Uint8Array; seccion?: Uint8Array; errores?: string[] } = {};
   const err = (q: string, e: unknown) => { (out.errores ??= []).push(`${q}: ${e instanceof Error ? e.message : String(e)}`); };
   const k = 2; // doble resolución para que se vea nítido al imprimir
-  const wP = CAJA_PLANTA.w * k, hP = CAJA_PLANTA.h * k, wS = CAJA_SECCION.w * k, hS = CAJA_SECCION.h * k;
+  const [cP, cS] = modelo ? [{ w: 173, h: 209 }, { w: 247, h: 209 }] : [CAJA_PLANTA, CAJA_SECCION];
+  const wP = cP.w * k, hP = cP.h * k, wS = cS.w * k, hS = cS.h * k;
   try {
     const pl = vistaPlanta(r, rmr, true);
     if (pl) out.planta = await lienzoAPng(wP, hP, ctx => dibujarCanvas(ctx, pl, 0, 0, wP, hP));
   } catch (e) { err('planta', e); }
   try {
-    const a = vistaCunas(r, rmr, 'antes', (wS / 2) / hS), d = vistaCunas(r, rmr, 'despues', (wS / 2) / hS);
+    const a = vistaCunas(r, rmr, 'antes', (wS / 2) / hS, modelo), d = vistaCunas(r, rmr, 'despues', (wS / 2) / hS, modelo);
     if (a && d) out.seccion = await lienzoAPng(wS, hS, ctx => {   // antes | después del sostenimiento
       dibujarCanvas(ctx, a, 0, 0, wS / 2, hS); dibujarCanvas(ctx, d, wS / 2, 0, wS / 2, hS);
       ctx.strokeStyle = '#000'; ctx.lineWidth = 1.2 * k; ctx.beginPath(); ctx.moveTo(wS / 2, 0); ctx.lineTo(wS / 2, hS); ctx.stroke();

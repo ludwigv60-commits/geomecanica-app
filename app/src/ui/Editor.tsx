@@ -607,13 +607,16 @@ function Descargas({ r, listas, onEnviar }: { r: Reporte; listas: Listas; onEnvi
     try {
       if (modelo) {
         let datos: Uint8Array;
-        if (tipo === 'pdf') datos = await (await import('../export/modeloPdf')).generarModeloPdf(r, listas);
+        const mx = await import('../export/modeloXlsx');
+        // logos de AESA y Marcobre desde la plantilla oficial que ya trae la app
+        const logos = await fetch('./plantilla/formato.xlsx').then(x => x.ok ? x.arrayBuffer() : null).then(b => b ? mx.logosDePlantilla(new Uint8Array(b)) : {}).catch(() => ({}));
+        if (tipo === 'pdf') datos = await (await import('../export/modeloPdf')).generarModeloPdf(r, listas, logos);
         else {
           const im = await import('../export/imagenes');
-          const v = await im.vistasPng(r).catch(() => ({} as { planta?: Uint8Array; seccion?: Uint8Array }));
+          const v = await im.vistasPng(r, true).catch(() => ({} as { planta?: Uint8Array; seccion?: Uint8Array }));
           const fr = (r.fotos ?? []).find(x => x.zona === 'FRENTE') ?? r.fotos?.[0];
           const frente = fr ? await im.fotoConTrazas(r, fr).catch(() => null) : null;
-          datos = await (await import('../export/modeloXlsx')).generarModeloXlsx(r, listas, { planta: v.planta, seccion: v.seccion, frente: frente ?? undefined });
+          datos = await mx.generarModeloXlsx(r, listas, { ...logos, planta: v.planta, seccion: v.seccion, frente: frente ?? undefined });
         }
         const { nombreModelo } = await import('../export/modelo');
         const nombre = nombreModelo(r, tipo), mime = tipo === 'xlsx' ? MIME_XLSX : MIME_PDF, t = tipo === 'xlsx' ? 'Excel' : 'PDF';
