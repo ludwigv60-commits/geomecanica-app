@@ -222,8 +222,8 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase 
                   <div dangerouslySetInnerHTML={{ __html: aSvg(vd, 300, 417) }} />
                 </div>
                 {rs && <div className="resumen-cunas">
-                  <div className="rc antes"><small>Antes del desatado</small><b>{an!.bloques.length} cuñas</b><span>ALTO {rs.antes.ALTO} · MEDIO {rs.antes.MEDIO} · BAJO {rs.antes.BAJO}</span></div>
-                  <div className={`rc ${rs.despues.ALTO ? 'mal' : rs.despues.MEDIO ? 'medio' : 'bien'}`}><small>Con sostenimiento</small><b>FS mín {fsTxt(rs.fsMin ?? 0)}</b><span>ALTO {rs.despues.ALTO} · MEDIO {rs.despues.MEDIO} · BAJO {rs.despues.BAJO}</span></div>
+                  <div className="rc antes"><small>Antes del desatado</small><b>{an!.bloques.length} cuñas</b><span>CAEN {rs.caen} · ALTO {rs.antes.ALTO - rs.caen} · MEDIO {rs.antes.MEDIO} · BAJO {rs.antes.BAJO}</span></div>
+                  <div className={`rc ${rs.despues.ALTO ? 'mal' : rs.despues.MEDIO ? 'medio' : 'bien'}`}><small>Desatado y sostenido</small><b>{rs.quedan ? `FS mín ${fsTxt(rs.fsMin ?? 0)}` : 'Sin cuñas sueltas'}</b><span>{rs.caen} desatadas · quedan {rs.quedan}: ALTO {rs.despues.ALTO} · MEDIO {rs.despues.MEDIO} · BAJO {rs.despues.BAJO}</span></div>
                 </div>}
                 {gf && <div className="grafico-fs" dangerouslySetInnerHTML={{ __html: aSvg(gf, 600, 353) }} />}
                 {(va.notas.length > 0) && <ul className="tenue">{va.notas.map((n, i) => <li key={i}>{n}</li>)}</ul>}

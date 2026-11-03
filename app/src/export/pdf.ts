@@ -6,7 +6,7 @@ import { casillas } from './datos';
 import MAPA from './mapa-celdas.json';
 import { colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
 import { aPuntos, vistaPlanta, vistaSeccion, type Vista } from './croquis';
-import { COLOR_RIESGO, analizarCunas, fsTxt, graficoFS, resumen, tablaCunas, vistaCunas } from './cunas2d';
+import { COLOR_CAE, COLOR_RIESGO, analizarCunas, fsTxt, graficoFS, resumen, tablaCunas, vistaCunas } from './cunas2d';
 import { calcular } from '../calc';
 
 const TINTA = rgb(0.05, 0.2, 0.62); // azul lapicero, como en los reportes llenados a mano
@@ -175,7 +175,7 @@ function anexoCunas(doc: PDFDocument, font: PDFFont, negrita: PDFFont, r: Report
   const T = (s: string, x: number, y: number, size: number, f = font, color = rgb(0, 0, 0)) => page.drawText(limpiar(s), { x, y: Hp - y, size, font: f, color });
   T(`ANÁLISIS DE CUÑAS EN LA SECCIÓN · ${r.labor} ${r.desde}${r.hasta ? ` a ${r.hasta}` : ''} · ${r.fecha}`, m, m + 4, 10.5, negrita, hex('#0D2A6B'));
   const rs = resumen(a);
-  partirLineas(limpiar(`${a.bloques.length} cuñas potenciales dentro de la zona de influencia${a.zi ? ` (${Math.round(a.zi.pct * 100)} %, roca ${a.zi.tipo})` : ''}. Antes del desatado: ${rs.antes.ALTO} riesgo ALTO, ${rs.antes.MEDIO} MEDIO, ${rs.antes.BAJO} BAJO (${rs.caida} en caída libre). Con sostenimiento: FS mínimo ${fsTxt(rs.fsMin ?? 0)}; ${rs.despues.ALTO} ALTO, ${rs.despues.MEDIO} MEDIO, ${rs.despues.BAJO} BAJO.`), font, 7, W - 2 * m)
+  partirLineas(limpiar(`${a.bloques.length} cuñas potenciales dentro de la zona de influencia${a.zi ? ` (${Math.round(a.zi.pct * 100)} %, roca ${a.zi.tipo})` : ''}. Antes del desatado: ${rs.caen} CAEN (FS<1, ${rs.pesoCae.toFixed(2)} t/m; ${rs.caida} en caída libre), ${rs.antes.ALTO - rs.caen} ALTO, ${rs.antes.MEDIO} MEDIO, ${rs.antes.BAJO} BAJO. Después del desatado quedan ${rs.quedan}; con sostenimiento FS mínimo ${fsTxt(rs.fsMin ?? 0)}: ${rs.despues.ALTO} ALTO, ${rs.despues.MEDIO} MEDIO, ${rs.despues.BAJO} BAJO.`), font, 7, W - 2 * m)
     .forEach((l, i) => T(l, m, m + 17 + i * 8.5, 7));
   const y0 = m + 34, hV = 330, wV = (W - 2 * m - 8) / 2;
   const va = vistaCunas(r, rmr, 'antes', wV / hV), vd = vistaCunas(r, rmr, 'despues', wV / hV);
@@ -196,17 +196,17 @@ function anexoCunas(doc: PDFDocument, font: PDFFont, negrita: PDFFont, r: Report
     for (const [t, w] of cols) { page.drawRectangle({ x, y: Hp - yT - fa, width: w * esc, height: fa, color: hex('#0D2A6B') }); T(t, x + 1.2, yT + fa - 2.4, tam, negrita, rgb(1, 1, 1)); x += w * esc; }
     lista.forEach((f, i) => {
       const y = yT + fa * (i + 1); let x1 = x0;
-      const vals = [String(f.n), f.zona, f.familias, f.prof.toFixed(2), f.peso.toFixed(2), f.modo, fsTxt(f.fs0), f.riesgo0, fsTxt(f.fs), f.riesgo];
+      const vals = [String(f.n), f.zona, f.familias, f.prof.toFixed(2), f.peso.toFixed(2), f.modo, fsTxt(f.fs0), f.cae ? 'CAE' : f.riesgo0, f.cae ? 'desatada' : fsTxt(f.fs), f.cae ? '-' : f.riesgo];
       if (i % 2) page.drawRectangle({ x: x0, y: Hp - y - fa, width: anchoT * esc, height: fa, color: hex('#F2F4F8') });
       vals.forEach((v, k) => {
         const w = cols[k]![1] * esc, esR = k === 7 || k === 9;
-        if (esR) page.drawRectangle({ x: x1 + 0.8, y: Hp - y - fa + 0.8, width: w - 1.6, height: fa - 1.6, color: hex(COLOR_RIESGO[v as 'ALTO']), opacity: 0.9 });
+        if (esR && v !== '-') page.drawRectangle({ x: x1 + 0.8, y: Hp - y - fa + 0.8, width: w - 1.6, height: fa - 1.6, color: hex(v === 'CAE' ? COLOR_CAE : COLOR_RIESGO[v as 'ALTO']), opacity: 0.9 });
         T(v, x1 + 1.2, y + fa - 2.4, tam, esR ? negrita : font, esR ? rgb(1, 1, 1) : rgb(0, 0, 0)); x1 += w;
       });
     });
   };
   tabla(filas.slice(0, caben), m);
   if (dos) tabla(filas.slice(caben, caben * 2), m + (W - 2 * m) / 2 + 4);
-  const nota = 'Análisis 2D en el plano del frente: equilibrio límite por metro de labor, phi 30°, sin cohesión, gamma 2.7 t/m3. Red de diaclasas con el espaciamiento de cada familia; solo cuñas dentro de la zona de influencia. Pernos: densidad 1/esp² sobre la base de la cuña, si anclan >= 0.5 m detrás. Shotcrete: corte en los dos bordes, tau 0.35 MPa. Para el FS 3D de cuñas de tres planos use Unwedge.';
+  const nota = 'Análisis 2D en el plano del frente: equilibrio límite por metro de labor, phi de las caras = atan(Jr/Ja) de Barton (30° si falta), sin cohesión, gamma 2.7 t/m3. Red de diaclasas con el espaciamiento de cada familia, partida en celdas: toda celda cerrada pegada al contorno es una cuña; solo dentro de la zona de influencia y con caras no mayores que la persistencia. FS<1: cae al desatar y se retira (contorno nuevo). Pernos: densidad 1/esp² sobre la base de la cuña, si anclan >= 0.5 m detrás. Shotcrete: corte en los dos bordes, tau 0.35 MPa. Para el FS 3D de cuñas de tres planos use Unwedge.';
   partirLineas(limpiar(nota), font, 5.4, W - 2 * m).forEach((l, i) => T(l, m, Hp - m - 10 + i * 6.4, 5.4, font, rgb(0.3, 0.3, 0.3)));
 }
