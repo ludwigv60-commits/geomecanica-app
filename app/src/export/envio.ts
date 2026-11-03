@@ -3,8 +3,8 @@
 import type { Listas, Reporte } from '../model';
 import { entregar } from './compartir';
 
-export const PANEL_URL = 'https://claude.ai/artifact/PENDIENTE';
-export const PANEL_LISTO = !PANEL_URL.includes('PENDIENTE');
+export const PANEL_URL = 'https://claude.ai/artifact/KpFptt8mrvLPkxn8pNGUcd';
+export const PANEL_LISTO = true;
 const FORMATO = 'mapeos-geomecanica/1';
 
 function dispositivo(): string {

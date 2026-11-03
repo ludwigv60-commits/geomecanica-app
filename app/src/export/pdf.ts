@@ -105,7 +105,10 @@ async function anexoFotos(doc: PDFDocument, font: PDFFont, r: Reporte) {
     // la foto viene incrustada (celular) o como enlace a un archivo (panel de mapeos)
     let bytes: Uint8Array, png = f.data.startsWith('data:image/png');
     if (f.data.startsWith('data:')) bytes = Uint8Array.from(atob(f.data.split(',')[1] ?? ''), ch => ch.charCodeAt(0));
-    else { const resp = await fetch(f.data); if (!resp.ok) continue; png = (resp.headers.get('content-type') ?? '').includes('png'); bytes = new Uint8Array(await resp.arrayBuffer()); }
+    else {
+      try { const resp = await fetch(f.data); if (!resp.ok) continue; png = (resp.headers.get('content-type') ?? '').includes('png'); bytes = new Uint8Array(await resp.arrayBuffer()); }
+      catch { continue; }
+    }
     const im = png ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
     const k = Math.min((W - 2 * m) / im.width, (altoCaja - 24) / im.height);
     const w = im.width * k, h = im.height * k;
