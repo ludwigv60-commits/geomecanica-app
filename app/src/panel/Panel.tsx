@@ -1,10 +1,11 @@
-// Panel de mapeos: todos los mapeos que envían los celulares, guardados en la base del artefacto (privado en Claude).
+// CENTRO DE CONTROL LUDWIG JUSTA SUBTERRÁNEA (antes Panel de mapeos): todos los mapeos que envían los celulares, guardados en la base del artefacto (privado en Claude).
 // Misma interfaz de la app para ver y editar; los mapeos quedan aquí aunque se borren del celular.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Editor } from '../ui/Editor';
 import { LISTAS_INICIALES, nuevoReporte, type FotoZona, type Listas, type Reporte } from '../model';
-import { calcular } from '../calc';
-import { TIPOS, tipoRoca } from '../core/rmr';
+import { TIPOS } from '../core/rmr';
+import { FILTRO_VACIO, filtrar, fila, infoTipo, type Filtro } from './centro';
+import { excelDe, Herramientas, PESTANAS, ResumenPk, Tabla, type Pestana } from './vistas';
 import { usarEntrega } from '../export/compartir';
 import { leerPaquete, type Paquete } from '../export/envio';
 
@@ -49,9 +50,9 @@ export function Panel() {
   const [abierto, setAbierto] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
-  const [q, setQ] = useState('');
-  const [tipo, setTipo] = useState('');
-  const [labor, setLabor] = useState('');
+  const [f, setF] = useState<Filtro>(FILTRO_VACIO);
+  const [tab, setTab] = useState<Pestana>(() => { try { return (localStorage.getItem('centro-tab') as Pestana) || 'mapeos'; } catch { return 'mapeos'; } });
+  const irA = (t: Pestana) => { setTab(t); try { localStorage.setItem('centro-tab', t); } catch { /* sin almacenamiento */ } };
   const [editor, setEditor] = useState(false);
   const [nombres, setNombres] = useState<Record<string, string>>({});
   const [confirmar, setConfirmar] = useState<string | null>(null);
@@ -148,27 +149,23 @@ export function Panel() {
     try { await db?.collection('mapeos').doc(r.id).delete(); setMsg(`Se borró ${r.labor} ${r.desde}.`); } catch (e) { setMsg(`No se pudo borrar: ${(e as Error).message}`); }
   };
 
-  const ordenados = useMemo(() => [...mapeos].sort((a, b) => (b.fecha ?? '').localeCompare(a.fecha ?? '') || (b.modificado ?? '').localeCompare(a.modificado ?? '')), [mapeos]);
-  const filas = useMemo(() => ordenados.map(r => {
-    const c = calcular(r), t = c.rmrFinal != null ? tipoRoca(c.rmrFinal) : null;
-    return { r, c, t, info: t ? TIPOS.find(x => x.tipo === t) : undefined };
-  }), [ordenados]);
-  const labores = useMemo(() => [...new Set(mapeos.map(m => m.labor).filter(Boolean))].sort(), [mapeos]);
-  const vistas = filas.filter(({ r, t }) => {
-    if (tipo && t !== tipo) return false;
-    if (labor && r.labor !== labor) return false;
-    const s = q.trim().toLowerCase();
-    return !s || [r.labor, r.desde, r.hasta, r.supervisor, r.fecha, r.correlativo, r.observaciones].join(' ').toLowerCase().includes(s);
-  });
-  const porTipo = useMemo(() => TIPOS.map(x => ({ ...x, n: filas.filter(f => f.t === x.tipo).length })).filter(x => x.n), [filas]);
+  const filasTodas = useMemo(() => mapeos.map(r => fila(r, listas)).sort((a, b) => (b.r.fecha ?? '').localeCompare(a.r.fecha ?? '') || (b.r.modificado ?? '').localeCompare(a.r.modificado ?? '')), [mapeos, listas]);
+  const vistas = useMemo(() => filtrar(filasTodas, f), [filasTodas, f]);
+  const labores = useMemo(() => [...new Set(filasTodas.filter(x => (!f.tipoLabor || x.tipoLabor === f.tipoLabor) && (!f.rampa || x.rampa === f.rampa)).map(x => x.r.labor).filter(Boolean))].sort(), [filasTodas, f.tipoLabor, f.rampa]);
+  const riesgos = useMemo(() => [...new Set(filasTodas.map(x => x.r.nivelRiesgo).filter(Boolean))].sort(), [filasTodas]);
   const ultimo = mapeos.reduce<string | undefined>((m, r) => (!m || (r.panel?.subidoEn ?? '') > m ? r.panel?.subidoEn : m), undefined);
+  const metros = Math.round(vistas.reduce((s, x) => s + (x.avance ?? 0), 0) * 10) / 10;
+  const hayFiltro = JSON.stringify(f) !== JSON.stringify(FILTRO_VACIO);
+  const poner = <K extends keyof Filtro>(k: K, v: Filtro[K]) => setF(x => ({ ...x, [k]: v, ...(k === 'tipoLabor' || k === 'rampa' ? { labor: '' } : {}) }));
 
-  const csv = async () => {
-    const cab = ['Correlativo', 'Labor', 'Desde', 'Hasta', 'Fecha', 'Turno', 'Supervisor', 'RMR', 'Tipo', 'Q corona', 'Nivel de riesgo', 'Sostenimiento', 'Subido'];
-    const lin = filas.map(({ r, c, t }) => [r.correlativo, r.labor, r.desde, r.hasta, r.fecha, r.turno, r.supervisor, c.rmrFinal ?? '', t ?? '', c.zonas.CORONA.q ?? '', r.nivelRiesgo, (r.sostenimiento ?? []).join(' / '), r.panel?.subidoEn ?? '']
-      .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'));
-    const { entregar } = await import('../export/compartir');
-    await entregar(new TextEncoder().encode('﻿' + [cab.join(';'), ...lin].join('\r\n')), `mapeos_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
+  const excel = async () => {
+    try {
+      setMsg('Armando el Excel…');
+      const datos = await excelDe(vistas, f);
+      const { entregar } = await import('../export/compartir');
+      await entregar(datos, `Centro_Control_Justa_${new Date().toISOString().slice(0, 10)}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      setMsg(`Excel listo: ${vistas.length} mapeo(s) en 3 hojas (Resumen, PK a PK y Detalle).`);
+    } catch (e) { setMsg(`No se pudo armar el Excel: ${(e as Error).message}`); }
   };
 
   const sel = abierto ? mapeos.find(m => m.id === abierto) : null;
@@ -181,59 +178,93 @@ export function Panel() {
   );
 
   return (
-    <div className="panel">
-      <header className="panel-cab">
-        <div className="panel-cab-in">
-          <small>JUSTA · PRT-JS-CLD-16 · PANEL DE MAPEOS</small>
-          <h1>Mapeos de todos los celulares</h1>
-          <div className="panel-cifras">
-            <span><b>{mapeos.length}</b> mapeos</span>
-            <span><b>{labores.length}</b> labores</span>
-            <span>Último envío <b>{fechaHora(ultimo)}</b></span>
+    <div className="centro">
+      <header className="c-cab">
+        <div className="c-cab-in">
+          <div className="c-marca">
+            <img src="logo-lk.png" alt="LK Geomecánica" className="c-logo" />
+            <div>
+              <small>LK GEOMECÁNICA · INGENIERÍA · GEOTÉCNICA</small>
+              <h1>CENTRO DE CONTROL LUDWIG<br /><span>JUSTA SUBTERRÁNEA</span></h1>
+            </div>
           </div>
-          {porTipo.length > 0 && <div className="panel-tipos">{porTipo.map(x => <span key={x.tipo} className="chip" style={{ background: x.color, color: x.texto, borderColor: x.color }}>ST-{x.tipo} · {x.n}</span>)}</div>}
+          <div className="c-kpis">
+            <div><b>{mapeos.length}</b><span>mapeos</span></div>
+            <div><b>{new Set(mapeos.map(m => m.labor).filter(Boolean)).size}</b><span>labores</span></div>
+            <div><b>{Math.round(filasTodas.reduce((s, x) => s + (x.avance ?? 0), 0))}</b><span>m mapeados</span></div>
+            <div><b className="chico">{fechaHora(ultimo)}</b><span>último envío</span></div>
+          </div>
+          <nav className="c-tabs" role="tablist">
+            {PESTANAS.map(p => <button key={p.id} role="tab" aria-selected={tab === p.id} className={tab === p.id ? 'sel' : ''} onClick={() => irA(p.id)}>{p.icono} {p.nombre}</button>)}
+          </nav>
         </div>
       </header>
-      <main className="panel-cuerpo">
-        <section className="panel-barra">
-          <label className={`btn primario panel-subir${ocupado || !db ? ' apagado' : ''}`}>📥 Subir mapeos
-            <input id="subir" type="file" accept=".json,application/json,text/plain" multiple hidden disabled={ocupado || !db} onChange={e => { subir(e.target.files); e.target.value = ''; }} /></label>
-          <input id="buscar" className="panel-buscar" placeholder="Buscar labor, PK, supervisor, fecha…" value={q} onChange={e => setQ(e.target.value)} />
-          <select id="labor" value={labor} onChange={e => setLabor(e.target.value)}><option value="">Todas las labores</option>{labores.map(l => <option key={l}>{l}</option>)}</select>
-          <select id="tipo" value={tipo} onChange={e => setTipo(e.target.value)}><option value="">Todos los tipos</option>{TIPOS.map(x => <option key={x.tipo} value={x.tipo}>ST-{x.tipo}</option>)}</select>
-          <button className="btn" disabled={!mapeos.length} onClick={csv}>⬇ Resumen (CSV)</button>
-        </section>
+      <main className="c-cuerpo">
         {msg && <p className="panel-msg" onClick={() => setMsg(null)}>{msg}</p>}
         {estado === 'cargando' && <p className="tenue">Cargando los mapeos…</p>}
-        {estado === 'lento' && <p className="alerta">La base del panel aún no responde. Revise su conexión; los mapeos aparecerán solos al conectar.</p>}
-        {estado === 'sin-acceso' && <p className="alerta">Este panel funciona dentro de Claude: ábralo con su enlace de claude.ai, con su cuenta.</p>}
-        {estado.startsWith('error:') && <p className="alerta">No se pudo leer la base del panel: {estado.slice(6)}</p>}
-        {estado === 'listo' && !mapeos.length && <div className="vacio panel-vacio"><b>☁️</b>Todavía no hay mapeos en el panel.
-          <span>En el celular, en la lista de reportes, toque <b>☁️ Enviar mapeos al panel</b> y guarde el archivo. Luego, aquí, toque <b>📥 Subir mapeos</b> y elíjalo.</span></div>}
-        {vistas.length > 0 && <div className="panel-lista" role="list">
-          {vistas.map(({ r, c, t, info }) => {
-            const foto = r.fotos?.find(f => f.zona === 'FRENTE') ?? r.fotos?.[0];
-            return (
-              <article key={r.id} role="listitem" className="panel-fila" style={{ borderLeftColor: info?.color ?? 'var(--borde)' }} onClick={() => setAbierto(r.id)} tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') setAbierto(r.id); }}>
-                {foto ? <img className="pf-foto" src={foto.data} alt="" loading="lazy" /> : <span className="pf-foto vacia">📷</span>}
-                <div className="pf-txt">
-                  <b>{r.labor || 'Sin labor'}</b>
-                  <span>{[r.desde && `PK ${r.desde}${r.hasta ? ` a ${r.hasta}` : ''}`, r.fecha, r.turno, r.correlativo && `N° ${r.correlativo}`].filter(Boolean).join(' · ')}</span>
-                  <small>{r.supervisor || 'Sin supervisor'} · subido {fechaHora(r.panel?.subidoEn)}{r.panel?.subidoPor ? ` por ${nombres[r.panel.subidoPor] ?? '…'}` : ''}{r.panel?.editadoEn ? ` · editado ${fechaHora(r.panel.editadoEn)}` : ''}</small>
-                </div>
-                <div className="pf-datos">
-                  <span className="chip" style={info ? { background: info.color, color: info.texto, borderColor: info.color } : {}}>{t ? `ST-${t}` : 'Sin tipo'}</span>
-                  <span className="pf-num">RMR <b>{c.rmrFinal ?? '—'}</b></span>
-                  <span className="pf-num">Q <b>{c.zonas.CORONA.q ?? '—'}</b></span>
-                  {r.nivelRiesgo && <span className="pf-num">Riesgo <b>{r.nivelRiesgo}</b></span>}
-                </div>
-                {editor && <button className={confirmar === r.id ? 'btn mini peligro' : 'btn mini'} aria-label="Borrar mapeo" onClick={e => { e.stopPropagation(); borrar(r); }}>{confirmar === r.id ? '¿Borrar? Toque otra vez' : '🗑'}</button>}
-              </article>
-            );
-          })}
-        </div>}
-        {estado === 'listo' && mapeos.length > 0 && !vistas.length && <p className="tenue">Ningún mapeo coincide con el filtro.</p>}
+        {estado === 'lento' && <p className="alerta">La base aún no responde. Revise su conexión; los mapeos aparecerán solos al conectar.</p>}
+        {estado === 'sin-acceso' && <p className="alerta">Este Centro funciona dentro de Claude: ábralo con su enlace de claude.ai, con su cuenta.</p>}
+        {estado.startsWith('error:') && <p className="alerta">No se pudo leer la base: {estado.slice(6)}</p>}
+
+        {tab !== 'herramientas' && <section className="c-filtros" aria-label="Filtros">
+          <div className="c-seg" role="group" aria-label="Rampa o cámara">
+            {([['', 'Todo'], ['RAMPA', '🛣️ Rampas'], ['CAMARA', '🏛️ Cámaras']] as const).map(([v, t]) => <button key={v} className={f.tipoLabor === v ? 'sel' : ''} onClick={() => poner('tipoLabor', v)}>{t}</button>)}
+          </div>
+          <div className="c-seg" role="group" aria-label="Rampa">
+            {([['', 'Norte y Sur'], ['Norte', 'Norte'], ['Sur', 'Sur']] as const).map(([v, t]) => <button key={v} className={f.rampa === v ? 'sel' : ''} onClick={() => poner('rampa', v)}>{t}</button>)}
+          </div>
+          <select aria-label="Labor" value={f.labor} onChange={e => poner('labor', e.target.value)}><option value="">Todas las labores</option>{labores.map(l => <option key={l}>{l}</option>)}</select>
+          <label className="c-pk">PK de<input inputMode="decimal" placeholder="0+900" value={f.pkDesde} onChange={e => poner('pkDesde', e.target.value)} /></label>
+          <label className="c-pk">a<input inputMode="decimal" placeholder="0+960" value={f.pkHasta} onChange={e => poner('pkHasta', e.target.value)} /></label>
+          <select aria-label="Tipo de roca" value={f.tipo} onChange={e => poner('tipo', e.target.value as Filtro['tipo'])}><option value="">Todo tipo de roca</option>{TIPOS.map(x => <option key={x.tipo} value={x.tipo}>Tipo {x.tipo}</option>)}</select>
+          <select aria-label="Nivel de riesgo" value={f.riesgo} onChange={e => poner('riesgo', e.target.value)}><option value="">Todo riesgo</option>{riesgos.map(x => <option key={x}>{x}</option>)}</select>
+          <label className="c-pk">Del<input type="date" value={f.fechaDesde} onChange={e => poner('fechaDesde', e.target.value)} /></label>
+          <label className="c-pk">al<input type="date" value={f.fechaHasta} onChange={e => poner('fechaHasta', e.target.value)} /></label>
+          <input className="c-buscar" placeholder="Buscar supervisor, N°, observación…" value={f.texto} onChange={e => poner('texto', e.target.value)} />
+          {hayFiltro && <button className="btn mini" onClick={() => setF(FILTRO_VACIO)}>✕ Limpiar</button>}
+          <div className="c-acciones">
+            <span className="c-cuenta"><b>{vistas.length}</b> mapeo(s) · <b>{metros}</b> m</span>
+            <label className={`btn${ocupado || !db ? ' apagado' : ''}`}>📥 Subir mapeos
+              <input id="subir" type="file" accept=".json,application/json,text/plain" multiple hidden disabled={ocupado || !db} onChange={e => { subir(e.target.files); e.target.value = ''; }} /></label>
+            <button className="btn primario" disabled={!vistas.length} onClick={excel}>⬇ Excel</button>
+          </div>
+        </section>}
+
+        {tab === 'mapeos' && <>
+          {estado === 'listo' && !mapeos.length && <div className="vacio panel-vacio"><b>☁️</b>Todavía no hay mapeos.
+            <span>En el celular, toque <b>☁️ Enviar mapeos al panel</b> y guarde el archivo. Luego, aquí, toque <b>📥 Subir mapeos</b>.</span></div>}
+          {vistas.length > 0 && <div className="panel-lista" role="list">
+            {vistas.map(({ r, tipo, tipoLabor, cob, rmr, q }) => {
+              const info = infoTipo(tipo);
+              const foto = r.fotos?.find(x => x.zona === 'FRENTE') ?? r.fotos?.[0];
+              return (
+                <article key={r.id} role="listitem" className="panel-fila" style={{ borderLeftColor: info?.color ?? 'var(--borde)' }} onClick={() => setAbierto(r.id)} tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') setAbierto(r.id); }}>
+                  {foto ? <img className="pf-foto" src={foto.data} alt="" loading="lazy" /> : <span className="pf-foto vacia">📷</span>}
+                  <div className="pf-txt">
+                    <b>{tipoLabor === 'CAMARA' ? '🏛️ ' : ''}{r.labor || 'Sin labor'}</b>
+                    <span>{[r.desde && `PK ${r.desde}${r.hasta ? ` a ${r.hasta}` : ''}`, r.avance != null && `${r.avance} m`, r.fecha, r.turno, r.correlativo && `N° ${r.correlativo}`].filter(Boolean).join(' · ')}</span>
+                    <small>{r.supervisor || 'Sin supervisor'} · subido {fechaHora(r.panel?.subidoEn)}{r.panel?.subidoPor ? ` por ${nombres[r.panel.subidoPor] ?? '…'}` : ''}{r.panel?.editadoEn ? ` · editado ${fechaHora(r.panel.editadoEn)}` : ''}</small>
+                  </div>
+                  <div className="pf-datos">
+                    <span className="chip" style={info ? { background: info.color, color: info.texto, borderColor: info.color } : {}}>{tipo ? `Tipo ${tipo}` : 'Sin tipo'}</span>
+                    <span className="pf-num">RMR <b>{rmr ?? '—'}</b></span>
+                    <span className="pf-num">Q <b>{q.CORONA ?? '—'}</b></span>
+                    {cob != null && <span className="pf-num">Cob. <b>{cob} m</b></span>}
+                    {r.nivelRiesgo && <span className="pf-num">Riesgo <b>{r.nivelRiesgo}</b></span>}
+                  </div>
+                  {editor && <button className={confirmar === r.id ? 'btn mini peligro' : 'btn mini'} aria-label="Borrar mapeo" onClick={e => { e.stopPropagation(); borrar(r); }}>{confirmar === r.id ? '¿Borrar? Toque otra vez' : '🗑'}</button>}
+                </article>
+              );
+            })}
+          </div>}
+          {estado === 'listo' && mapeos.length > 0 && !vistas.length && <p className="tenue">Ningún mapeo coincide con el filtro.</p>}
+        </>}
+
+        {tab === 'resumen' && <ResumenPk filas={vistas} abrir={setAbierto} />}
+        {tab === 'tabla' && <Tabla filas={vistas} abrir={setAbierto} />}
+        {tab === 'herramientas' && <Herramientas />}
       </main>
+      <footer className="c-pie">LK Geomecánica · Centro privado: los datos de Justa solo los ve quien usted invite.</footer>
     </div>
   );
 }
