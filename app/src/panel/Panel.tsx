@@ -162,7 +162,9 @@ export function Panel() {
       const l = await leerGmail(mcp, ya, t => setGmail({ estado: 'leyendo', texto: t }));
       let texto = l.recibidos.length ? '' : 'No hay mapeos nuevos del celular.';
       if (l.recibidos.length) {
-        texto = (await importar(l.recibidos.map(x => x.paquete), t => setGmail({ estado: 'leyendo', texto: t }))).texto;
+        // el más reciente al final: un mapeo corregido y reenviado (mismo id) queda con su última versión
+        const orden = [...l.recibidos].sort((a, b) => (a.paquete.enviadoEn ?? '').localeCompare(b.paquete.enviadoEn ?? ''));
+        texto = (await importar(orden.map(x => x.paquete), t => setGmail({ estado: 'leyendo', texto: t }))).texto;
         const nuevos = [...new Set([...(hechos.current ?? []), ...l.recibidos.map(x => x.hilo)])].slice(-3000);
         hechos.current = nuevos;
         await db.doc('config/gmail').set({ hechos: nuevos });
