@@ -38,6 +38,8 @@ export function App() {
     : <p className="tenue">{envio}</p>);
   useEffect(() => {
     recargar(); recargarBd(); leerListas().then(setListas); pedirPersistencia();
+    // APK: los mapeos de Justa y la IA entrenada vienen dentro de la app y se cargan solos la primera vez.
+    import('../ia/paquete').then(m => m.cargarPaqueteIncluido()).then(msg => { if (msg) { recargarBd(); setAviso(msg); } }).catch(() => {});
     // Deja listo en el celular todo lo necesario para exportar sin señal.
     const t = setTimeout(() => {
       import('../export/xlsx').catch(() => {}); import('../export/pdf').catch(() => {});

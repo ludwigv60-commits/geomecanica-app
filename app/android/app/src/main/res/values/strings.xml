@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">LK Geomecánica</string>
+    <string name="title_activity_main">LK Geomecánica</string>
+    <string name="package_name">pe.lk.geomecanica</string>
+    <string name="custom_url_scheme">pe.lk.geomecanica</string>
+</resources>
