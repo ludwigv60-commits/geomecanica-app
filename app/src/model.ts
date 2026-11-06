@@ -105,7 +105,7 @@ export function nuevoReporte(prev?: Reporte, correlativo = ''): Reporte {
   };
 }
 
-export interface Listas { labores: string[]; supervisores: string[]; litologias: string[]; riesgos: string[]; declinacion?: number; convergencia?: number; coberturas?: Partial<Record<Rampa, ParamCobertura>>; coberturaJusta?: boolean }
+export interface Listas { labores: string[]; supervisores: string[]; litologias: string[]; riesgos: string[]; declinacion?: number; convergencia?: number; coberturas?: Partial<Record<Rampa, ParamCobertura>>; coberturaJusta?: boolean; puenteUrl?: string }
 export const LISTAS_INICIALES: Listas = {
   labores: ['Rampa Norte', 'Rampa Sur'],
   supervisores: ['Kliutsmann Julca Miranda'],

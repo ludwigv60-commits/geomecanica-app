@@ -61,6 +61,11 @@ export function EditorListas({ listas, historialBD = 0, onHistorial, onGuardar, 
             </>}
         </section>
         <section className="tarjeta">
+          <h3>Envío automático al Centro de Control</h3>
+          <p className="ayuda">Pegue la URL del puente de su cuenta Google (termina en /exec?k=SU_CLAVE). Con internet, cada mapeo nuevo o modificado se envía solo y el Centro de Control lo carga al abrirse. Vacío = envío manual con ☁️ Enviar.</p>
+          <label className="campo"><span>URL del puente al Centro</span><input value={l.puenteUrl ?? ''} placeholder="https://script.google.com/macros/s/…/exec" onChange={e => setL({ ...l, puenteUrl: e.target.value.trim() || undefined })} /></label>
+        </section>
+        <section className="tarjeta">
           <h3>Brújula</h3>
           <div className="rejilla2">
             <label className="campo"><span>Declinación magnética (°)</span><NumIn signo valor={l.declinacion} on={v => setL({ ...l, declinacion: v ?? 0 })} /></label>

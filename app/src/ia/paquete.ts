@@ -18,6 +18,29 @@ const guardar = async (clave: string, v: unknown, que: string) => {
 export async function cargarDatos(f: File): Promise<string> {
   let b: ArrayBuffer;
   try { b = await f.arrayBuffer(); } catch { throw new Error('el celular no dejó abrir el archivo. Si está en iCloud, ábralo una vez en Archivos para que se descargue y vuelva a elegirlo.'); }
+  return cargarBuffer(b, f.name);
+}
+
+/** Datos que vienen dentro del APK (datos-apk/, solo existe en el APK, nunca en la web publicada).
+ *  Se cargan solos la primera vez y cada vez que una versión nueva del APK trae datos nuevos. */
+export async function cargarPaqueteIncluido(): Promise<string | null> {
+  let version: string;
+  try {
+    const r = await fetch('./datos-apk/version.txt', { cache: 'no-store' });
+    if (!r.ok) return null;
+    version = (await r.text()).trim();
+  } catch { return null; }
+  if (!version || version.startsWith('<')) return null; // sin datos incluidos (web publicada)
+  const { leerConfig } = await import('../store');
+  if ((await leerConfig<string>('paqueteIncluido').catch(() => undefined)) === version) return null;
+  const r = await fetch('./datos-apk/justa_datos.json', { cache: 'no-store' });
+  if (!r.ok) return null;
+  const msg = await cargarBuffer(await r.arrayBuffer(), 'justa_datos.json');
+  await guardarConfig('paqueteIncluido', version);
+  return msg.replace('Reemplazó lo anterior y queda solo en este celular.', 'Datos de Justa incluidos en la app, cargados en este celular.');
+}
+
+async function cargarBuffer(b: ArrayBuffer, nombre: string): Promise<string> {
   if (!b.byteLength) throw new Error('el archivo está vacío. Descárguelo de nuevo.');
   const ini = inicio(b);
   if (ini[0] === 0x7b /* { */) {
@@ -41,7 +64,7 @@ export async function cargarDatos(f: File): Promise<string> {
   }
   if (!(ini[0] === 0x50 && ini[1] === 0x4b)) { // los .xlsx empiezan con "PK"
     const txt = new TextDecoder().decode(ini.slice(0, 15)).replace(/[^\x20-\x7e]/g, '·');
-    throw new Error(`"${f.name}" no es un .json ni un .xlsx (empieza con "${txt}"). Elija justa_datos.json o la BD de mapeos en Excel.`);
+    throw new Error(`"${nombre}" no es un .json ni un .xlsx (empieza con "${txt}"). Elija justa_datos.json o la BD de mapeos en Excel.`);
   }
   const { leerHoja, desdeFilas } = await import('./historial-bd');
   const rs = desdeFilas(await leerHoja(b));

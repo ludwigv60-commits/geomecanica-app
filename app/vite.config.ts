@@ -4,7 +4,8 @@ import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { createHash } from 'node:crypto';
 
-const SALIDA = '../formulario';
+// SALIDA=../apk-www para el APK (ver capacitor.config.ts); por defecto, la web publicada.
+const SALIDA = process.env.SALIDA || '../formulario';
 
 /** Escribe sw.js con la lista de todos los archivos de la app para que funcione sin señal desde la primera apertura. */
 function serviceWorker(): Plugin {
