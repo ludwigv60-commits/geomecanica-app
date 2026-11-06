@@ -117,6 +117,8 @@ export function resumir(filas: Fila[]): Resumen[] {
 
 /* ───────── Herramientas: un solo lugar para todo, sin repetidos ───────── */
 export interface Herramienta { nombre: string; que: string; url: string; local?: boolean; icono: string }
+/** Se abre dentro del Centro todo lo que no sea un artefacto vivo de Claude (esos no se pueden incrustar). */
+export const dentro = (h: Herramienta) => !h.url.startsWith('https://claude.ai/');
 export interface Grupo { titulo: string; icono: string; items: Herramienta[] }
 const A = (id: string) => `https://claude.ai/artifact/${id}`;
 const H = (archivo: string) => `herramientas/${archivo}`;
@@ -124,42 +126,41 @@ const H = (archivo: string) => `herramientas/${archivo}`;
 export const HERRAMIENTAS: Grupo[] = [
   { titulo: 'Geomecánica', icono: '⛰️', items: [
     { icono: '📱', nombre: 'App de mapeo geomecánico', que: 'Llenar el formato PRT-JS-CLD-16 en el celular', url: 'https://ludwigv60-commits.github.io/geomecanica-app/formulario/' },
-    { icono: '🗂️', nombre: 'Datos Justa para la app', que: 'Descargar la base histórica privada y cargarla en la app', url: A('41NVZkPXLVcCPREzdFaRoL') },
-    { icono: '🧭', nombre: 'Dip y dip dir con el celular', que: 'Medir buzamiento y dirección con los sensores', url: A('SpwTCHt9zGiVh8bFyXy6Qj') },
-    { icono: '🧊', nombre: 'Medir dip en 3D', que: 'Orientación de estructuras sobre un modelo 3D', url: A('RghRytmm2cN8R9RerzGmDS') },
-    { icono: '🔺', nombre: 'Ejemplo real: cuña Rampa Norte', que: 'Cuña F1+SD5 del 03/10/2026, sin y con sostenimiento', url: A('G3chjNB8aFzehweWLqGg69') },
-    { icono: '📐', nombre: 'Diseño de la app', que: 'Entendimiento, riesgos y arquitectura', url: A('RXJzd7B8YSvGUysMXG3VdG') },
+    { icono: '🗂️', nombre: 'Datos Justa para la app', que: 'Descarga la base privada (se abre en Claude)', url: A('41NVZkPXLVcCPREzdFaRoL') },
+    { icono: '🧭', nombre: 'Dip y dip dir con el celular', que: 'Medir buzamiento y dirección con los sensores', url: H('art-SpwTCHt9zGiVh8bFyXy6Qj.html') },
+    { icono: '🧊', nombre: 'Medir dip en 3D', que: 'Orientación de estructuras sobre un modelo 3D', url: H('art-RghRytmm2cN8R9RerzGmDS.html') },
+    { icono: '🔺', nombre: 'Ejemplo real: cuña Rampa Norte', que: 'Cuña F1+SD5 del 03/10/2026, sin y con sostenimiento', url: H('doc-G3chjNB8aFzehweWLqGg69.html') },
+    { icono: '📐', nombre: 'Diseño de la app', que: 'Entendimiento, riesgos y arquitectura', url: H('doc-RXJzd7B8YSvGUysMXG3VdG.html') },
   ] },
   { titulo: 'Perforación y voladura', icono: '💥', items: [
-    { icono: '🎯', nombre: 'PERVOL Mallas Mina Justa', que: 'Diseñador de mallas de perforación', url: A('QpHY3XzD5uZaUZ4DxwnSt8') },
-    { icono: '🔍', nombre: 'Análisis crítico de mallas', que: 'Revisión de las mallas actuales', url: A('FD6NH2AaBvtF64gyVqfRxS') },
-    { icono: '🧾', nombre: 'Prompt maestro PERVOL', que: 'Instrucciones del diseñador de mallas', url: A('3PxpZCa8zzrpytHArJoEA5') },
+    { icono: '🎯', nombre: 'PERVOL Mallas Mina Justa', que: 'Diseñador de mallas (versión viva en Claude, guarda datos)', url: A('QpHY3XzD5uZaUZ4DxwnSt8') },
+    { icono: '🔍', nombre: 'Análisis crítico de mallas', que: 'Revisión de las mallas actuales', url: H('doc-FD6NH2AaBvtF64gyVqfRxS.html') },
+    { icono: '🧾', nombre: 'Prompt maestro PERVOL', que: 'Instrucciones del diseñador de mallas', url: H('doc-3PxpZCa8zzrpytHArJoEA5.html') },
     { icono: '🛰️', nombre: 'MAP · Perforación iSURE 3D', que: 'Análisis de perforación del jumbo (versión 59)', url: H('map-perforacion-isure-3d.html'), local: true },
     { icono: '👷', nombre: 'Comparación de perforación', que: 'Dos operadores en el Frente Sur', url: H('comparacion-perforacion.html'), local: true },
-    { icono: '⚡', nombre: 'Speedy Bit vs Alpha', que: 'Broca 48 mm 14 pies vs botones 12 pies', url: A('HKDCRqgW7sj7Bt1rSqaU27') },
-    { icono: '💲', nombre: 'Speedy Bit: velocidad y rentabilidad', que: 'Cuánto genera y cuánto cuesta', url: A('GZUZXfmRWoTgjKmznyAeUs') },
+    { icono: '⚡', nombre: 'Speedy Bit vs Alpha', que: 'Broca 48 mm 14 pies vs botones 12 pies', url: H('art-HKDCRqgW7sj7Bt1rSqaU27.html') },
+    { icono: '💲', nombre: 'Speedy Bit: velocidad y rentabilidad', que: 'Cuánto genera y cuánto cuesta', url: H('art-GZUZXfmRWoTgjKmznyAeUs.html') },
     { icono: '🧨', nombre: 'Vale de explosivos', que: 'Llenado automático desde la malla', url: H('vale-explosivos.html'), local: true },
   ] },
   { titulo: 'Shotcrete', icono: '🏗️', items: [
-    { icono: '💰', nombre: 'Valorización Shotcrete AESA', que: 'Valorización mensual (versión más reciente)', url: A('Sni5Dztb5Lqd2xixjd8rui') },
-    { icono: '📘', nombre: 'Cómo se calcula la valorización', que: 'Método, setiembre 2026', url: A('Sw9ZTa2NHRNwadPjxiXGKQ') },
+    { icono: '💰', nombre: 'Valorización Shotcrete AESA', que: 'Versión viva en Claude (guarda datos)', url: A('Sni5Dztb5Lqd2xixjd8rui') },
+    { icono: '📘', nombre: 'Cómo se calcula la valorización', que: 'Método, setiembre 2026', url: H('doc-Sw9ZTa2NHRNwadPjxiXGKQ.html') },
     { icono: '📏', nombre: 'Shotcrete por rendimiento m²/m³', que: 'Julio y agosto 2026', url: H('shotcrete-rendimiento.html'), local: true },
-    { icono: '🛡️', nombre: 'Guardias Shotcrete y Calidad', que: 'Control por guardia', url: A('TBMGaYP5jajy5g5z4LoELS') },
+    { icono: '🛡️', nombre: 'Guardias Shotcrete y Calidad', que: 'Control por guardia', url: H('art-TBMGaYP5jajy5g5z4LoELS.html') },
   ] },
   { titulo: 'Equipos y ciclo', icono: '🚜', items: [
     { icono: '📊', nombre: 'Utilización de Equipos AESA', que: 'Centro de control de flota (versión del 05-nov)', url: H('utilizacion-equipos.html'), local: true },
-    { icono: '⚙️', nombre: 'Rendimiento de Equipos Justa', que: 'Real vs estándar por equipo', url: A('DKmTK1wJcWX1q5jUM5gUPC') },
-    { icono: '🔄', nombre: 'Ciclo operativo Rampa Sur', que: '22 de setiembre', url: A('EX6U5K9hRkk6asb2WE7Bkv') },
-    { icono: '📅', nombre: 'Corrida Rampa Norte', que: 'Avance e intersección de cámaras', url: A('8UikAoJaCnu97ALLawfkSk') },
-    { icono: '⏱️', nombre: 'Ventana horaria Rampa Norte', que: 'Horas disponibles del frente', url: A('MQxgh55Jrn3VMt2p3DYKU1') },
-    { icono: '🪣', nombre: 'Caso de negocio: 3 cucharas', que: 'Scoop con 3 cucharas vs 2', url: A('SJy6XkxtftYch5yBxUp9xF') },
-    { icono: '⌛', nombre: 'Horas de scoop: 2 vs 3 cucharas', que: 'Detalle de horas', url: A('AzFaxga8BrnXcDcDt7yWRZ') },
-    { icono: '➕', nombre: 'Horas de scoop de más', que: 'Con 2 cucharas', url: A('FqzuhyhTvsWfXjQV4F4D65') },
-    { icono: '🪨', nombre: 'Sobrerotura vs Scoop R2900G', que: 'Limpieza extra por 12 % de sobrerotura', url: A('FYhqg3TbtL3CEgC7JokEEC') },
+    { icono: '⚙️', nombre: 'Rendimiento de Equipos Justa', que: 'Real vs estándar por equipo', url: H('art-DKmTK1wJcWX1q5jUM5gUPC.html') },
+    { icono: '🔄', nombre: 'Ciclo operativo Rampa Sur', que: '22 de setiembre', url: H('art-EX6U5K9hRkk6asb2WE7Bkv.html') },
+    { icono: '📅', nombre: 'Corrida Rampa Norte', que: 'Avance e intersección de cámaras', url: H('art-8UikAoJaCnu97ALLawfkSk.html') },
+    { icono: '⏱️', nombre: 'Ventana horaria Rampa Norte', que: 'Horas disponibles del frente', url: H('art-MQxgh55Jrn3VMt2p3DYKU1.html') },
+    { icono: '⌛', nombre: 'Horas de scoop: 2 vs 3 cucharas', que: 'Detalle de horas', url: H('deck-AzFaxga8BrnXcDcDt7yWRZ.html') },
+    { icono: '➕', nombre: 'Horas de scoop de más', que: 'Con 2 cucharas', url: H('deck-FqzuhyhTvsWfXjQV4F4D65.html') },
+    { icono: '🪨', nombre: 'Sobrerotura vs Scoop R2900G', que: 'Limpieza extra por 12 % de sobrerotura', url: H('art-FYhqg3TbtL3CEgC7JokEEC.html') },
     { icono: '🚚', nombre: 'Flota de volquetes', que: 'Dimensionamiento por meses', url: H('flota-volquetes.html'), local: true },
   ] },
   { titulo: 'Gestión y seguridad', icono: '🦺', items: [
-    { icono: '🧑‍💼', nombre: 'Desvíos y supervisión', que: 'Horas perdidas en el ámbito del supervisor', url: A('X8hVjbxvoeZaN5sPzwMtrT') },
+    { icono: '🧑‍💼', nombre: 'Desvíos y supervisión', que: 'Horas perdidas en el ámbito del supervisor', url: H('art-X8hVjbxvoeZaN5sPzwMtrT.html') },
     { icono: '📄', nombre: 'Actualizador de PETS', que: 'Con filtro por ingeniero', url: H('actualizador-pets.html'), local: true },
     { icono: '🎤', nombre: 'Talento en Avance', que: 'Presentación del programa trainee', url: H('talento-en-avance.html'), local: true },
   ] },
@@ -177,14 +178,14 @@ export const HERRAMIENTAS: Grupo[] = [
     { icono: '💲', nombre: 'Speedy Bit rentabilidad (copia)', que: 'Copia de Descargas', url: H('speedy-rentabilidad.html'), local: true },
     { icono: '🪨', nombre: 'Sobrerotura vs Scoop (copia)', que: 'Copia de Descargas', url: H('sobrerotura-scoop.html'), local: true },
     { icono: '🧑‍💼', nombre: 'Desvíos del supervisor (copia)', que: 'Versión descargable', url: H('desvios-supervisor.html'), local: true },
-    { icono: '🧑‍💼', nombre: 'Desvíos del supervisor (otro artefacto)', que: 'Versión anterior en Claude', url: A('JoKgbJeWRG28fPTZWCdQgZ') },
-    { icono: '⚙️', nombre: 'Rendimiento de equipos (otro artefacto)', que: 'Segunda copia en Claude', url: A('UUTWyHpGSDyNRkNVZ7nD7a') },
+    { icono: '🧑‍💼', nombre: 'Desvíos del supervisor (versión anterior)', que: 'Versión anterior', url: H('art-JoKgbJeWRG28fPTZWCdQgZ.html') },
+    { icono: '⚙️', nombre: 'Rendimiento de equipos (segunda copia)', que: 'Segunda copia', url: H('art-UUTWyHpGSDyNRkNVZ7nD7a.html') },
     { icono: '🛰️', nombre: 'MAP · Perforación iSURE (2D)', que: 'Versión anterior sin 3D', url: H('map-perforacion-isure-2d.html'), local: true },
     { icono: '💣', nombre: 'Buscaminas', que: 'Juego', url: H('buscaminas.html'), local: true },
   ] },
   { titulo: 'Personal', icono: '👤', items: [
-    { icono: '🔎', nombre: 'Súper búsqueda de empleo', que: 'Minería junior', url: A('ShQov8uAZVdJgShCmaXBo6') },
-    { icono: '📝', nombre: 'Revisión de CVs por puesto', que: 'Versiones del CV', url: A('TNPgJsPgJWftabJL2HhCRf') },
-    { icono: '🎓', nombre: 'CV Geólogo de Modelamiento', que: 'CV listo', url: A('E1XWkynXT1U8XmWgRrEz9r') },
+    { icono: '🔎', nombre: 'Súper búsqueda de empleo', que: 'Minería junior', url: H('doc-ShQov8uAZVdJgShCmaXBo6.html') },
+    { icono: '📝', nombre: 'Revisión de CVs por puesto', que: 'Versiones del CV', url: H('doc-TNPgJsPgJWftabJL2HhCRf.html') },
+    { icono: '🎓', nombre: 'CV Geólogo de Modelamiento', que: 'CV listo', url: H('doc-E1XWkynXT1U8XmWgRrEz9r.html') },
   ] },
 ];

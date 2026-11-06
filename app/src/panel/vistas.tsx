@@ -1,7 +1,7 @@
 // Vistas del Centro de Control: resumen PK a PK, tabla con filtros, herramientas y el Excel.
 import { useMemo, useState } from 'react';
 import { TIPOS } from '../core/rmr';
-import { HERRAMIENTAS, infoTipo, ordenPk, pkTexto, resumir, type Fila, type Filtro, type Herramienta } from './centro';
+import { dentro, HERRAMIENTAS, infoTipo, ordenPk, pkTexto, resumir, type Fila, type Filtro, type Herramienta } from './centro';
 import guion from './puente_gmail.gs?raw';
 import { libroExcel, type Columna, type Hoja, type Valor } from './excelCentro';
 
@@ -147,7 +147,7 @@ export function Herramientas({ ocultas, cambiar }: { ocultas: string[]; cambiar?
   const quitadas = HERRAMIENTAS.flatMap(g => g.items).filter(h => ocultas.includes(h.nombre));
   const tarjeta = (h: Herramienta, oculta: boolean) => (
     <div key={h.nombre} className={`c-herr-celda${editar ? ' editando' : ''}`}>
-      {h.local
+      {dentro(h)
         ? <button className="c-herr-item" onClick={() => setAbierta(h)}><i>{h.icono}</i><span><b>{h.nombre}</b><small>{h.que}</small></span><em>Abrir</em></button>
         : <a className="c-herr-item" href={h.url} target="_blank" rel="noopener"><i>{h.icono}</i><span><b>{h.nombre}</b><small>{h.que}</small></span><em>↗</em></a>}
       {cambiar && (editar || oculta) && <button className={`c-herr-x${oculta ? ' volver' : ''}`} aria-label={oculta ? `Volver a mostrar ${h.nombre}` : `Quitar ${h.nombre}`} onClick={() => (oculta ? volver(h) : quitar(h))}>{oculta ? '↩ Volver' : '🗑 Quitar'}</button>}
@@ -156,7 +156,7 @@ export function Herramientas({ ocultas, cambiar }: { ocultas: string[]; cambiar?
   return (
     <div className="c-herr">
       <div className="c-herr-cab">
-        <p className="tenue">Todo en un solo lugar. Las de Claude se abren en otra pestaña; las que tenía en Descargas se abren aquí mismo.</p>
+        <p className="tenue">Todo se abre aquí mismo, dentro del Centro. Solo 3 marcadas con ↗ se abren en Claude porque guardan sus propios datos allí.</p>
         {cambiar && <button className={`btn mini${editar ? ' primario' : ''}`} onClick={() => setEditar(e => !e)}>{editar ? '✓ Listo' : '✏️ Ordenar: quitar las que no sirven'}</button>}
       </div>
       {HERRAMIENTAS.map(g => {
