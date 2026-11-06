@@ -48,6 +48,19 @@ export function App() {
     return () => clearTimeout(t);
   }, []);
 
+  // Con internet, los mapeos pendientes se envían solos al Centro de Control (si hay puente configurado).
+  const [auto, setAuto] = useState<string | null>(null);
+  useEffect(() => {
+    if (!listas.puenteUrl) return;
+    const intentar = () => import('../export/autoenvio').then(m => m.enviarPendientes(reportes, listas))
+      .then(n => { if (n) { setAuto(`☁️ ${n} mapeo(s) enviados solos al Centro de Control.`); recargar(); } })
+      .catch(e => setAuto(`No se pudo enviar al Centro de Control (se reintenta solo): ${(e as Error).message}`));
+    intentar();
+    window.addEventListener('online', intentar);
+    const t = setInterval(intentar, 120000);
+    return () => { window.removeEventListener('online', intentar); clearInterval(t); };
+  }, [reportes, listas]);
+
   if (vista.v === 'editor') return (
     <Editor inicial={vista.r} listas={listas} historial={[...reportes, ...bd]}
       onGuardar={async r => { await guardarReporte(r); await recargar(); }}
@@ -81,6 +94,7 @@ export function App() {
       </header>
       <main className="contenido">
         {aviso && <p className="alerta" onClick={() => setAviso(null)}>{aviso}</p>}
+        {auto && <p className="tenue" onClick={() => setAuto(null)}>{auto}</p>}
         {reportes.length > 0 && PANEL_LISTO && <div className="enviar-panel">
           {(() => { const p = reportes.filter(pendiente); return p.length
             ? <button className="btn" onClick={() => enviar(p)}>☁️ Enviar {p.length} mapeo{p.length > 1 ? 's' : ''} al panel</button>
