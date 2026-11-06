@@ -320,6 +320,7 @@ export function Panel() {
           {estado === 'listo' && mapeos.length > 0 && !vistas.length && <p className="tenue">Ningún mapeo coincide con el filtro.</p>}
         </>}
 
+        {tab === 'inicio' && <Puente abierto={!(hechos.current?.length)} />}
         {tab === 'inicio' && <Inicio filas={filasTodas} ocultas={ocultas} abrir={setApp} abrirMapeo={setAbierto} ir={irA} excel={excel}
           nuevo={db && editor ? nuevoMapeo : undefined} recibir={mcp && editor ? () => recibirGmail(true) : undefined} recibiendo={gmail.estado === 'leyendo'} />}
         {tab === 'resumen' && <ResumenPk filas={vistas} abrir={setAbierto} />}

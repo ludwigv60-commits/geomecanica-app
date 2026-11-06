@@ -205,3 +205,7 @@ details summary { cursor:pointer; font-weight:600; font-size:14px; color:var(--a
   .c-hoy-acc { grid-template-columns:minmax(0, 1fr); }
   .c-app { min-height:132px; padding:14px; }
 }
+.c-puente { border:2px solid var(--acento); }
+.c-puente[open] { background:linear-gradient(180deg, color-mix(in srgb, var(--acento) 7%, var(--carta)), var(--carta)); }
+.c-puente summary { font-size:16px; font-weight:800; }
+.c-guion { width:100%; box-sizing:border-box; font:12px ui-monospace, Consolas, monospace; border-radius:10px; border:1px solid var(--borde); background:var(--fondo); color:var(--txt); padding:10px; }

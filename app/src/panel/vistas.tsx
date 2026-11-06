@@ -209,12 +209,16 @@ export async function excelDe(filas: Fila[], f: Filtro): Promise<Uint8Array> {
 }
 
 /* ───────── Puente APK → Gmail → Centro ───────── */
-export function Puente() {
+export function Puente({ abierto }: { abierto?: boolean } = {}) {
   const [copiado, setCopiado] = useState(false);
-  const copiar = async () => { try { await navigator.clipboard.writeText(guion); setCopiado(true); setTimeout(() => setCopiado(false), 2500); } catch { setCopiado(false); } };
+  const [ver, setVer] = useState(false);
+  const copiar = async () => {
+    try { await navigator.clipboard.writeText(guion); setCopiado(true); setTimeout(() => setCopiado(false), 2500); }
+    catch { setVer(true); } // dentro de Claude el portapapeles puede estar bloqueado: se muestra el texto para copiarlo a mano
+  };
   return (
-    <details className="c-card c-puente">
-      <summary>📨 Envío automático del APK al Centro: cómo activarlo (una sola vez)</summary>
+    <details className="c-card c-puente" open={abierto}>
+      <summary>📨 Activar el envío automático del APK al Centro (una sola vez, 3 minutos)</summary>
       <ol>
         <li>Abra <a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a> con su cuenta Google y cree un <b>Nuevo proyecto</b>.</li>
         <li>Toque <b>Copiar el script</b> y péguelo reemplazando todo. Cambie <code>CAMBIA_ESTA_CLAVE</code> por una clave suya.</li>
@@ -223,7 +227,9 @@ export function Puente() {
         <li>En el APK: <b>⚙️ Configuración → URL del puente al Centro</b>, pegue esa URL.</li>
       </ol>
       <p className="tenue">Desde ahí, cuando el celular tenga internet, cada mapeo se envía solo a su propio Gmail (de usted para usted) y este Centro lo carga al abrirse. También puede tocar <b>📨 Recibir del celular</b>. Necesita el conector Gmail activo en claude.ai.</p>
-      <div className="fila-btn"><button className="btn primario" onClick={copiar}>{copiado ? '✓ Copiado' : '📋 Copiar el script'}</button></div>
+      <div className="fila-btn"><button className="btn primario" onClick={copiar}>{copiado ? '✓ Copiado' : '📋 Copiar el script'}</button><button className="btn" onClick={() => setVer(v => !v)}>{ver ? 'Ocultar el script' : '👁 Ver el script'}</button></div>
+      {ver && <><p className="tenue">Toque el cuadro, seleccione todo (Ctrl+A) y copie (Ctrl+C).</p>
+        <textarea className="c-guion" readOnly value={guion} onFocus={e => e.currentTarget.select()} rows={12} /></>}
     </details>
   );
 }
