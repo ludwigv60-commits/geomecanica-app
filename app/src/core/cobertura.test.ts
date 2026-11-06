@@ -11,13 +11,18 @@ describe('cobertura', () => {
     expect(coberturaEn(945.45, T.Norte)).toBeCloseTo((100 + 945 - 20) * s, 6);
   });
   it('usa PK inicial o el promedio con el final', () => {
-    expect(cobertura({ rampa: 'Sur', desde: '0+822.8', hasta: '' }, T)!.pk).toBeCloseTo(822.8);
-    const c = cobertura({ rampa: 'Sur', desde: '0+822.8', hasta: '0+826.7' }, T)!;
+    expect(cobertura({ rampa: 'Sur', desde: '0+822.8', hasta: '' }, T, false)!.pk).toBeCloseTo(822.8);
+    const c = cobertura({ rampa: 'Sur', desde: '0+822.8', hasta: '0+826.7' }, T, false)!;
     expect(c.pk).toBeCloseTo(824.75); expect(c.m).toBeCloseTo(Math.round((80 + 824 - 10) * s * 10) / 10);
     expect(cobertura({ rampa: '', desde: '1', hasta: '' }, T)).toBeNull();
     // sin tabla en Listas usa la integrada de los formatos VG
     expect(cobertura({ rampa: 'Norte', desde: '0+943.6', hasta: '0+947.3' }, {})!.m).toBe(132.5);
     expect(cobertura({ rampa: 'Sur', desde: '0+943.6', hasta: '0+947.3' })!.m).toBe(129);
+    // otra mina sin tabla: no hay cobertura
+    expect(cobertura({ rampa: 'Norte', desde: '0+943.6', hasta: '' }, {}, false)).toBeNull();
+    // cámara: su PK propio no cuenta, se usa el PK de la rampa en el empalme
+    expect(cobertura({ rampa: 'Norte', tipoLabor: 'CAMARA', desde: '0+000', hasta: '0+032', pkRampa: '0+943.6' })!.m).toBe(132.3);
+    expect(cobertura({ rampa: 'Norte', labor: 'Cámara 616', desde: '0+000', hasta: '' })).toBeNull();
   });
   it('deduce la rampa del nombre', () => {
     expect(rampaDeLabor('Rampa Norte')).toBe('Norte'); expect(rampaDeLabor('RP SUR')).toBe('Sur'); expect(rampaDeLabor('Cámara 2')).toBe('');

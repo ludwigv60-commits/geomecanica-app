@@ -336,7 +336,7 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | nu
     }
   }
   leyenda(prims, r, rmr, [caja[0] + w * 0.015, caja[1] + h * 0.02], mpp);
-  const manijas: Manija[] = lineas.filter(l => l.f.abrev !== 'SD').map(l => ({ n: l.f.n, abrev: l.f.abrev, o: l.o, d: l.d, R, u, v }));
+  const manijas: Manija[] = lineas.map(l => ({ n: l.f.n, abrev: l.f.abrev, o: l.o, d: l.d, R, u, v }));
   if (norte) {
     const nx = caja[2] - w * 0.07, ny = caja[3] - h * 0.06;
     prims.push({ t: 'poly', pts: [[nx, ny - h * 0.13], [nx - w * 0.018, ny - h * 0.13], [nx, ny]], cerrado: true, relleno: '#000000' }, { t: 'poly', pts: [[nx, ny - h * 0.13], [nx + w * 0.018, ny - h * 0.13], [nx, ny]], cerrado: true, borde: '#000000', ancho: 0.5 });

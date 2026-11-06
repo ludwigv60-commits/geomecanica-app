@@ -2,7 +2,7 @@ import { NumIn } from './NumIn';
 import { olvidarSesion } from '../ia/onnx';
 import { useEffect, useState } from 'react';
 import type { Listas } from '../model';
-import { COBERTURAS_VG, RAMPAS, type ParamCobertura, type Rampa } from '../core/cobertura';
+import { RAMPAS, type ParamCobertura, type Rampa } from '../core/cobertura';
 import { guardarConfig, leerConfig } from '../store';
 
 const NOMBRES: Record<'labores' | 'supervisores' | 'litologias' | 'riesgos', string> = { labores: 'Labores', supervisores: 'Supervisores de geomecánica', litologias: 'Litologías', riesgos: 'Niveles de riesgo' };
@@ -42,17 +42,23 @@ export function EditorListas({ listas, historialBD = 0, onHistorial, onGuardar, 
         </section>
         <ModeloPrivado />
         <section className="tarjeta">
-          <h3>Cobertura por rampa</h3>
-          <p className="ayuda">Como la hoja "coberturas" del formato VG: cobertura = (base + PK − PK de inicio) · sen(ángulo). Ya vienen los valores de los formatos VG; cámbielos solo si la tabla cambia.</p>
-          {RAMPAS.map(rp => { const c = l.coberturas?.[rp] ?? COBERTURAS_VG[rp]; const pon = (k: keyof ParamCobertura, v: number | null) => {
-            const n: Partial<ParamCobertura> = { ...c, [k]: v ?? undefined };
-            const t = { ...l.coberturas } as Partial<Record<Rampa, ParamCobertura>>;
-            if (n.base == null && n.pkInicio == null && n.angulo == null) delete t[rp]; else t[rp] = { base: n.base ?? 0, pkInicio: n.pkInicio ?? 0, angulo: n.angulo ?? 0 };
-            setL({ ...l, coberturas: t }); };
-            return <div key={rp} className="rejilla3"><b className="campo-titulo">Rampa {rp}</b>
-              <label className="campo"><span>Base (m)</span><NumIn valor={c?.base ?? null} on={v => pon('base', v)} /></label>
-              <label className="campo"><span>PK de inicio (m)</span><NumIn valor={c?.pkInicio ?? null} on={v => pon('pkInicio', v)} /></label>
-              <label className="campo"><span>Ángulo (°)</span><NumIn valor={c?.angulo ?? null} on={v => pon('angulo', v)} /></label></div>; })}
+          <h3>Cobertura</h3>
+          <label className="interruptor"><input type="checkbox" checked={l.coberturaJusta !== false} onChange={e => setL({ ...l, coberturaJusta: e.target.checked })} />
+            <span><b>Cobertura de Justa Subterránea</b><small>Rampas Norte y Sur con la tabla de los formatos VG</small></span></label>
+          {l.coberturaJusta !== false
+            ? <p className="ayuda">Activa: la cobertura sale sola con el PK y la rampa. Apáguela para trabajar en otra mina y escribir su tabla.</p>
+            : <>
+              <p className="ayuda">Otra mina: escriba la tabla de cada rampa. Cobertura = (base + PK − PK de inicio) · sen(ángulo).</p>
+              {RAMPAS.map(rp => { const c = l.coberturas?.[rp]; const pon = (k: keyof ParamCobertura, v: number | null) => {
+                const n: Partial<ParamCobertura> = { ...c, [k]: v ?? undefined };
+                const t = { ...l.coberturas } as Partial<Record<Rampa, ParamCobertura>>;
+                if (n.base == null && n.pkInicio == null && n.angulo == null) delete t[rp]; else t[rp] = { base: n.base ?? 0, pkInicio: n.pkInicio ?? 0, angulo: n.angulo ?? 0 };
+                setL({ ...l, coberturas: t }); };
+                return <div key={rp} className="rejilla3"><b className="campo-titulo">Rampa {rp}</b>
+                  <label className="campo"><span>Base (m)</span><NumIn valor={c?.base ?? null} on={v => pon('base', v)} /></label>
+                  <label className="campo"><span>PK de inicio (m)</span><NumIn valor={c?.pkInicio ?? null} on={v => pon('pkInicio', v)} /></label>
+                  <label className="campo"><span>Ángulo (°)</span><NumIn valor={c?.angulo ?? null} on={v => pon('angulo', v)} /></label></div>; })}
+            </>}
         </section>
         <section className="tarjeta">
           <h3>Brújula</h3>

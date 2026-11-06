@@ -49,7 +49,7 @@ export interface ZonaModelo {
 
 export function datosModelo(r: Reporte, listas?: Partial<Listas>) {
   const c = calcular(r);
-  const cob = cobertura(r, listas?.coberturas), rampa = rampaDe(r);
+  const cob = cobertura(r, listas?.coberturas, listas?.coberturaJusta !== false), rampa = rampaDe(r);
   const zonas: ZonaModelo[] = ZONAS.map(z => {
     const p = r.rmr[z], q = r.q[z], cz = c.zonas[z];
     const qp = c.rqd != null && q.jn && q.jr != null && q.ja ? (Math.max(10, c.rqd) / q.jn) * (q.jr / q.ja) : null;

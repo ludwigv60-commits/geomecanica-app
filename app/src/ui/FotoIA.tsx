@@ -53,8 +53,10 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
   const [confirmaTodo, setConfirmaTodo] = useState(false);
   // Pantalla completa: la foto ocupa todo y las herramientas (dibujar, borrar, medir, IA) están ahí mismo.
   const [full, setFull] = useState(false);
+  const [herr, setHerr] = useState(true); // en pantalla completa las herramientas flotan sobre la foto y se pueden ocultar
   const area = useRef<HTMLDivElement>(null);
   const [areaWH, setAreaWH] = useState<[number, number] | null>(null);
+  const wh = areaWH ?? [window.innerWidth, window.innerHeight];
   useEffect(() => {
     if (!full) return;
     const el = area.current; if (!el) return;
@@ -103,6 +105,7 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
       azimut: zona === 'FRENTE' && az != null && Math.abs(plunge ?? 0) < 35 ? azimutFrente([...(p.fotos ?? []), nueva]) ?? p.azimut : p.azimut,
     }));
     setSelId(nueva.id);
+    abrirFull(); // la foto nueva se abre de una en pantalla completa para dibujar y tomar datos
     setEstado(mensajeCalidad(c));
     // ¿Es una labor? (modelo de IA en el celular)
     try {
@@ -353,8 +356,8 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
       </div>}
       {sel?.calidad && !sel.calidad.apta && <p className="alerta">FOTO NO APTA – {sel.calidad.motivos.join('; ')}. Tome una nueva.</p>}
       <div className={full ? 'editor-foto completa' : 'editor-foto'}>
-        {img && <div className="barra-dibujo">
-          {full && <div className="fc-cab"><b>{ZONAS_FOTO.find(z => z.id === zona)!.nombre}</b><button className="btn mini" onClick={cerrarFull}>✕ Salir</button></div>}
+        {img && (!full || herr) && <div className="barra-dibujo">
+          {full && <div className="fc-cab"><b>{ZONAS_FOTO.find(z => z.id === zona)!.nombre}</b><span><button className="btn mini" onClick={() => setHerr(false)}>Ocultar</button> <button className="btn mini" onClick={cerrarFull}>✕ Salir</button></span></div>}
           <div className="segmentos">
             <button className={modo === 'ver' ? 'sel' : ''} onClick={() => setModo('ver')}>👆 Mover</button>
             <button className={modo === 'dibujar' ? 'sel' : ''} disabled={!r.familias.length} onClick={() => setModo('dibujar')}>✏️ Dibujar</button>
@@ -378,11 +381,12 @@ export function FotoIA({ r, setR, historial, decl, conv, onMedir, simple }: Prop
             {modo === 'borrar' && <small>Toque la traza a borrar</small>}
           </div>
         </div>}
-        {img && dims && <div ref={area} className="fc-area"><div ref={marco} className="foto-marco" style={{ aspectRatio: `${dims.w} / ${dims.h}`, touchAction: full || !(modo === 'ver' && vistaZ.z <= 1) ? 'none' : 'pan-y', ...(full && areaWH ? { width: Math.min(areaWH[0], areaWH[1] * dims.w / dims.h) } : {}) }}>
+        {img && dims && <div ref={area} className="fc-area"><div ref={marco} className="foto-marco" style={{ aspectRatio: `${dims.w} / ${dims.h}`, touchAction: full || !(modo === 'ver' && vistaZ.z <= 1) ? 'none' : 'pan-y', ...(full ? { width: Math.min(wh[0], wh[1] * dims.w / dims.h) } : {}) }}>
           <canvas ref={lienzo} className="foto-lienzo" style={{ width: '100%', transform: `translate(${vistaZ.tx}px, ${vistaZ.ty}px) scale(${vistaZ.z})`, transformOrigin: '0 0' }}
             onPointerDown={abajo} onPointerMove={mover} onPointerUp={arriba} onPointerCancel={e => { soltar(e); inicio.current = null; setArrastre(null); }} />
         </div></div>}
-        {img && full && <div className="fc-abajo">
+        {img && full && !herr && <button className="fc-ver-herr" onClick={() => setHerr(true)}>🛠️ Herramientas</button>}
+        {img && full && herr && <div className="fc-abajo">
           {estado && <p className="fc-estado">{estado}</p>}
           <div className="fc-botones">
             <button className="btn" disabled={!r.familias[fam]} onClick={() => onMedir(fam)}>🧭 {r.familias[fam]?.dip == null ? 'Medir' : 'Volver a medir'} {r.familias[fam] ? textoFamilia(r.familias, fam).split(':')[0] : ''}</button>

@@ -1,4 +1,6 @@
-import { RAMPAS, cobertura, rampaDe } from '../core/cobertura';
+import { RAMPAS, cobertura, esCamara, rampaDe } from '../core/cobertura';
+import { claveLabor } from '../ia/historial-bd';
+import { avisosCoherencia, encajarTipo } from '../ia/coherencia';
 import { NumIn } from './NumIn';
 import { enLista, riesgoPropuesto } from '../ia/riesgo';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -42,13 +44,19 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
     const deIA = !r.nivelRiesgo || (r.sugeridos ?? []).includes('nivelRiesgo');
     if (deIA && r.nivelRiesgo !== o) setR(p => ({ ...p, nivelRiesgo: o, sugeridos: [...new Set([...(p.sugeridos ?? []), 'nivelRiesgo'])] }));
   }, [riesgoIA?.opcion]); // eslint-disable-line react-hooks/exhaustive-deps
-  const avisos = useMemo(() => consejos(r, c, historial), [r, c, historial]);
+  const avisos = useMemo(() => [...avisosCoherencia(r, historial), ...consejos(r, c, historial)], [r, c, historial]);
   const jvFam = jvDeFamilias(r.familias);
   // Autollenado: Hasta = Desde + Avance; Jv, RQD, espaciamiento y Jn desde las familias (si están vacíos o los llenó la app).
   useEffect(() => {
     if (r.importado) return;
-    setR(p => completar(p, { soloDerivados: true }));
+    setR(p => encajarTipo(completar(p, { soloDerivados: true }), historial));
   }, [r.desde, r.avance, JSON.stringify(r.familias)]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Al cambiar el RMR, el Q o el tipo de roca (en cualquier ventana), el sostenimiento y la condición que puso
+  // la app se rehacen solos; lo escrito a mano no se toca.
+  useEffect(() => {
+    if (r.importado) return;
+    setR(p => completar(p));
+  }, [c.rmrFinal, c.tipoFinal, c.zonas.CORONA.q, r.tipoGeologo]); // eslint-disable-line react-hooks/exhaustive-deps
   const primera = useRef(true);
 
   // Autoguardado: cada cambio se escribe en el celular a los 400 ms.
@@ -243,7 +251,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
   const elegirTipo = (t: TipoRoca) => setR(p => {
     const q = { ...p, tipoGeologo: t };
     const pl = plantillaTipo(t, q, historial);
-    return completar(pl ? aplicarPlantilla(q, pl) : q);
+    return encajarTipo(completar(pl ? aplicarPlantilla(q, pl) : q), historial);
   });
   const plant = r.tipoGeologo ? plantillaTipo(r.tipoGeologo, r, historial) : null;
   const avisoTipo = r.tipoGeologo ? revisarTipo(r.tipoGeologo, r, historial) : null;
@@ -253,7 +261,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
   const hayBase = historial.some(h => h.importado);
   useEffect(() => {
     if (modo !== 'campo' || paso !== 2) return;
-    setR(p => completar(p, { rehacer: true }));
+    setR(p => encajarTipo(completar(p, { rehacer: true }), historial));
   }, [modo, paso]); // eslint-disable-line react-hooks/exhaustive-deps
   const tipoSel = TIPOS.find(t => t.tipo === (tipoCalc ?? r.tipoGeologo));
   const PASOS = ['Datos', 'Foto', 'Resultado', 'Formato'];
@@ -261,11 +269,21 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
   const irPaso = (i: number) => { setPaso(i); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const ponerLabor = (v: string) => set('labor', v);
   const rampa = rampaDe(r);
-  const cob = cobertura(r, listas.coberturas);
+  const cob = cobertura(r, listas.coberturas, listas.coberturaJusta !== false);
+  const camara = esCamara(r);
+  // PK de la rampa donde nace la cámara: los usados antes en esa misma cámara (el último primero)
+  const pksRampa = [...new Set(historial.filter(h => h.pkRampa && h.labor && claveLabor(h.labor) === claveLabor(r.labor)).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).map(h => h.pkRampa!))];
+  useEffect(() => { if (camara && !r.pkRampa && pksRampa[0]) setR(p => ({ ...p, pkRampa: pksRampa[0] })); }, [camara, r.labor]); // eslint-disable-line react-hooks/exhaustive-deps
   const campoRampa = <>
-    <Campo t="Rampa (para la cobertura)"><Segmentos valor={rampa} opciones={RAMPAS} on={v => set('rampa', v as Reporte['rampa'])} /></Campo>
-    {rampa && <p className="tenue">{cob ? <>Cobertura <b>{cob.m} m</b> en PK {cob.pk.toFixed(1)}{pk(r.hasta) != null ? ' (promedio de Desde y Hasta)' : ' (PK inicial)'}.</>
-      : pk(r.desde) == null ? 'La cobertura sale al escribir el PK Desde.' : `Falta la tabla de cobertura de la rampa ${rampa}: cárguela en ⚙️ Listas.`}</p>}
+    <Campo t="Tipo de labor"><Segmentos valor={camara ? 'Cámara' : 'Rampa'} opciones={['Rampa', 'Cámara']} on={v => set('tipoLabor', v === 'Cámara' ? 'CAMARA' : 'RAMPA')} /></Campo>
+    <Campo t={camara ? 'Rampa de la que nace' : 'Rampa'}><Segmentos valor={rampa} opciones={RAMPAS} on={v => set('rampa', v as Reporte['rampa'])} /></Campo>
+    {camara && <Campo t="PK de la rampa (empalme de la cámara)">
+      <input list="pks-rampa" inputMode="decimal" placeholder="0+943.6" value={r.pkRampa ?? ''} onChange={e => set('pkRampa', e.target.value)} />
+      <datalist id="pks-rampa">{pksRampa.map(x => <option key={x} value={x} />)}</datalist></Campo>}
+    {rampa && <p className="tenue">{cob ? <>Cobertura <b>{cob.m} m</b> {camara ? `en el PK ${cob.pk.toFixed(1)} de la rampa ${rampa}` : `en PK ${cob.pk.toFixed(1)}${pk(r.hasta) != null ? ' (promedio de Desde y Hasta)' : ' (PK inicial)'}`}.</>
+      : camara ? 'La cobertura sale al escribir el PK de la rampa donde nace la cámara.'
+      : pk(r.desde) == null ? 'La cobertura sale al escribir el PK Desde.' : `Falta la tabla de cobertura de la rampa ${rampa}: escríbala en ⚙️ Listas.`}</p>}
+    {camara && <p className="tenue">En la cámara, Desde y Hasta son su propio PK: empieza en 0+00 y llega a su longitud (por ejemplo 0+32).</p>}
   </>;
   const campo = (
     <main className="contenido campo">
@@ -372,6 +390,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
     <div className="pantalla" style={midiendo != null || midiendoAz ? { display: 'none' } : undefined}>
       <header className="barra">
         <button className="btn-atras" onClick={onSalir} aria-label="Volver a reportes">‹</button>
+        <img className="barra-logo" src="./logo-lk.png" alt="" />
         <div className="barra-tit"><h1>{r.labor || 'Nuevo reporte'}</h1><span className="sub">{[r.desde && `PK ${r.desde}`, r.fecha, estado].filter(Boolean).join(' · ')}</span></div>
       </header>
       {modo === 'campo'
@@ -602,6 +621,8 @@ function Resumen({ r, c, listas, onEnviar }: { r: Reporte; c: ReturnType<typeof 
 function Descargas({ r, listas, onEnviar }: { r: Reporte; listas: Listas; onEnviar?: (r: Reporte) => void }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [listo, setListo] = useState<{ datos: Uint8Array; nombre: string; mime: string; tipo: string } | null>(null);
+  // si el mapeo cambia (volvió a otra ventana y cambió algo), el archivo ya generado queda viejo: se descarta
+  useEffect(() => { setListo(null); setMsg(null); }, [r]);
   const bajar = async (tipo: 'xlsx' | 'pdf', modelo = false) => {
     setMsg('Generando…'); setListo(null);
     try {

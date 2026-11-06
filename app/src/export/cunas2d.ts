@@ -92,8 +92,8 @@ function calcular(r: Reporte): Analisis | null {
     // fallas, vetas y contactos: una sola traza (la estructura mapeada), no una red
     // falla/veta/contacto movida a mano en la planta: su traza en el frente; si en el frente queda fuera de la
     // labor, se muestra en la sección del último avance donde sí la corta (es donde afecta a la excavación)
-    let fija = f.abrev === 'SD' ? null : trazaSeccion(f, r);
-    if (fija) {
+    let fija = trazaSeccion(f, r); // con pos (movida a mano en la planta)
+    if (fija && f.abrev !== 'SD') {
       const dist = (t: { o: P; d: P } | null) => t ? (t.o[0] * t.d[1] - (t.o[1] - H / 2) * t.d[0]) : 0;
       const d0 = dist(fija), t1 = trazaSeccion(f, r, 1), pend = dist(t1) - d0, av = Math.max(0, r.avance ?? 0);
       if (Math.abs(d0) > B / 2 + 0.3 && av > 0 && Math.abs(pend) > 1e-6) {
@@ -102,7 +102,10 @@ function calcular(r: Reporte): Analisis | null {
       }
     }
     const azarF = f.abrev === 'SD' ? 0 : rnd(); // mismo orden de azar que antes: la red de diaclasas no cambia al mover una falla
-    const offs = f.abrev === 'SD' ? (() => { const o: number[] = []; for (let c = c0 - R + rnd() * paso; c <= c0 + R; c += paso) o.push(c); return o; })() : [fija ? n[0] * fija.o[0] + n[1] * fija.o[1] : c0 + (azarF - 0.5) * B * 0.4];
+    const offs = f.abrev === 'SD' ? (() => {
+      // diaclasas: red con su espaciamiento; si se movió en la planta, una de sus trazas pasa por esa posición
+      const fase = rnd(), ini = fija ? c0 - R + ((((n[0] * fija.o[0] + n[1] * fija.o[1]) - (c0 - R)) % paso) + paso) % paso : c0 - R + fase * paso;
+      const o: number[] = []; for (let c = ini; c <= c0 + R; c += paso) o.push(c); return o; })() : [fija ? n[0] * fija.o[0] + n[1] * fija.o[1] : c0 + (azarF - 0.5) * B * 0.4];
     for (const c of offs) {
       const o: P = [n[0] * c + d[0] * (d[0] * cx + d[1] * cy), n[1] * c + d[1] * (d[0] * cx + d[1] * cy)];
       lineas.push({ fam: f, a: [o[0] - d[0] * R * 1.5, o[1] - d[1] * R * 1.5], b: [o[0] + d[0] * R * 1.5, o[1] + d[1] * R * 1.5] });
@@ -388,23 +391,21 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
   const lin: { s: string; c?: string; b?: boolean }[] = [];
   if (!n) lin.push({ s: 'No se forman cuñas removibles', b: true }, { s: pct ? `dentro de la zona de influencia ${pct}` : '' });
   else if (modo === 'antes') {
-    const ph = a.phi.CORONA;
-    lin.push({ s: `${n} cuñas potenciales${pct ? ` · zona infl. ${pct}` : ''}`, b: true });
-    lin.push({ s: `CAEN al desatar ${rs.caen} (${rs.pesoCae.toFixed(2)} t/m) · ALTO ${cnt.ALTO - rs.caen} · MEDIO ${cnt.MEDIO} · BAJO ${cnt.BAJO}`, c: rs.caen || cnt.ALTO ? COLOR_RIESGO.ALTO : cnt.MEDIO ? '#B26B00' : COLOR_RIESGO.BAJO, b: true });
-    lin.push({ s: `${rs.caida} en caída libre · φ caras ${Math.round(ph.v)}° (${ph.fuente})` });
+    // solo el factor de seguridad que queda: el menor de las cuñas sin sostener
+    const f0 = rs.fs0Min ?? 0;
+    lin.push({ s: `FACTOR DE SEGURIDAD SIN SOSTENER: ${fsTxt(f0)}${f0 < 1 ? ' (cae al desatar)' : ''}`, c: f0 < 1.5 ? COLOR_RIESGO.ALTO : f0 < 2 ? '#B26B00' : '#1B5E20', b: true });
+    lin.push({ s: `${n} cuñas en la zona de influencia${pct ? ` ${pct}` : ''} · ${rs.caen} caen al desatar` });
     if (rs.mayor) lin.push({ s: `Mayor: ${nomZona(rs.mayor.zona)} ${rs.mayor.familias.map(x => nomFam(r, x)).join('+')} · h ${rs.mayor.prof.toFixed(2)} m · ${rs.mayor.peso.toFixed(2)} t/m` });
-    lin.push({ s: cnt.ALTO ? '→ Desatar y sostener de inmediato' : '→ Desatar y verificar', c: cnt.ALTO ? COLOR_RIESGO.ALTO : '#222222', b: true });
+    lin.push({ s: f0 < 1.5 ? '→ Desatar y sostener de inmediato' : '→ Desatar y verificar', c: f0 < 1.5 ? COLOR_RIESGO.ALTO : '#222222', b: true });
   } else {
-    if (rs.desatadas) lin.push({ s: `${rs.desatadas} desatadas · contorno perfilado (trazos = antes)`, b: true });
-    lin.push({ s: rs.quedan ? `Cuñas que quedan ${rs.quedan} · FS mín ${fsTxt(rs.fsMin ?? 0)} · ${rs.peor ? `${nomZona(rs.peor.zona)} ${rs.peor.familias.map(x => nomFam(r, x)).join('+')}` : ''}` : 'No quedan cuñas sueltas', b: true });
-    lin.push({ s: `RIESGO ALTO ${cnt.ALTO} · MEDIO ${cnt.MEDIO} · BAJO ${cnt.BAJO}`, c: cnt.ALTO ? COLOR_RIESGO.ALTO : cnt.MEDIO ? '#B26B00' : COLOR_RIESGO.BAJO, b: true });
-    // sostenimiento de TODA la excavación (carga de la zona aflojada y esfuerzos por cobertura), no solo de cuñas
-    const g = sostenimientoGlobal(r, a), fsG = g ? Math.min(g.fs, 99) : null;
-    if (g) {
-      lin.push({ s: `SOSTENIMIENTO GLOBAL: FS ${fsG! > 10 ? '>10' : fsG!.toFixed(1)} = capacidad ${g.capacidad.toFixed(2)} MPa (shotcrete ${g.capShot.toFixed(2)} + pernos ${g.capPernos.toFixed(2)}) ÷ carga ${g.carga.toFixed(2)} MPa`, c: g.fs < 1.5 ? COLOR_RIESGO.ALTO : g.fs < 2 ? '#B26B00' : '#1B5E20', b: true });
-      lin.push({ s: g.cobertura != null ? `Cobertura ${g.cobertura} m: esfuerzo ${g.p0!.toFixed(1)} MPa · resistencia del macizo ${g.scm.toFixed(1)} MPa (GSI ${Math.round(g.gsi)}) · ${g.deformacion! < 1 ? 'sin deformación, manda la gravedad' : `deformación ${g.deformacion!.toFixed(1)} %`}` : `Carga por ${g.cargaFuente} · ${g.nota}` });
-    }
-    const malo = cnt.ALTO || cnt.MEDIO || (g != null && g.fs < 1.5);
+    // solo el factor de seguridad que queda: el del sostenimiento de toda la excavación (y el de las cuñas que quedan)
+    const g = sostenimientoGlobal(r, a), fsC = rs.quedan ? rs.fsMin ?? 0 : null;
+    const fsFinal = g ? (fsC != null ? Math.min(g.fs, fsC) : g.fs) : fsC;
+    if (fsFinal != null) lin.push({ s: `FACTOR DE SEGURIDAD CON SOSTENIMIENTO: ${fsTxt(fsFinal)}`, c: fsFinal < 1.5 ? COLOR_RIESGO.ALTO : fsFinal < 2 ? '#B26B00' : '#1B5E20', b: true });
+    if (g) lin.push({ s: `Excavación: capacidad ${g.capacidad.toFixed(2)} MPa (shotcrete ${g.capShot.toFixed(2)} + pernos ${g.capPernos.toFixed(2)}) ÷ carga ${g.carga.toFixed(2)} MPa = ${fsTxt(g.fs)}` });
+    lin.push({ s: fsC != null ? `Cuñas que quedan tras el desatado: ${rs.quedan} · FS ${fsTxt(fsC)}` : 'No quedan cuñas sueltas tras el desatado' });
+    if (g?.cobertura != null) lin.push({ s: `Cobertura ${g.cobertura} m: ${g.deformacion! < 1 ? 'sin deformación por esfuerzos, manda la gravedad' : `deformación ${g.deformacion!.toFixed(1)} %, revisar convergencia`}` });
+    const malo = fsFinal != null && fsFinal < 1.5;
     lin.push({ s: malo ? '→ Reforzar el sostenimiento' : '→ Sostenimiento adecuado', c: malo ? COLOR_RIESGO.ALTO : '#1B5E20', b: true });
   }
   lin.forEach((l, k) => { if (l.s) prims.push({ t: 'texto', p: [xL, fila(k)], s: l.s, tam: 4.6, color: l.c ?? '#111111', negrita: l.b, ancla: 'izq' }); });

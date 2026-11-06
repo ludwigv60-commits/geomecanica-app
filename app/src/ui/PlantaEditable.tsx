@@ -5,7 +5,7 @@ import type { Reporte } from '../model';
 import { aSvg, vistaPlanta, type Manija, type P, type RmrZonas } from '../export/croquis';
 
 const W = 300, HH = 230;
-const NOMBRE: Record<string, string> = { F: 'falla', V: 'veta', C: 'contacto' };
+const NOMBRE: Record<string, string> = { SD: 'diaclasa', F: 'falla', V: 'veta', C: 'contacto' };
 
 export function PlantaEditable({ r, rz, onMover }: { r: Reporte; rz: RmrZonas; onMover: (cambios: { n: number; pos: { s: number; t: number } | undefined }[]) => void }) {
   const [editar, setEditar] = useState(false);
@@ -51,10 +51,10 @@ export function PlantaEditable({ r, rz, onMover }: { r: Reporte; rz: RmrZonas; o
         {editar && <svg className="manijas" viewBox={`0 0 ${W} ${HH}`}>{manijas.map(m => { const [x, y] = aSvgXY(m.o); return <circle key={m.n} cx={x} cy={y} r={vivo?.n === m.n ? 7 : 5.5} />; })}</svg>}
       </div>
       {manijas.length > 0 && <div className="fila-botones">
-        <button className={`btn mini${editar ? ' primario' : ''}`} onClick={() => setEditar(x => !x)}>{editar ? '✓ Listo' : '✋ Mover fallas, vetas y contactos'}</button>
+        <button className={`btn mini${editar ? ' primario' : ''}`} onClick={() => setEditar(x => !x)}>{editar ? '✓ Listo' : '✋ Mover estructuras'}</button>
         {movidas && <button className="btn mini" onClick={() => onMover(manijas.map(m => ({ n: m.n, pos: undefined })))}>↺ Posición automática</button>}
       </div>}
-      {editar && <p className="tenue">Arrastre {manijas.map(m => `la ${NOMBRE[m.abrev] ?? 'estructura'} ${m.abrev}${m.n}`).join(', ')} hasta donde la vio. La sección del frente y las cuñas se recalculan con esa posición. Las diaclasas no se mueven: su posición no cambia el análisis.</p>}
+      {editar && <p className="tenue">Arrastre {manijas.map(m => `la ${NOMBRE[m.abrev] ?? 'estructura'} ${m.abrev}${m.n}`).join(', ')} hasta donde la vio. El rumbo y el buzamiento no cambian; la sección del frente y las cuñas se recalculan solas con la nueva posición.</p>}
     </div>
   );
 }

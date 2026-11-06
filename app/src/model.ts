@@ -47,6 +47,8 @@ export interface Reporte {
   alto: number | null;
   azimut: number | null;    // cuadrícula UTM
   nivelRiesgo: string;
+  tipoLabor?: 'RAMPA' | 'CAMARA'; // cámara: desde/hasta son su PK propio (0+00…) y la cobertura sale de pkRampa
+  pkRampa?: string;          // PK de la rampa en el empalme de la cámara (para la cobertura)
   tipoGeologo?: 'I/II' | 'III-A' | 'III-B' | 'IV' | 'V'; // tipo de roca que indica el geólogo a cargo al iniciar
   rmr: Record<Zona, PuntajesZona>;
   ajuste: Record<Zona, number | null>;
@@ -103,7 +105,7 @@ export function nuevoReporte(prev?: Reporte, correlativo = ''): Reporte {
   };
 }
 
-export interface Listas { labores: string[]; supervisores: string[]; litologias: string[]; riesgos: string[]; declinacion?: number; convergencia?: number; coberturas?: Partial<Record<Rampa, ParamCobertura>> }
+export interface Listas { labores: string[]; supervisores: string[]; litologias: string[]; riesgos: string[]; declinacion?: number; convergencia?: number; coberturas?: Partial<Record<Rampa, ParamCobertura>>; coberturaJusta?: boolean }
 export const LISTAS_INICIALES: Listas = {
   labores: ['Rampa Norte', 'Rampa Sur'],
   supervisores: ['Kliutsmann Julca Miranda'],

@@ -22,9 +22,14 @@ export function coberturaEn(pkM: number, p: ParamCobertura): number {
 export const rampaDe = (r: { rampa?: Rampa | ''; labor?: string }): Rampa | '' => (r.rampa !== undefined ? r.rampa : rampaDeLabor(r.labor ?? ''));
 
 /** Cobertura del reporte: PK inicial; si hay PK final, el promedio de ambos (como el formato VG). */
-export function cobertura(r: { rampa?: Rampa | ''; labor?: string; desde: string; hasta: string }, tabla?: Partial<Record<Rampa, ParamCobertura>>): { m: number; pk: number } | null {
+/** ¿Es cámara? La marcada; si no se marcó, por el nombre de la labor ("Cámara 616", "CMB660SE", "CME-616-SW"). */
+export const esCamara = (r: { tipoLabor?: 'RAMPA' | 'CAMARA'; labor?: string }) => r.tipoLabor ? r.tipoLabor === 'CAMARA' : /c[aá]mara|\bcm[a-z]?[-\s]?\d/i.test(r.labor ?? '');
+
+export function cobertura(r: { rampa?: Rampa | ''; labor?: string; desde: string; hasta: string; tipoLabor?: 'RAMPA' | 'CAMARA'; pkRampa?: string }, tabla?: Partial<Record<Rampa, ParamCobertura>>, justa = true): { m: number; pk: number } | null {
   const rp = rampaDe(r); if (!rp) return null;
-  const p = tabla?.[rp] ?? COBERTURAS_VG[rp];
+  const p = justa ? COBERTURAS_VG[rp] : tabla?.[rp]; if (!p) return null; // Justa: tabla integrada; otra mina: la que suba el usuario
+  // cámara: su PK propio empieza en 0+00; la cobertura se toma en el PK de la rampa donde nace
+  if (esCamara(r)) { const pr = pk(r.pkRampa ?? ''); return pr == null ? null : { m: Math.round(coberturaEn(pr, p) * 10) / 10, pk: pr }; }
   const d = pk(r.desde); if (d == null) return null;
   const h = pk(r.hasta);
   const x = h != null && h > d ? (d + h) / 2 : d;

@@ -60,10 +60,22 @@ export function App() {
   return (
     <div className="pantalla">
       <header className="portada">
-        <button className="ajustes" aria-label="Editar listas" onClick={() => setVista({ v: 'listas' })}>⚙️</button>
-        <small>JUSTA · PRT-JS-CLD-16</small>
-        <h1>Indicación Geomecánica</h1>
-        <p>{reportes.length ? `${reportes.length} reporte${reportes.length > 1 ? 's' : ''} en este celular` : 'Mapeo RMR · Q · sostenimiento'}</p>
+        <button className="ajustes" aria-label="Ajustes" onClick={() => setVista({ v: 'listas' })}>⚙️</button>
+        <div className="marca">
+          <img src="./logo-lk.png" alt="LK Geomecánica" />
+          <div><b>LK GEOMECÁNICA</b><small>INGENIERÍA · GEOTÉCNICA</small></div>
+        </div>
+        <h1>Mapeo geomecánico</h1>
+        <p>Justa Subterránea · RMR · Q · sostenimiento</p>
+        {reportes.length > 0 && (() => {
+          const env = reportes.filter(x => !pendiente(x)).length;
+          const ult = reportes[0] ? calcular(reportes[0]) : null;
+          return <div className="kpis">
+            <span><b>{reportes.length}</b>reportes</span>
+            <span><b>{env}</b>enviados</span>
+            <span><b>{ult?.rmrFinal ?? '—'}</b>RMR último</span>
+          </div>;
+        })()}
       </header>
       <main className="contenido">
         {aviso && <p className="alerta" onClick={() => setAviso(null)}>{aviso}</p>}
