@@ -26,3 +26,23 @@ P
 cp public/logo-lk.png "$OUT/"
 rm -rf "$TMP"
 echo "Listo en $OUT (publicar index.html con panel.js y logo-lk.png)"
+
+# Herramientas que usan "Vincular carpeta": dentro de claude.ai el navegador bloquea showDirectoryPicker,
+# así que se inyecta app/src/panel/carpetas-polyfill.js (selector clásico de carpeta) justo después de <head>.
+# Uso: inyectar_carpetas <dir_herramientas>
+inyectar_carpetas() {
+  local poly; poly="$(dirname "$0")/src/panel/carpetas-polyfill.js"
+  for f in "$1"/*.html; do
+    grep -q 'showDirectoryPicker\|showOpenFilePicker' "$f" || continue
+    grep -q 'data-lk="carpetas"' "$f" && continue
+    python3 - "$f" "$poly" <<'PY'
+import sys,re
+f,p=sys.argv[1],sys.argv[2]
+s=open(f,encoding='utf-8').read(); js=open(p,encoding='utf-8').read()
+tag='<script data-lk="carpetas">'+js+'</script>'
+m=re.search(r'<head[^>]*>',s,re.I)
+s=s[:m.end()]+tag+s[m.end():] if m else tag+s
+open(f,'w',encoding='utf-8').write(s)
+PY
+  done
+}
