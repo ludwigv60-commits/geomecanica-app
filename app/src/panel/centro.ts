@@ -119,13 +119,24 @@ export function resumir(filas: Fila[]): Resumen[] {
 export interface Herramienta { nombre: string; que: string; url: string; local?: boolean; icono: string }
 /** Se abre dentro del Centro todo lo que no sea un artefacto vivo de Claude (esos no se pueden incrustar). */
 export const dentro = (h: Herramienta) => !h.url.startsWith('https://claude.ai/');
+/** Aplicativos principales de la portada "¿Qué vamos a hacer hoy?" (por nombre en HERRAMIENTAS), con su color de marca. */
+export const PRINCIPALES: { nombre: string; color: string; corto: string }[] = [
+  { nombre: 'App de mapeo geomecánico', color: '#2f6fb3', corto: 'Mapeo geomecánico' },
+  { nombre: 'MAP · Perforación iSURE 3D', color: '#0f8a8a', corto: 'Perforación iSURE 3D' },
+  { nombre: 'PERVOL Mallas Mina Justa', color: '#c2410c', corto: 'Mallas PERVOL' },
+  { nombre: 'Vale de explosivos', color: '#b91c1c', corto: 'Vale de explosivos' },
+  { nombre: 'Valorización Shotcrete AESA', color: '#4d7c0f', corto: 'Valorización shotcrete' },
+  { nombre: 'Utilización de Equipos AESA', color: '#6d28d9', corto: 'Utilización de equipos' },
+  { nombre: 'Actualizador de PETS', color: '#a16207', corto: 'Actualizador de PETS' },
+  { nombre: 'Dip y dip dir con el celular', color: '#334155', corto: 'Dip con el celular' },
+];
 export interface Grupo { titulo: string; icono: string; items: Herramienta[] }
 const A = (id: string) => `https://claude.ai/artifact/${id}`;
 const H = (archivo: string) => `herramientas/${archivo}`;
 
 export const HERRAMIENTAS: Grupo[] = [
   { titulo: 'Geomecánica', icono: '⛰️', items: [
-    { icono: '📱', nombre: 'App de mapeo geomecánico', que: 'Llenar el formato PRT-JS-CLD-16 en el celular', url: 'https://ludwigv60-commits.github.io/geomecanica-app/formulario/' },
+    { icono: '📱', nombre: 'App de mapeo geomecánico', que: 'La app completa, aquí dentro (formato PRT-JS-CLD-16)', url: H('mapeo/index.html') },
     { icono: '🗂️', nombre: 'Datos Justa para la app', que: 'Descarga la base privada (se abre en Claude)', url: A('41NVZkPXLVcCPREzdFaRoL') },
     { icono: '🧭', nombre: 'Dip y dip dir con el celular', que: 'Medir buzamiento y dirección con los sensores', url: H('art-SpwTCHt9zGiVh8bFyXy6Qj.html') },
     { icono: '🧊', nombre: 'Medir dip en 3D', que: 'Orientación de estructuras sobre un modelo 3D', url: H('art-RghRytmm2cN8R9RerzGmDS.html') },

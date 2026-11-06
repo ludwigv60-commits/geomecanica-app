@@ -2,10 +2,10 @@
 // Misma interfaz de la app para ver y editar; los mapeos quedan aquí aunque se borren del celular.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Editor } from '../ui/Editor';
-import { LISTAS_INICIALES, nuevoReporte, type FotoZona, type Listas, type Reporte } from '../model';
+import { LISTAS_INICIALES, nuevoReporte, siguienteCorrelativo, type FotoZona, type Listas, type Reporte } from '../model';
 import { TIPOS } from '../core/rmr';
-import { FILTRO_VACIO, filtrar, fila, infoTipo, type Filtro } from './centro';
-import { excelDe, Herramientas, PESTANAS, ResumenPk, Tabla, type Pestana } from './vistas';
+import { FILTRO_VACIO, filtrar, fila, infoTipo, type Filtro, type Herramienta } from './centro';
+import { excelDe, Herramientas, Inicio, PESTANAS, ResumenPk, Tabla, Visor, type Pestana } from './vistas';
 import { usarEntrega } from '../export/compartir';
 import { leerGmail, type Mcp } from './gmail';
 import { Puente } from './vistas';
@@ -53,8 +53,10 @@ export function Panel() {
   const [msg, setMsg] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [f, setF] = useState<Filtro>(FILTRO_VACIO);
-  const [tab, setTab] = useState<Pestana>(() => { try { return (localStorage.getItem('centro-tab') as Pestana) || 'mapeos'; } catch { return 'mapeos'; } });
-  const irA = (t: Pestana) => { setTab(t); try { localStorage.setItem('centro-tab', t); } catch { /* sin almacenamiento */ } };
+  const [tab, setTab] = useState<Pestana>('inicio'); // siempre abre en "¿Qué vamos a hacer hoy?"
+  const irA = (t: Pestana) => { setTab(t); window.scrollTo(0, 0); };
+  const [app, setApp] = useState<Herramienta | null>(null);
+  const [borrador, setBorrador] = useState<Reporte | null>(null);
   const [editor, setEditor] = useState(false);
   const [nombres, setNombres] = useState<Record<string, string>>({});
   const [confirmar, setConfirmar] = useState<string | null>(null);
@@ -212,6 +214,18 @@ export function Panel() {
     } catch (e) { setMsg(`No se pudo armar el Excel: ${(e as Error).message}`); }
   };
 
+  const nuevoMapeo = () => {
+    const prev = [...mapeos].sort((a, b) => (b.modificado ?? '').localeCompare(a.modificado ?? ''))[0];
+    setBorrador(nuevoReporte(prev, siguienteCorrelativo(mapeos)));
+  };
+  if (app) return <Visor h={app} cerrar={() => setApp(null)} />;
+  if (borrador) return (
+    <div className="panel-editor">
+      <Editor key={borrador.id} inicial={borrador} listas={listas} historial={mapeos} modoInicial="campo" textoGuardado="Guardado en el Centro"
+        onGuardar={async r => { await escribir(r.id, { ...r, modificado: new Date().toISOString(), panel: { subidoPor: uid ?? undefined, subidoEn: new Date().toISOString(), dispositivo: 'Centro de Control' } }); }}
+        onSalir={() => setBorrador(null)} />
+    </div>
+  );
   const sel = abierto ? mapeos.find(m => m.id === abierto) : null;
   if (sel) return (
     <div className="panel-editor">
@@ -251,7 +265,7 @@ export function Panel() {
         {estado === 'sin-acceso' && <p className="alerta">Este Centro funciona dentro de Claude: ábralo con su enlace de claude.ai, con su cuenta.</p>}
         {estado.startsWith('error:') && <p className="alerta">No se pudo leer la base: {estado.slice(6)}</p>}
 
-        {tab !== 'herramientas' && <section className="c-filtros" aria-label="Filtros">
+        {tab !== 'herramientas' && tab !== 'inicio' && <section className="c-filtros" aria-label="Filtros">
           <div className="c-seg" role="group" aria-label="Rampa o cámara">
             {([['', 'Todo'], ['RAMPA', '🛣️ Rampas'], ['CAMARA', '🏛️ Cámaras']] as const).map(([v, t]) => <button key={v} className={f.tipoLabor === v ? 'sel' : ''} onClick={() => poner('tipoLabor', v)}>{t}</button>)}
           </div>
@@ -306,9 +320,11 @@ export function Panel() {
           {estado === 'listo' && mapeos.length > 0 && !vistas.length && <p className="tenue">Ningún mapeo coincide con el filtro.</p>}
         </>}
 
+        {tab === 'inicio' && <Inicio filas={filasTodas} ocultas={ocultas} abrir={setApp} abrirMapeo={setAbierto} ir={irA} excel={excel}
+          nuevo={db && editor ? nuevoMapeo : undefined} recibir={mcp && editor ? () => recibirGmail(true) : undefined} recibiendo={gmail.estado === 'leyendo'} />}
         {tab === 'resumen' && <ResumenPk filas={vistas} abrir={setAbierto} />}
         {tab === 'tabla' && <Tabla filas={vistas} abrir={setAbierto} />}
-        {tab === 'herramientas' && <><Puente /><Herramientas ocultas={ocultas} cambiar={db && editor ? (n => { setOcultas(n); db.doc('config/herramientas').set({ ocultas: n }).catch(e => setMsg(`No se pudo guardar: ${(e as Error).message}`)); }) : undefined} /></>}
+        {tab === 'herramientas' && <><Puente /><Herramientas ocultas={ocultas} abrir={setApp} cambiar={db && editor ? (n => { setOcultas(n); db.doc('config/herramientas').set({ ocultas: n }).catch(e => setMsg(`No se pudo guardar: ${(e as Error).message}`)); }) : undefined} /></>}
       </main>
       <footer className="c-pie">LK Geomecánica · Centro privado: los datos de Justa solo los ve quien usted invite.</footer>
     </div>

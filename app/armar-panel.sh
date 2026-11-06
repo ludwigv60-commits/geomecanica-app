@@ -46,3 +46,26 @@ open(f,'w',encoding='utf-8').write(s)
 PY
   done
 }
+
+# App de mapeo completa dentro del Centro (herramientas/mapeo/): copia de ../formulario sin sw.js.
+# El artefacto no sirve .onnx ni .xlsx: van como <archivo>.b64.txt y un fetch en index.html los decodifica.
+# También se escapan U+FFFD y bytes de control en los .js. Uso: copiar_app_mapeo <dir_salida>
+copiar_app_mapeo() {
+  local d="$1/herramientas/mapeo"; rm -rf "$d"; mkdir -p "$d"; cp -r "$(dirname "$0")/../formulario/." "$d/"; rm -f "$d/sw.js"
+  for f in "$d"/modelos/*.onnx "$d"/plantilla/formato.xlsx; do [ -f "$f" ] && base64 -w0 "$f" > "$f.b64.txt" && rm "$f"; done
+  python3 - "$d" <<'PY'
+import sys,os,re
+d=sys.argv[1]
+for r,_,fs in os.walk(d+'/assets'):
+  for f in fs:
+    if f.endswith('.js'):
+      p=os.path.join(r,f); s=open(p,encoding='utf-8').read()
+      t=re.sub('[\x00-\x08\x0b\x0c\x0e-\x1f�]',lambda m:'\\u%04x'%ord(m.group()),s)
+      if t!=s: open(p,'w',encoding='utf-8').write(t)
+shim=("<script>/* Centro LK: .onnx y .xlsx van como base64 en .b64.txt */(function(){var f0=window.fetch.bind(window);window.fetch=function(u,o){var s=typeof u==='string'?u:(u&&u.url)||String(u);var p=s.split('?')[0];"
+"if(/\\.onnx$|formato\\.xlsx$/.test(p)){return f0(p+'.b64.txt',o).then(function(r){if(!r.ok)return r;return r.text().then(function(t){var b=atob(t.trim()),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return new Response(a,{status:200,headers:{'Content-Type':'application/octet-stream'}});});});}"
+"return f0(u,o);};})();</script>")
+p=d+'/index.html'; s=open(p,encoding='utf-8').read(); i=s.lower().index('<head>')+6
+open(p,'w',encoding='utf-8').write(s[:i]+shim+s[i:])
+PY
+}

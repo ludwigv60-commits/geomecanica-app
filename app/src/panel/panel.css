@@ -139,3 +139,69 @@ details summary { cursor:pointer; font-weight:600; font-size:14px; color:var(--a
 .c-herr-rej.quitadas { margin-top:8px; opacity:.85; }
 .c-herr-rej.quitadas .c-herr-item { padding-right:96px; }
 .c-herr-celda.editando em, .c-herr-rej.quitadas em { display:none; }
+
+/* ───────── Inicio: ¿Qué vamos a hacer hoy? (rediseño 06-nov) ───────── */
+.c-cab { padding-top:14px; }
+.c-kpis { margin:12px 0 10px; }
+.c-kpis > div { backdrop-filter:blur(4px); transition:background .15s; }
+.c-kpis > div:hover { background:#ffffff18; }
+.c-tabs button { border-radius:10px 10px 0 0; }
+.c-tabs button:hover { color:#fff; background:#ffffff0d; }
+.c-inicio { display:flex; flex-direction:column; gap:18px; }
+.c-hoy { position:relative; overflow:hidden; border-radius:22px; padding:22px; color:#fff; display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.35fr); gap:20px; align-items:center;
+  background:radial-gradient(600px 260px at 100% 0%, #2f6fb366 0%, transparent 70%), radial-gradient(500px 240px at 0% 120%, #0f8a8a40 0%, transparent 70%), linear-gradient(135deg, #1b2330, #26354a);
+  box-shadow:0 10px 30px #1b233033; }
+.c-hoy::after { content:''; position:absolute; right:-40px; bottom:-60px; width:260px; height:260px; background:url(logo-lk.png) center/contain no-repeat; opacity:.06; pointer-events:none; }
+.c-hoy-txt small { display:inline-block; letter-spacing:.06em; font-size:12px; opacity:.75; }
+.c-hoy-txt small::first-letter { text-transform:uppercase; }
+.c-hoy-txt h2 { margin:6px 0 0; font-size:clamp(22px, 3.4vw, 32px); line-height:1.15; font-weight:800; text-wrap:balance; }
+.c-hoy-txt h2 span { background:linear-gradient(90deg, #ffffff, #8fb6e0); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.c-hoy-acc { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; position:relative; z-index:1; }
+.c-accion { display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto auto; column-gap:12px; align-items:center; text-align:left; font:inherit; color:#fff; cursor:pointer;
+  background:#ffffff12; border:1px solid #ffffff26; border-radius:16px; padding:12px 14px; min-height:64px; transition:transform .12s, background .12s, border-color .12s; }
+.c-accion:hover:not(:disabled), .c-accion:focus-visible { background:#ffffff20; border-color:#8fb6e0; transform:translateY(-1px); }
+.c-accion:disabled, .c-accion.apagado { opacity:.5; cursor:default; }
+.c-accion i { grid-row:1 / 3; font-style:normal; font-size:20px; width:40px; height:40px; display:grid; place-items:center; border-radius:12px; background:#ffffff1a; }
+.c-accion b { font-size:15px; }
+.c-accion small { font-size:12px; opacity:.75; }
+.c-accion.fuerte { background:linear-gradient(135deg, #2f6fb3, #23568d); border-color:#5a9be0; box-shadow:0 6px 18px #2f6fb366; }
+.c-accion.fuerte i { background:#ffffff26; }
+.c-sec-cab { display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+.c-sec-cab h2 { margin:0; font-size:17px; letter-spacing:.01em; }
+.c-link { font:inherit; font-size:13.5px; font-weight:700; color:var(--acento); background:none; border:0; padding:6px 0; cursor:pointer; }
+.c-link:hover { text-decoration:underline; }
+.c-apps { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; }
+.c-app { position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:4px; text-align:left; font:inherit; color:var(--txt); text-decoration:none; cursor:pointer;
+  background:var(--carta); border:1px solid var(--borde); border-radius:18px; padding:16px; min-height:150px; box-shadow:0 1px 2px #1b233010, 0 6px 16px #1b23300c; transition:transform .14s, box-shadow .14s, border-color .14s; overflow:hidden; }
+.c-app::before { content:''; position:absolute; inset:0 0 auto 0; height:4px; background:var(--c); opacity:.9; }
+.c-app:hover, .c-app:focus-visible { transform:translateY(-3px); box-shadow:0 14px 28px #1b233026; border-color:color-mix(in srgb, var(--c) 55%, var(--borde)); }
+.c-app i { font-style:normal; font-size:26px; width:54px; height:54px; display:grid; place-items:center; border-radius:16px; margin-bottom:8px; box-shadow:0 6px 14px color-mix(in srgb, var(--c) 40%, transparent), inset 0 1px 0 #ffffff40; }
+.c-app b { font-size:15.5px; line-height:1.2; }
+.c-app small { color:var(--tenue); font-size:12.5px; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.c-app em { position:absolute; top:12px; right:14px; font-style:normal; font-weight:800; color:var(--tenue); }
+.c-dos { display:grid; grid-template-columns:minmax(0, 1.4fr) minmax(0, 1fr); gap:12px; }
+.c-dos .c-sec-cab { margin-bottom:0; }
+.c-ult { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+.c-ult button { width:100%; display:flex; align-items:center; gap:12px; font:inherit; color:var(--txt); text-align:left; background:none; border:0; border-top:1px solid var(--borde); padding:10px 4px; cursor:pointer; min-height:52px; }
+.c-ult li:first-child button { border-top:0; }
+.c-ult button:hover { background:color-mix(in srgb, var(--acento) 8%, transparent); }
+.c-ult .chip { min-width:46px; text-align:center; font-weight:800; }
+.c-ult-t { flex:1; min-width:0; display:flex; flex-direction:column; }
+.c-ult-t small { color:var(--tenue); }
+.c-ult-n { font-size:13px; color:var(--tenue); white-space:nowrap; }
+.c-ult-n b { color:var(--txt); }
+.c-mini { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; }
+.c-mini > div { background:var(--fondo); border-radius:12px; padding:10px; display:flex; flex-direction:column; }
+.c-mini b { font-size:22px; font-variant-numeric:tabular-nums; }
+.c-mini span { font-size:12px; color:var(--tenue); }
+.c-visor-barra i { font-style:normal; font-size:18px; }
+@media (max-width: 960px) {
+  .c-hoy { grid-template-columns:minmax(0, 1fr); }
+  .c-apps { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .c-dos { grid-template-columns:minmax(0, 1fr); }
+}
+@media (max-width: 420px) {
+  .c-hoy { padding:18px 16px; }
+  .c-hoy-acc { grid-template-columns:minmax(0, 1fr); }
+  .c-app { min-height:132px; padding:14px; }
+}
