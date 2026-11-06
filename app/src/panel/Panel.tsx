@@ -7,6 +7,8 @@ import { TIPOS } from '../core/rmr';
 import { FILTRO_VACIO, filtrar, fila, infoTipo, type Filtro } from './centro';
 import { excelDe, Herramientas, PESTANAS, ResumenPk, Tabla, type Pestana } from './vistas';
 import { usarEntrega } from '../export/compartir';
+import { leerGmail, type Mcp } from './gmail';
+import { Puente } from './vistas';
 import { leerPaquete, type Paquete } from '../export/envio';
 
 /* Capacidades del artefacto (tipos mínimos de lo que se usa). */
@@ -57,13 +59,19 @@ export function Panel() {
   const [nombres, setNombres] = useState<Record<string, string>>({});
   const [confirmar, setConfirmar] = useState<string | null>(null);
   const cadena = useRef(new Map<string, Promise<void>>());
+  const [mcp, setMcp] = useState<Mcp | null>(null);
+  const hechos = useRef<string[] | null>(null);
+  const [gmail, setGmail] = useState<{ estado: 'nada' | 'leyendo' | 'ok' | 'error'; texto: string; cuando?: string }>({ estado: 'nada', texto: '' });
+  const autoGmail = useRef(false);
+  const [ocultas, setOcultas] = useState<string[]>([]);
 
   useEffect(() => {
     let fin: (() => void)[] = [], t = 0;
     (async () => {
       const c = (window as unknown as { claude?: Claude }).claude;
       if (!c) { setEstado('sin-acceso'); return; }
-      const [d, a, u, dl] = await Promise.all(['db', 'assets', 'user', 'downloads'].map(n => c.use(n).catch(() => null))) as [DB | null, Assets | null, User | null, Downloads | null];
+      const [d, a, u, dl, m] = await Promise.all(['db', 'assets', 'user', 'downloads', 'mcp'].map(n => c.use(n).catch(() => null))) as [DB | null, Assets | null, User | null, Downloads | null, Mcp | null];
+      setMcp(m);
       if (!d) { setEstado('sin-acceso'); return; }
       setDb(d); setAssets(a); setUser(u);
       if (dl) usarEntrega(async (datos, nombre) => { await dl.save({ filename: nombre, data: datos }); return 'descargado'; });
@@ -74,6 +82,8 @@ export function Panel() {
         const l = s.docs.map(x => x.data() as unknown as Reporte).filter(r => r?.id).map(r => ({ ...nuevoReporte(), ...r }) as Reporte); // completa campos de versiones antiguas
         ultimos.current = l; setMapeos(l); setEstado('listo');
       }, e => { window.clearTimeout(t); setEstado(`error:${e.message}`); }));
+      fin.push(d.doc('config/herramientas').onSnapshot(s => { const o = (s.data() as { ocultas?: string[] } | undefined)?.ocultas; setOcultas(Array.isArray(o) ? o : []); }, () => {}));
+      fin.push(d.doc('config/gmail').onSnapshot(s => { const h = (s.data() as { hechos?: string[] } | undefined)?.hechos; hechos.current = Array.isArray(h) ? h : []; }, () => { hechos.current = []; }));
       fin.push(d.doc('config/listas').onSnapshot(s => { if (s.exists) setListas({ ...LISTAS_INICIALES, ...(s.data() as Partial<Listas>) }); }, () => {}));
     })();
     return () => { fin.forEach(f => f()); window.clearTimeout(t); };
@@ -143,6 +153,38 @@ export function Panel() {
   };
 
 
+  /** Trae del Gmail del usuario los mapeos que el APK mandó por el puente y los guarda en la base. */
+  const recibirGmail = async (manual: boolean) => {
+    if (!mcp || !db || gmail.estado === 'leyendo') return;
+    setGmail({ estado: 'leyendo', texto: 'Buscando mapeos nuevos del celular en su Gmail…' });
+    try {
+      const ya = new Set(hechos.current ?? []);
+      const l = await leerGmail(mcp, ya, t => setGmail({ estado: 'leyendo', texto: t }));
+      let texto = l.recibidos.length ? '' : 'No hay mapeos nuevos del celular.';
+      if (l.recibidos.length) {
+        texto = (await importar(l.recibidos.map(x => x.paquete), t => setGmail({ estado: 'leyendo', texto: t }))).texto;
+        const nuevos = [...new Set([...(hechos.current ?? []), ...l.recibidos.map(x => x.hilo)])].slice(-3000);
+        hechos.current = nuevos;
+        await db.doc('config/gmail').set({ hechos: nuevos });
+      }
+      if (l.incompletos) texto += ` ${l.incompletos} envío(s) aún incompleto(s): se completan al llegar el resto de correos.`;
+      if (l.errores.length) texto += ` ${l.errores.length} correo(s) no se pudieron leer.`;
+      setGmail({ estado: 'ok', texto, cuando: new Date().toISOString() });
+    } catch (e) {
+      const x = e as { code?: string; message?: string };
+      const t = x.code === 'server_not_connected' ? 'Conecte Gmail en claude.ai → Configuración → Conectores para recibir solo los mapeos del celular.'
+        : x.code === 'needs_reauth' ? 'Vuelva a conectar Gmail en claude.ai → Configuración → Conectores.'
+        : x.code === 'approval_required' || x.code === 'not_in_manifest' ? 'Falta su permiso para leer los correos del puente: toque "📨 Recibir del celular" y acepte.'
+        : `No se pudo leer Gmail: ${x.message ?? String(e)}`;
+      setGmail({ estado: 'error', texto: t });
+      if (manual) setMsg(t);
+    }
+  };
+  useEffect(() => {
+    if (estado !== 'listo' || !mcp || !db || autoGmail.current || hechos.current === null || !editor) return;
+    autoGmail.current = true; void recibirGmail(false);
+  });
+
   const borrar = async (r: Reporte) => {
     if (confirmar !== r.id) { setConfirmar(r.id); setTimeout(() => setConfirmar(c => (c === r.id ? null : c)), 4000); return; }
     setConfirmar(null);
@@ -201,6 +243,7 @@ export function Panel() {
       </header>
       <main className="c-cuerpo">
         {msg && <p className="panel-msg" onClick={() => setMsg(null)}>{msg}</p>}
+        {gmail.estado !== 'nada' && tab !== 'herramientas' && <p className={`c-gmail ${gmail.estado}`}>📨 {gmail.texto}{gmail.cuando ? ` · ${fechaHora(gmail.cuando)}` : ''}</p>}
         {estado === 'cargando' && <p className="tenue">Cargando los mapeos…</p>}
         {estado === 'lento' && <p className="alerta">La base aún no responde. Revise su conexión; los mapeos aparecerán solos al conectar.</p>}
         {estado === 'sin-acceso' && <p className="alerta">Este Centro funciona dentro de Claude: ábralo con su enlace de claude.ai, con su cuenta.</p>}
@@ -223,6 +266,7 @@ export function Panel() {
           <input className="c-buscar" placeholder="Buscar supervisor, N°, observación…" value={f.texto} onChange={e => poner('texto', e.target.value)} />
           {hayFiltro && <button className="btn mini" onClick={() => setF(FILTRO_VACIO)}>✕ Limpiar</button>}
           <div className="c-acciones">
+            {mcp && editor && <button className={`btn${gmail.estado === 'leyendo' ? ' apagado' : ''}`} title={gmail.texto} onClick={() => recibirGmail(true)}>{gmail.estado === 'leyendo' ? '⏳ Recibiendo…' : '📨 Recibir del celular'}</button>}
             <span className="c-cuenta"><b>{vistas.length}</b> mapeo(s) · <b>{metros}</b> m</span>
             <label className={`btn${ocupado || !db ? ' apagado' : ''}`}>📥 Subir mapeos
               <input id="subir" type="file" accept=".json,application/json,text/plain" multiple hidden disabled={ocupado || !db} onChange={e => { subir(e.target.files); e.target.value = ''; }} /></label>
@@ -262,7 +306,7 @@ export function Panel() {
 
         {tab === 'resumen' && <ResumenPk filas={vistas} abrir={setAbierto} />}
         {tab === 'tabla' && <Tabla filas={vistas} abrir={setAbierto} />}
-        {tab === 'herramientas' && <Herramientas />}
+        {tab === 'herramientas' && <><Puente /><Herramientas ocultas={ocultas} cambiar={db && editor ? (n => { setOcultas(n); db.doc('config/herramientas').set({ ocultas: n }).catch(e => setMsg(`No se pudo guardar: ${(e as Error).message}`)); }) : undefined} /></>}
       </main>
       <footer className="c-pie">LK Geomecánica · Centro privado: los datos de Justa solo los ve quien usted invite.</footer>
     </div>

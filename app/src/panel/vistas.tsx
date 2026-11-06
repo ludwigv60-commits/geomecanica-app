@@ -2,6 +2,7 @@
 import { useMemo, useState } from 'react';
 import { TIPOS } from '../core/rmr';
 import { HERRAMIENTAS, infoTipo, ordenPk, pkTexto, resumir, type Fila, type Filtro, type Herramienta } from './centro';
+import guion from './puente_gmail.gs?raw';
 import { libroExcel, type Columna, type Hoja, type Valor } from './excelCentro';
 
 export type Pestana = 'mapeos' | 'resumen' | 'tabla' | 'herramientas';
@@ -131,27 +132,47 @@ export function Tabla({ filas, abrir }: { filas: Fila[]; abrir: (id: string) => 
 }
 
 /* ───────── Mis herramientas ───────── */
-export function Herramientas() {
+export function Herramientas({ ocultas, cambiar }: { ocultas: string[]; cambiar?: (nuevas: string[]) => void }) {
   const [abierta, setAbierta] = useState<Herramienta | null>(null);
+  const [verQuitadas, setVerQuitadas] = useState(false);
+  const [editar, setEditar] = useState(false);
   if (abierta) return (
     <div className="c-visor">
       <div className="c-visor-barra"><button className="btn" onClick={() => setAbierta(null)}>← Volver al Centro</button><b>{abierta.icono} {abierta.nombre}</b><a className="btn mini" href={abierta.url} target="_blank" rel="noopener">Abrir aparte ↗</a></div>
       <iframe title={abierta.nombre} src={abierta.url} />
     </div>
   );
+  const quitar = (h: Herramienta) => cambiar?.([...new Set([...ocultas, h.nombre])]);
+  const volver = (h: Herramienta) => cambiar?.(ocultas.filter(x => x !== h.nombre));
+  const quitadas = HERRAMIENTAS.flatMap(g => g.items).filter(h => ocultas.includes(h.nombre));
+  const tarjeta = (h: Herramienta, oculta: boolean) => (
+    <div key={h.nombre} className={`c-herr-celda${editar ? ' editando' : ''}`}>
+      {h.local
+        ? <button className="c-herr-item" onClick={() => setAbierta(h)}><i>{h.icono}</i><span><b>{h.nombre}</b><small>{h.que}</small></span><em>Abrir</em></button>
+        : <a className="c-herr-item" href={h.url} target="_blank" rel="noopener"><i>{h.icono}</i><span><b>{h.nombre}</b><small>{h.que}</small></span><em>↗</em></a>}
+      {cambiar && (editar || oculta) && <button className={`c-herr-x${oculta ? ' volver' : ''}`} aria-label={oculta ? `Volver a mostrar ${h.nombre}` : `Quitar ${h.nombre}`} onClick={() => (oculta ? volver(h) : quitar(h))}>{oculta ? '↩ Volver' : '🗑 Quitar'}</button>}
+    </div>
+  );
   return (
     <div className="c-herr">
-      <p className="tenue">Todo en un solo lugar: la última versión de cada herramienta, sin copias repetidas. Las de Claude se abren en otra pestaña; las páginas que tenía solo en Descargas se abren aquí mismo.</p>
-      {HERRAMIENTAS.map(g => (
-        <section key={g.titulo} className="c-grupo">
-          <h2>{g.icono} {g.titulo}</h2>
-          <div className="c-herr-rej">
-            {g.items.map(h => h.local
-              ? <button key={h.nombre} className="c-herr-item" onClick={() => setAbierta(h)}><i>{h.icono}</i><span><b>{h.nombre}</b><small>{h.que}</small></span><em>Abrir</em></button>
-              : <a key={h.nombre} className="c-herr-item" href={h.url} target="_blank" rel="noopener"><i>{h.icono}</i><span><b>{h.nombre}</b><small>{h.que}</small></span><em>↗</em></a>)}
-          </div>
-        </section>
-      ))}
+      <div className="c-herr-cab">
+        <p className="tenue">Todo en un solo lugar. Las de Claude se abren en otra pestaña; las que tenía en Descargas se abren aquí mismo.</p>
+        {cambiar && <button className={`btn mini${editar ? ' primario' : ''}`} onClick={() => setEditar(e => !e)}>{editar ? '✓ Listo' : '✏️ Ordenar: quitar las que no sirven'}</button>}
+      </div>
+      {HERRAMIENTAS.map(g => {
+        const items = g.items.filter(h => !ocultas.includes(h.nombre));
+        if (!items.length) return null;
+        return (
+          <section key={g.titulo} className="c-grupo">
+            <h2>{g.icono} {g.titulo}</h2>
+            <div className="c-herr-rej">{items.map(h => tarjeta(h, false))}</div>
+          </section>
+        );
+      })}
+      {quitadas.length > 0 && <section className="c-grupo">
+        <button className="btn mini" onClick={() => setVerQuitadas(v => !v)}>{verQuitadas ? 'Ocultar' : 'Ver'} las quitadas ({quitadas.length})</button>
+        {verQuitadas && <div className="c-herr-rej quitadas">{quitadas.map(h => tarjeta(h, true))}</div>}
+      </section>}
     </div>
   );
 }
@@ -181,4 +202,24 @@ export async function excelDe(filas: Fila[], f: Filtro): Promise<Uint8Array> {
     filas: orden.map(x => [x.r.fecha, x.r.turno, x.r.correlativo, lab(x), x.rampa, x.r.labor, x.r.pkRampa ?? '', x.r.desde, x.avance, x.r.hasta || pkTexto(x.pkFin), x.r.ancho, x.r.alto, x.r.azimut, x.cob, x.rmrZ.HI, x.rmrZ.CORONA, x.rmrZ.HD, x.rmr, x.tipo, x.r.tipoGeologo ?? '', x.q.HI, x.q.CORONA, x.q.HD, x.r.jv, x.rqd, x.familias, x.litologia, x.r.nivelRiesgo, (x.r.sostenimiento ?? []).join(' / '), x.r.supervisor, x.r.observaciones, x.r.panel?.subidoEn ? new Date(x.r.panel.subidoEn).toLocaleString('es-PE') : '']),
   };
   return libroExcel([resumen, pkapk, detalle], 'Centro de Control Justa Subterránea');
+}
+
+/* ───────── Puente APK → Gmail → Centro ───────── */
+export function Puente() {
+  const [copiado, setCopiado] = useState(false);
+  const copiar = async () => { try { await navigator.clipboard.writeText(guion); setCopiado(true); setTimeout(() => setCopiado(false), 2500); } catch { setCopiado(false); } };
+  return (
+    <details className="c-card c-puente">
+      <summary>📨 Envío automático del APK al Centro: cómo activarlo (una sola vez)</summary>
+      <ol>
+        <li>Abra <a href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a> con su cuenta Google y cree un <b>Nuevo proyecto</b>.</li>
+        <li>Toque <b>Copiar el script</b> y péguelo reemplazando todo. Cambie <code>CAMBIA_ESTA_CLAVE</code> por una clave suya.</li>
+        <li><b>Implementar → Nueva implementación → Aplicación web</b>. Ejecutar como <b>Yo</b>; acceso <b>Cualquier persona</b>. Autorice Gmail.</li>
+        <li>Copie la URL que termina en <code>/exec</code> y agréguele <code>?k=SU_CLAVE</code>. Ábrala en el navegador: debe decir <code>{'{"ok":true,"puente":"LK"}'}</code>.</li>
+        <li>En el APK: <b>⚙️ Configuración → URL del puente al Centro</b>, pegue esa URL.</li>
+      </ol>
+      <p className="tenue">Desde ahí, cuando el celular tenga internet, cada mapeo se envía solo a su propio Gmail (de usted para usted) y este Centro lo carga al abrirse. También puede tocar <b>📨 Recibir del celular</b>. Necesita el conector Gmail activo en claude.ai.</p>
+      <div className="fila-btn"><button className="btn primario" onClick={copiar}>{copiado ? '✓ Copiado' : '📋 Copiar el script'}</button></div>
+    </details>
+  );
 }

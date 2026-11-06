@@ -123,3 +123,19 @@ details summary { cursor:pointer; font-weight:600; font-size:14px; color:var(--a
   .c-filtros select { flex:1 1 140px; }
   .c-seg { flex:1 1 auto; } .c-seg button { flex:1; }
 }
+.c-gmail { margin:0; padding:8px 12px; border-radius:10px; font-size:13.5px; background:var(--carta); border:1px solid var(--borde); }
+.c-gmail.leyendo { border-color:var(--acento); }
+.c-gmail.error { background:var(--alerta); border-color:var(--alertab); }
+.c-puente summary { font-size:15px; color:var(--txt); }
+.c-puente ol { margin:4px 0; padding-left:20px; display:flex; flex-direction:column; gap:6px; font-size:14px; }
+.c-puente code { background:var(--fondo); padding:1px 5px; border-radius:5px; font-size:12.5px; }
+.c-herr-cab { display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+.c-herr-cab p { margin:0; flex:1 1 300px; }
+.c-herr-celda { position:relative; display:flex; }
+.c-herr-celda > .c-herr-item { flex:1; min-width:0; }
+.c-herr-celda.editando > .c-herr-item { padding-right:96px; border-style:dashed; }
+.c-herr-x { position:absolute; right:8px; top:50%; transform:translateY(-50%); font:inherit; font-size:12.5px; font-weight:700; min-height:36px; padding:0 10px; border-radius:10px; border:1px solid #b3261e; background:#b3261e; color:#fff; cursor:pointer; }
+.c-herr-x.volver { background:var(--carta); color:var(--acento); border-color:var(--acento); }
+.c-herr-rej.quitadas { margin-top:8px; opacity:.85; }
+.c-herr-rej.quitadas .c-herr-item { padding-right:96px; }
+.c-herr-celda.editando em, .c-herr-rej.quitadas em { display:none; }
