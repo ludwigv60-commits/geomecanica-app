@@ -8,6 +8,25 @@ import { marcarEnviado } from '../store';
 export const pendiente = (r: Reporte) => !r.enviado || r.modificado > r.enviado;
 let enCurso = false;
 
+/** Reduce una foto (dataURL) a 1600 px de lado como máximo, JPEG 0.7: Gmail gratis parte el mapeo en correos de 300 KB. */
+async function reducir(data: string, max = 1600): Promise<string> {
+  if (!data?.startsWith('data:image') || typeof document === 'undefined') return data;
+  try {
+    const img = new Image(); img.src = data; await img.decode();
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+    const out = c.toDataURL('image/jpeg', 0.7);
+    return out.length < data.length ? out : data;
+  } catch { return data; }
+}
+/** Copia del mapeo para enviar: fotos reducidas; las trazas van completas (tienen su propio w/h). */
+export async function paraEnvio(r: Reporte): Promise<Reporte> {
+  if (!r.fotos?.length) return r;
+  return { ...r, fotos: await Promise.all(r.fotos.map(async f => ({ ...f, data: await reducir(f.data) }))) };
+}
+
 /** Devuelve cuántos mapeos se enviaron; lanza si el puente respondió con error. */
 export async function enviarPendientes(reportes: Reporte[], listas: Listas): Promise<number> {
   const url = listas.puenteUrl?.trim();
@@ -18,9 +37,9 @@ export async function enviarPendientes(reportes: Reporte[], listas: Listas): Pro
   let n = 0;
   try {
     for (const r of lista) {
-      const p = armarPaquete([r], listas);
-      // text/plain: el navegador no pide permiso previo (CORS) y Apps Script lo recibe en e.postData.contents.
-      const res = await fetch(url, { method: 'POST', body: JSON.stringify(p), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' });
+      const p = armarPaquete([await paraEnvio(r)], listas);
+      // Cuerpo string = text/plain sin cabeceras extra: no hay permiso previo (CORS); Apps Script responde 302 y se sigue.
+      const res = await fetch(url, { method: 'POST', body: JSON.stringify(p), redirect: 'follow' });
       const t = await res.text();
       let ok = res.ok;
       try { ok = ok && JSON.parse(t).ok !== false; } catch { ok = false; }
