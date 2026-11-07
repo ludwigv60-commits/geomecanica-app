@@ -44,7 +44,12 @@ export function App() {
         <button className="btn mini" onClick={() => setEnvio(null)}>Cerrar</button></div>
     : <p className="tenue">{envio}</p>);
   useEffect(() => {
-    recargar(); recargarBd(); leerListas().then(setListas); pedirPersistencia();
+    recargar(); recargarBd(); pedirPersistencia();
+    // APK: si el celular aún no tiene el puente al Centro, se pone solo el que viene de fábrica.
+    leerListas().then(async l => {
+      if (!l.puenteUrl) { const u = await import('../export/autoenvio').then(m => m.puenteDeFabrica()).catch(() => null); if (u) { l = { ...l, puenteUrl: u }; await guardarListas(l).catch(() => {}); } }
+      setListas(l);
+    });
     // APK: los mapeos de Justa y la IA entrenada vienen dentro de la app y se cargan solos la primera vez.
     import('../ia/paquete').then(m => m.cargarPaqueteIncluido()).then(msg => { if (msg) { recargarBd(); setAviso(msg); } }).catch(() => {});
     // Deja listo en el celular todo lo necesario para exportar sin señal.

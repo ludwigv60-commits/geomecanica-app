@@ -23,6 +23,15 @@ export function problemaUrl(url?: string): string | null {
   if (!/[?&]k=[^&]+/.test(u)) return 'A la URL le falta la clave al final: agregue ?k=SU_CLAVE después de /exec.';
   return null;
 }
+/** APK: URL del puente puesta de fábrica (datos-apk/puente.txt, nunca va al repositorio). Se usa si el celular no tiene una. */
+export async function puenteDeFabrica(): Promise<string | null> {
+  try {
+    const r = await fetch('./datos-apk/puente.txt', { cache: 'no-store' });
+    if (!r.ok) return null;
+    const u = (await r.text()).trim();
+    return u && !u.startsWith('<') && !problemaUrl(u) ? u : null;
+  } catch { return null; }
+}
 /** Prueba la conexión con el puente (no envía ningún mapeo). */
 export async function probarPuente(url: string): Promise<string> {
   const p = problemaUrl(url); if (p) throw new Error(p);
