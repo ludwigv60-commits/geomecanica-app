@@ -12,7 +12,8 @@ mkdir -p "$OUT"
 python3 - "$TMP" "$OUT" <<'P'
 import sys, os
 t, o = sys.argv[1:]
-js = open(f'{t}/panel.js', encoding='utf-8').read().replace('�', '\\uFFFD')
+import re
+js = re.sub('[\x00-\x08\x0b\x0c\x0e-\x1f\ufffd]', lambda m: '\\u%04x' % ord(m.group()), open(f'{t}/panel.js', encoding='utf-8').read())
 open(f'{o}/panel.js', 'w', encoding='utf-8').write(js)
 css = open(f'{t}/style.css', encoding='utf-8').read()
 pre = ('<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>'
@@ -67,5 +68,25 @@ shim=("<script>/* Centro LK: .onnx y .xlsx van como base64 en .b64.txt */(functi
 "return f0(u,o);};})();</script>")
 p=d+'/index.html'; s=open(p,encoding='utf-8').read(); i=s.lower().index('<head>')+6
 open(p,'w',encoding='utf-8').write(s[:i]+shim+s[i:])
+PY
+}
+
+# Descargas de las herramientas: dentro de claude.ai el navegador bloquea <a download> en las páginas del Centro.
+# Se inyecta app/src/panel/descargas-polyfill.js en TODAS las herramientas (y en herramientas/mapeo/index.html):
+# la descarga pasa por el permiso "downloads" del Centro (window.parent.claude). Uso: inyectar_descargas <dir_herramientas>
+inyectar_descargas() {
+  local poly; poly="$(dirname "$0")/src/panel/descargas-polyfill.js"
+  python3 - "$1" "$poly" <<'PY'
+import sys,re,glob,os
+d,p=sys.argv[1],sys.argv[2]
+tag='<script data-lk="descargas">'+open(p,encoding='utf-8').read()+'</script>'
+for f in glob.glob(d+'/*.html')+[d+'/mapeo/index.html']:
+    if not os.path.exists(f): continue
+    s=open(f,encoding='utf-8').read()
+    if 'data-lk="descargas"' in s: s=re.sub(r'<script data-lk="descargas">.*?</script>',lambda m:tag,s,count=1,flags=re.S)
+    else:
+        m=re.search(r'<head[^>]*>',s,re.I); s=s[:m.end()]+tag+s[m.end():] if m else tag+s
+    if not s.lstrip().lower().startswith('<!doctype'): s='<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'+s
+    open(f,'w',encoding='utf-8').write(s)
 PY
 }

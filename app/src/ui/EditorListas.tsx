@@ -10,6 +10,12 @@ const NOMBRES: Record<'labores' | 'supervisores' | 'litologias' | 'riesgos', str
 export function EditorListas({ listas, historialBD = 0, onHistorial, onGuardar, onCancelar }: { listas: Listas; historialBD?: number; onHistorial?: () => void; onGuardar: (l: Listas) => void; onCancelar: () => void }) {
   const [l, setL] = useState<Listas>(structuredClone(listas));
   const [msgBd, setMsgBd] = useState<string | null>(null);
+  const [prueba, setPrueba] = useState<{ ok: boolean; t: string } | null>(null);
+  const probar = async () => {
+    setPrueba({ ok: true, t: 'Probando…' });
+    try { const { probarPuente } = await import('../export/autoenvio'); setPrueba({ ok: true, t: await probarPuente(l.puenteUrl ?? '') }); }
+    catch (e) { setPrueba({ ok: false, t: `✗ ${(e as Error).message}` }); }
+  };
   const importar = async (f: File | undefined) => {
     if (!f) return;
     setMsgBd('Leyendo…');
@@ -63,7 +69,10 @@ export function EditorListas({ listas, historialBD = 0, onHistorial, onGuardar, 
         <section className="tarjeta">
           <h3>Envío automático al Centro de Control</h3>
           <p className="ayuda">Pegue la URL del puente de su cuenta Google (termina en /exec?k=SU_CLAVE). Con internet, cada mapeo nuevo o modificado se envía solo y el Centro de Control lo carga al abrirse. Vacío = envío manual con ☁️ Enviar.</p>
-          <label className="campo"><span>URL del puente al Centro</span><input value={l.puenteUrl ?? ''} placeholder="https://script.google.com/macros/s/…/exec" onChange={e => setL({ ...l, puenteUrl: e.target.value.trim() || undefined })} /></label>
+          <label className="campo"><span>URL del puente al Centro</span><input value={l.puenteUrl ?? ''} placeholder="https://script.google.com/macros/s/…/exec?k=SU_CLAVE" onChange={e => { setPrueba(null); setL({ ...l, puenteUrl: e.target.value.trim() || undefined }); }} /></label>
+          <div className="fila-btn"><button className="btn" disabled={!l.puenteUrl} onClick={probar}>🔌 Probar conexión</button></div>
+          {prueba && <p className={prueba.ok ? 'ayuda' : 'alerta'}>{prueba.t}</p>}
+          {l.puenteUrl && <p className="ayuda">Recuerde tocar <b>Guardar</b> abajo para que quede activo.</p>}
         </section>
         <section className="tarjeta">
           <h3>Brújula</h3>
