@@ -47,6 +47,14 @@ export function App() {
     recargar(); recargarBd(); pedirPersistencia();
     // APK: si el celular aún no tiene el puente al Centro, se pone solo el que viene de fábrica.
     leerListas().then(async l => {
+      // Web (GitHub): el enlace privado …/formulario/#puente=URL deja el puente puesto en este navegador.
+      // Lo que va después de # nunca sale del celular, así la clave no queda en el código público.
+      const h = new URLSearchParams(location.hash.slice(1)).get('puente');
+      if (h) {
+        history.replaceState(null, '', location.pathname + location.search);
+        const { problemaUrl } = await import('../export/autoenvio');
+        if (!problemaUrl(h)) { l = { ...l, puenteUrl: h.trim() }; await guardarListas(l).catch(() => {}); setAviso('☁️ Envío automático al Centro de Control activado en este celular.'); }
+      }
       if (!l.puenteUrl) { const u = await import('../export/autoenvio').then(m => m.puenteDeFabrica()).catch(() => null); if (u) { l = { ...l, puenteUrl: u }; await guardarListas(l).catch(() => {}); } }
       setListas(l);
     });
