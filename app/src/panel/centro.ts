@@ -160,7 +160,7 @@ export const HERRAMIENTAS: Grupo[] = [
     { icono: '🛡️', nombre: 'Guardias Shotcrete y Calidad', que: 'Control por guardia', url: H('art-TBMGaYP5jajy5g5z4LoELS.html') },
   ] },
   { titulo: 'Equipos y ciclo', icono: '🚜', items: [
-    { icono: '📊', nombre: 'Utilización de Equipos AESA', que: 'Centro de control de flota (versión del 05-nov)', url: H('utilizacion-equipos.html'), local: true },
+    { icono: '📊', nombre: 'Utilización de Equipos AESA', que: 'Centro de control de flota (versión del 07-nov)', url: H('utilizacion-equipos.html'), local: true },
     { icono: '⚙️', nombre: 'Rendimiento de Equipos Justa', que: 'Real vs estándar por equipo', url: H('art-DKmTK1wJcWX1q5jUM5gUPC.html') },
     { icono: '🔄', nombre: 'Ciclo operativo Rampa Sur', que: '22 de setiembre', url: H('art-EX6U5K9hRkk6asb2WE7Bkv.html') },
     { icono: '📅', nombre: 'Corrida Rampa Norte', que: 'Avance e intersección de cámaras', url: H('art-8UikAoJaCnu97ALLawfkSk.html') },
