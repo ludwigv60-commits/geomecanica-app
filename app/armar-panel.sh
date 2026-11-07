@@ -12,7 +12,8 @@ mkdir -p "$OUT"
 python3 - "$TMP" "$OUT" <<'P'
 import sys, os
 t, o = sys.argv[1:]
-js = open(f'{t}/panel.js', encoding='utf-8').read().replace('�', '\\uFFFD')
+import re
+js = re.sub('[\x00-\x08\x0b\x0c\x0e-\x1f\ufffd]', lambda m: '\\u%04x' % ord(m.group()), open(f'{t}/panel.js', encoding='utf-8').read())
 open(f'{o}/panel.js', 'w', encoding='utf-8').write(js)
 css = open(f'{t}/style.css', encoding='utf-8').read()
 pre = ('<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>'

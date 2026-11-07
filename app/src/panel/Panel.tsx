@@ -77,6 +77,10 @@ export function Panel() {
       if (!d) { setEstado('sin-acceso'); return; }
       setDb(d); setAssets(a); setUser(u);
       if (dl) usarEntrega(async (datos, nombre) => { await dl.save({ filename: nombre, data: datos }); return 'descargado'; });
+      // las herramientas abiertas dentro del Centro descargan por aquí (ver descargas-polyfill.js)
+      (window as unknown as { lkGuardar?: (n: string, d: Uint8Array) => Promise<unknown> }).lkGuardar = dl
+        ? (nombre, datos) => dl.save({ filename: nombre, data: datos })
+        : async () => { throw new Error('el Centro no tiene el permiso de descargas'); };
       if (u) { setUid(await u.id()); setEditor(!!(await u.canEdit())); }
       t = window.setTimeout(() => setEstado(e => (e === 'cargando' ? 'lento' : e)), 10000);
       fin.push(d.collection('mapeos').onSnapshot(s => {

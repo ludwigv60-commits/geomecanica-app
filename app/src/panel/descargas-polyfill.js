@@ -5,12 +5,14 @@
   if (window.__lkDescargas) return; window.__lkDescargas = true;
   // ventana que tiene el permiso (esta o la del Centro); los datos se crean en SU contexto para que los reconozca
   function duena() {
+    try { if (window.parent && window.parent !== window && typeof window.parent.lkGuardar === 'function') return window.parent; } catch (e) {}
+    try { if (typeof window.lkGuardar === 'function') return window; } catch (e) {}
     try { if (window.claude && window.claude.use) return window; } catch (e) {}
     try { if (window.parent && window.parent !== window && window.parent.claude && window.parent.claude.use) return window.parent; } catch (e) {}
     try { if (window.top && window.top.claude && window.top.claude.use) return window.top; } catch (e) {}
     return null;
   }
-  function claude() { var w = duena(); return w ? w.claude : null; }
+  function claude() { var w = duena(); return w ? (w.lkGuardar || w.claude) : null; }
   function aviso(t, mal) {
     try {
       var d = document.createElement('div');
@@ -28,15 +30,18 @@
   }
   function guardar(a) {
     var w = duena(); if (!w) return false; var c = w.claude;
+    var guardarEn = typeof w.lkGuardar === 'function'
+      ? function (d) { return w.lkGuardar(nombre, d); }
+      : function (d) { return c.use('downloads').then(function (dl) { if (!dl) throw new Error('sin permiso de descargas'); return dl.save({ filename: nombre, data: d }); }); };
     var nombre = a.getAttribute('download') || 'archivo';
     var href = a.href;
     fetch(href).then(function (r) { return r.arrayBuffer(); })
       .then(function (ab) {
         var datos = new w.Uint8Array(ab.byteLength); datos.set(new Uint8Array(ab));
-        return c.use('downloads').then(function (dl) { if (!dl) throw new Error('sin permiso de descargas'); return dl.save({ filename: nombre, data: datos }); });
+        return guardarEn(datos);
       })
       .then(function () { aviso('⬇ Descargado: ' + nombre); })
-      .catch(function (e) { aviso('No se pudo descargar ' + nombre + ': ' + ((e && e.message) || e), true); });
+      .catch(function (e) { aviso(e && e.code === 'declined' ? 'Descarga cancelada.' : 'No se pudo descargar ' + nombre + ': ' + ((e && (e.message || e.code)) || e), !(e && e.code === 'declined')); });
     return true;
   }
   HTMLAnchorElement.prototype.click = function () { if (esDescarga(this) && guardar(this)) return; return clicOriginal.apply(this, arguments); };
