@@ -30,6 +30,7 @@ export interface Reporte {
   sugeridos?: string[];
   importado?: boolean;     // viene de la BD de mapeos (historial, solo lectura)
   enviado?: string;        // fecha en que se preparó el envío al panel de mapeos
+  alCentro?: string;       // fecha en que el puente confirmó que el mapeo llegó al Centro de Control
   panel?: { subidoPor?: string; subidoEn?: string; dispositivo?: string; editadoEn?: string };
   sobreexc?: Partial<Record<Zona, number | null>>; // m medidos: + sobreexcavación, − subexcavación
   trazasFoto?: Trazas;     // (versión anterior, se migra a fotos)

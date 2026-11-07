@@ -13,6 +13,8 @@ export function App() {
   const [vista, setVista] = useState<Vista>({ v: 'lista' });
   const [reportes, setReportes] = useState<Reporte[]>([]);
   const [listas, setListas] = useState<Listas>(LISTAS_INICIALES);
+  // Con puente: falta lo que el Centro no confirmó. Sin puente: lo que no se preparó en archivo.
+  const falta = (r: Reporte) => listas.puenteUrl ? pendiente(r) : !r.enviado || r.modificado > r.enviado;
   const [aviso, setAviso] = useState<string | null>(null);
   const [confirmar, setConfirmar] = useState<string | null>(null);
   const [bd, setBd] = useState<Reporte[]>([]);   // historial importado de la BD de mapeos
@@ -106,7 +108,7 @@ export function App() {
         <h1>Mapeo geomecánico</h1>
         <p>Justa Subterránea · RMR · Q · sostenimiento</p>
         {reportes.length > 0 && (() => {
-          const env = reportes.filter(x => !pendiente(x)).length;
+          const env = reportes.filter(x => !falta(x)).length;
           const ult = reportes[0] ? calcular(reportes[0]) : null;
           return <div className="kpis">
             <span><b>{reportes.length}</b>reportes</span>
@@ -117,6 +119,10 @@ export function App() {
       </header>
       <main className="contenido">
         {aviso && <p className="alerta" onClick={() => setAviso(null)}>{aviso}</p>}
+        {!listas.puenteUrl && reportes.length > 0 && <div className="autoenvio error">
+          <b>⚠️ Envío automático al Centro de Control apagado en este celular</b>
+          <span>Abra una vez el enlace privado del Centro que le dieron, o toque ⚙️ y pegue la URL del puente.</span>
+        </div>}
         {listas.puenteUrl && (() => {
           const p = reportes.filter(pendiente).length;
           return <div className={`autoenvio${auto?.startsWith('⚠️') ? ' error' : ''}`}>
@@ -127,7 +133,7 @@ export function App() {
           </div>;
         })()}
         {reportes.length > 0 && PANEL_LISTO && <div className="enviar-panel">
-          {(() => { const p = reportes.filter(pendiente); return p.length
+          {(() => { const p = reportes.filter(falta); return p.length
             ? <button className="btn" onClick={() => enviar(p)}>☁️ Enviar {p.length} mapeo{p.length > 1 ? 's' : ''} {listas.puenteUrl ? 'al Centro de Control' : 'al panel'}</button>
             : <button className="btn" onClick={() => enviar(reportes)}>☁️ Todo enviado · reenviar todo</button>; })()}
           {avisoEnvio}
@@ -144,7 +150,7 @@ export function App() {
                 <span className="li-txt"><b>{r.labor || 'Sin labor'}</b>{r.desde && <> · PK {r.desde}{r.hasta ? ` a ${r.hasta}` : ''}</>}<br />
                   <small>{[r.fecha, r.turno, `RMR ${c.rmrFinal ?? '—'}`].filter(Boolean).join(' · ')}</small><br />
                   <span className="chip" style={t ? { background: t.color, color: t.texto, borderColor: t.color } : {}}>{t ? `ST-${t.tipo}` : 'Sin tipo'}</span>
-                  {!pendiente(r) && <span className="chip enviado">☁️ enviado</span>}</span>
+                  {!falta(r) && <span className="chip enviado">☁️ {listas.puenteUrl ? 'en el Centro' : 'enviado'}</span>}</span>
                 <button className={confirmar === r.id ? 'btn mini peligro' : 'btn mini'} onClick={async e => {
                   e.stopPropagation();
                   if (confirmar !== r.id) { setConfirmar(r.id); setTimeout(() => setConfirmar(c => (c === r.id ? null : c)), 4000); return; }

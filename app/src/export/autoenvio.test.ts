@@ -9,10 +9,10 @@ const r = (id: string, extra: Partial<Reporte> = {}) => ({ id, labor: 'Rampa Nor
 test('envía solo los pendientes, uno por mapeo, y los marca', async () => {
   const cuerpos: string[] = [];
   vi.stubGlobal('fetch', vi.fn(async (_u: string, o: RequestInit) => { cuerpos.push(o.body as string); return new Response('{"ok":true}'); }));
-  const n = await enviarPendientes([r('a'), r('b', { enviado: "2026-11-06T20:00" } as never), r('c', { enviado: "2026-11-06T05:00" } as never)], { ...LISTAS_INICIALES, puenteUrl: 'https://script.google.com/macros/s/x/exec?k=c' });
-  expect(n).toBe(2);
-  expect(cuerpos.map(c => JSON.parse(c).reportes[0].id)).toEqual(['a', 'c']);
-  expect(marcarEnviado).toHaveBeenCalledTimes(2);
+  const n = await enviarPendientes([r('a'), r('b', { alCentro: "2026-11-06T20:00" } as never), r('c', { alCentro: "2026-11-06T05:00" } as never), r('d', { enviado: "2026-11-06T20:00" } as never)], { ...LISTAS_INICIALES, puenteUrl: 'https://script.google.com/macros/s/x/exec?k=c' });
+  expect(n).toBe(3);
+  expect(cuerpos.map(c => JSON.parse(c).reportes[0].id)).toEqual(['a', 'c', 'd']);
+  expect(marcarEnviado).toHaveBeenCalledTimes(3);
 });
 
 test('sin puente no envía; error del puente no marca', async () => {

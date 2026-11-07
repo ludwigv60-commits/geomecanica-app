@@ -5,7 +5,8 @@ import type { Listas, Reporte } from '../model';
 import { armarPaquete } from './envio';
 import { marcarEnviado } from '../store';
 
-export const pendiente = (r: Reporte) => !r.enviado || r.modificado > r.enviado;
+/** Pendiente para el Centro: solo cuenta lo que el puente confirmó (el archivo antiguo "enviado" no llega solo al Centro). */
+export const pendiente = (r: Reporte) => !r.alCentro || r.modificado > r.alCentro;
 let enCurso = false;
 
 /** Último intento de envío automático, visible en la lista (se guarda en el celular). */
@@ -88,7 +89,7 @@ export async function enviarLista(lista: Reporte[], listas: Listas): Promise<num
       let ok = res.ok;
       try { ok = ok && JSON.parse(t).ok !== false; } catch { ok = false; }
       if (!ok) throw new Error(/"clave"/.test(t) ? 'la clave (?k=…) de la URL no coincide con la del script.' : `el puente respondió: ${t.slice(0, 120)}`);
-      await marcarEnviado([r.id], p.enviadoEn);
+      await marcarEnviado([r.id], p.enviadoEn, true);
       n++;
     }
     ponerEstado(true, `${n} mapeo(s) enviados al Centro de Control.`);
