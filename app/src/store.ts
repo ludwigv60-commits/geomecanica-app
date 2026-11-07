@@ -31,9 +31,9 @@ export const guardarReporte = (r: Reporte) =>
   tx<IDBValidKey>('reportes', 'readwrite', s => s.put({ ...r, modificado: new Date().toISOString(), sincronizado: false }));
 
 /** Marca reportes como enviados al panel sin cambiar su fecha de modificación. */
-export async function marcarEnviado(ids: string[], fecha: string): Promise<void> {
+export async function marcarEnviado(ids: string[], fecha: string, alCentro = false): Promise<void> {
   const todos = await listarReportes();
-  for (const r of todos) if (ids.includes(r.id)) await tx('reportes', 'readwrite', s => s.put({ ...r, enviado: fecha }));
+  for (const r of todos) if (ids.includes(r.id)) await tx('reportes', 'readwrite', s => s.put({ ...r, enviado: fecha, ...(alCentro ? { alCentro: fecha } : {}) }));
 }
 
 export async function borrarReporte(r: Reporte): Promise<void> {
