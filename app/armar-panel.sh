@@ -69,3 +69,23 @@ p=d+'/index.html'; s=open(p,encoding='utf-8').read(); i=s.lower().index('<head>'
 open(p,'w',encoding='utf-8').write(s[:i]+shim+s[i:])
 PY
 }
+
+# Descargas de las herramientas: dentro de claude.ai el navegador bloquea <a download> en las páginas del Centro.
+# Se inyecta app/src/panel/descargas-polyfill.js en TODAS las herramientas (y en herramientas/mapeo/index.html):
+# la descarga pasa por el permiso "downloads" del Centro (window.parent.claude). Uso: inyectar_descargas <dir_herramientas>
+inyectar_descargas() {
+  local poly; poly="$(dirname "$0")/src/panel/descargas-polyfill.js"
+  python3 - "$1" "$poly" <<'PY'
+import sys,re,glob,os
+d,p=sys.argv[1],sys.argv[2]
+tag='<script data-lk="descargas">'+open(p,encoding='utf-8').read()+'</script>'
+for f in glob.glob(d+'/*.html')+[d+'/mapeo/index.html']:
+    if not os.path.exists(f): continue
+    s=open(f,encoding='utf-8').read()
+    if 'data-lk="descargas"' in s: s=re.sub(r'<script data-lk="descargas">.*?</script>',lambda m:tag,s,count=1,flags=re.S)
+    else:
+        m=re.search(r'<head[^>]*>',s,re.I); s=s[:m.end()]+tag+s[m.end():] if m else tag+s
+    if not s.lstrip().lower().startswith('<!doctype'): s='<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'+s
+    open(f,'w',encoding='utf-8').write(s)
+PY
+}
