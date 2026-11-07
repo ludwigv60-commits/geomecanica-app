@@ -322,3 +322,11 @@ details.ajuste[open] > summary::after { content:'▾'; }
 .fab { background:linear-gradient(135deg,#3b7fc6,#24548a); }
 .lista li:active { transform:scale(.99); }
 .tarjeta h3, .seccion h3 { letter-spacing:.2px; }
+
+/* Estado del envío automático al Centro de Control */
+.autoenvio { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; padding:10px 12px; border-radius:12px; border:1px solid var(--borde); background:var(--carta); }
+.autoenvio b { flex:1 1 100%; font-size:14px; }
+.autoenvio span { flex:1; font-size:14px; }
+.autoenvio small { flex:1 1 100%; color:var(--tenue); }
+.autoenvio.error { background:var(--alerta); border-color:var(--alertab); }
+.autoenvio.error small { color:var(--txt); }

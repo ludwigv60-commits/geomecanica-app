@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { nuevoReporte, siguienteCorrelativo, LISTAS_INICIALES, type Listas, type Reporte } from '../model';
 import { borrarReporte, guardarListas, guardarReporte, leerConfig, leerListas, listarReportes, marcarEnviado, pedirPersistencia } from '../store';
 import { PANEL_LISTO, PANEL_URL, enviarMapeos } from '../export/envio';
@@ -21,8 +21,15 @@ export function App() {
   const recargar = () => listarReportes().then(setReportes);
   const [envio, setEnvio] = useState<string | null>(null);
   const pendiente = (r: Reporte) => !r.enviado || r.modificado > r.enviado;
+  const [auto, setAuto] = useState<string | null>(null);
   const enviar = async (lista: Reporte[]) => {
     if (!lista.length) return;
+    if (listas.puenteUrl) { // con el puente activo, ☁️ Enviar manda directo al Centro (no prepara archivo)
+      setEnvio(null); setAuto('Enviando al Centro de Control…');
+      try { const { enviarLista } = await import('../export/autoenvio'); const n = await enviarLista(lista, listas); setAuto(`☁️ ${n} mapeo(s) enviados al Centro de Control.`); await recargar(); }
+      catch (e) { setAuto(`⚠️ No se pudo enviar al Centro de Control: ${(e as Error).message}`); }
+      return;
+    }
     setEnvio('Preparando el envío…');
     try {
       const { enviadoEn } = await enviarMapeos(lista, listas);
@@ -49,12 +56,15 @@ export function App() {
   }, []);
 
   // Con internet, los mapeos pendientes se envían solos al Centro de Control (si hay puente configurado).
-  const [auto, setAuto] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const intentarRef = useRef<() => void>(() => {});
   useEffect(() => {
     if (!listas.puenteUrl) return;
-    const intentar = () => import('../export/autoenvio').then(m => m.enviarPendientes(reportes, listas))
-      .then(n => { if (n) { setAuto(`☁️ ${n} mapeo(s) enviados solos al Centro de Control.`); recargar(); } })
-      .catch(e => setAuto(`No se pudo enviar al Centro de Control (se reintenta solo): ${(e as Error).message}`));
+    const intentar = () => { setEnviando(true); import('../export/autoenvio').then(m => m.enviarPendientes(reportes, listas))
+      .then(n => { if (n) { setAuto(`☁️ ${n} mapeo(s) enviados solos al Centro de Control.`); recargar(); } else setAuto(a => a); })
+      .catch(e => setAuto(`⚠️ No se pudo enviar al Centro de Control (se reintenta solo cada 2 min): ${(e as Error).message}`))
+      .finally(() => setEnviando(false)); };
+    intentarRef.current = intentar;
     intentar();
     window.addEventListener('online', intentar);
     const t = setInterval(intentar, 120000);
@@ -94,10 +104,18 @@ export function App() {
       </header>
       <main className="contenido">
         {aviso && <p className="alerta" onClick={() => setAviso(null)}>{aviso}</p>}
-        {auto && <p className="tenue" onClick={() => setAuto(null)}>{auto}</p>}
+        {listas.puenteUrl && (() => {
+          const p = reportes.filter(pendiente).length;
+          return <div className={`autoenvio${auto?.startsWith('⚠️') ? ' error' : ''}`}>
+            <b>☁️ Envío automático activo</b>
+            <span>{enviando ? 'Enviando…' : p ? `${p} mapeo(s) por enviar` : 'Todo enviado al Centro de Control'}</span>
+            {auto && <small>{auto}</small>}
+            {p > 0 && !enviando && <button className="btn mini" onClick={() => intentarRef.current()}>Enviar ahora</button>}
+          </div>;
+        })()}
         {reportes.length > 0 && PANEL_LISTO && <div className="enviar-panel">
           {(() => { const p = reportes.filter(pendiente); return p.length
-            ? <button className="btn" onClick={() => enviar(p)}>☁️ Enviar {p.length} mapeo{p.length > 1 ? 's' : ''} al panel</button>
+            ? <button className="btn" onClick={() => enviar(p)}>☁️ Enviar {p.length} mapeo{p.length > 1 ? 's' : ''} {listas.puenteUrl ? 'al Centro de Control' : 'al panel'}</button>
             : <button className="btn" onClick={() => enviar(reportes)}>☁️ Todo enviado · reenviar todo</button>; })()}
           {avisoEnvio}
         </div>}

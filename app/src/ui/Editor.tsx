@@ -683,7 +683,7 @@ function Descargas({ r, listas, onEnviar }: { r: Reporte; listas: Listas; onEnvi
         const x = listo; const res = await entregar(x.datos, x.nombre, x.mime, true);
         setListo(null); setMsg(res === 'descargado' ? 'Archivo descargado.' : null);
       }}>📤 Guardar o enviar el {listo.tipo}</button>}
-      {onEnviar && <button className="btn" onClick={() => onEnviar(r)}>☁️ Enviar este mapeo al panel</button>}
+      {onEnviar && <button className="btn" onClick={() => onEnviar(r)}>☁️ Enviar este mapeo {listas.puenteUrl ? "al Centro de Control" : "al panel"}</button>}
       <p className="tenue">Funciona sin señal. En el celular se abre el menú para guardar o enviar por WhatsApp o correo.</p>
     </section>
   );
