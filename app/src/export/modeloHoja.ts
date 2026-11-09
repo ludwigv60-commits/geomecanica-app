@@ -6,7 +6,7 @@ import { ITEMS_VERIF } from '../model';
 import { datosModelo, LEYENDA, clasesLeyenda } from './modelo';
 import { deducirCasillas } from './datos';
 import { analizarCunas, resumen } from './cunas2d';
-import { SYSTRA_5x5, PERNO_SYSTRA, mAPies } from '../core/sostenimiento';
+import { rotuloSeccion } from '../core/sostenimiento';
 import { Libro, medidas, type Estilo, type ImagenLibro } from './xlsxSimple';
 
 export const NC = 24;
@@ -145,8 +145,8 @@ export function hojaModelo(r: Reporte, listas: Partial<Listas> | undefined, rec:
   const me = txt.match(/(\d+(?:\.\d+)?)\s*m?\s*[x×]\s*(\d+(?:\.\d+)?)/i);
   const chips: [string, string][] = [['Perno', cas.perno ? cas.perno.replace('HELICOIDAL', 'Helicoidal').replace('SPLIT SET', 'Split Set').replace('CABLE BOLTING', 'Cable') : '—'], ['Longitud', cas.pies ? `${cas.pies}'` : '—'], ['Espaciam.', me ? `${me[1]} × ${me[2]} m` : '—'], ['Shotcrete', cas.shotcreteCm ? `${cas.shotcreteCm} cm` : '—'], ['Sacrificio', cas.sacrificio ? `${cas.sacrificio}"` : '—'], ['Malla', cas.malla ? 'Sí' : '—']];
   chips.forEach(([t, v], i) => { et(g0 + 5, 12 + 2 * i, 13 + 2 * i, t, { tam: 5 }); val(g0 + 6, 12 + 2 * i, 13 + 2 * i, v, { tam: 6.2, b: true }); });
-  const sy = tS ? SYSTRA_5x5.find(x => x.tipo === (tS === 'V' ? 'V-A' : tS)) : null;
-  put(g0 + 7, 12, 23, sy ? `Referencia Systra (sección 5×5) ${ST_ROTULO[tS!]}: ${[sy.pernosPorFila ? `${sy.pernosPorFila} pernos helicoidales/fila de ${mAPies(PERNO_SYSTRA.longitudM)}' a ${sy.espaciamiento![0].toFixed(1)} × ${sy.espaciamiento![1].toFixed(1)} m` : '', sy.shotcreteCm.length ? `shotcrete ${sy.shotcreteCm.join(' + ')} cm` : 'sin shotcrete', sy.marcos ?? '', `avance máx. ${sy.avanceMax} m`].filter(Boolean).join(' · ')}` : '', { tam: 5.2, i: true, izq: true, ajustar: true, color: '#444444' }, g0 + 8);
+  const sy = tS ? d.propuesta : null;
+  put(g0 + 7, 12, 23, sy ? `Referencia Systra (sección ${rotuloSeccion(sy.seccion)}${sy.seccionOtra ? ', la más parecida' : ''}) ${ST_ROTULO[tS!]}: ${[sy.pernosPorFila && sy.espaciamiento ? `${sy.pernosPorFila} pernos helicoidales/fila de ${sy.longitudPies}' a ${sy.espaciamiento[0].toFixed(1)} × ${sy.espaciamiento[1].toFixed(1)} m` : '', sy.shotcreteCm.length ? `shotcrete ${sy.shotcreteCm.join(' + ')} cm` : 'sin shotcrete', sy.malla ? 'malla' : '', sy.marcos ?? '', sy.seccion.cables ? `cables ${sy.seccion.cables.longitudM} m @ ${sy.seccion.cables.esp[0]} m` : '', sy.avanceMax != null ? `avance máx. ${sy.avanceMax} m` : ''].filter(Boolean).join(' · ')}` : '', { tam: 5.2, i: true, izq: true, ajustar: true, color: '#444444' }, g0 + 8);
 
   // ---- observaciones e indicaciones adicionales ----
   alto(g0 + 9, g0 + 9, 12); banda(g0 + 9, 0, 11, 'OBSERVACIONES'); banda(g0 + 9, 12, 23, 'INDICACIONES ADICIONALES');

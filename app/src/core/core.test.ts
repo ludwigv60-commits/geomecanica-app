@@ -124,3 +124,27 @@ test('siguiente correlativo', () => {
   expect(siguienteCorrelativo([{ correlativo: '009' }])).toBe('010');
   expect(siguienteCorrelativo([])).toBe('');
 });
+
+describe('Secciones tipo', () => {
+  it('5x5 por defecto: igual que antes', () => {
+    expect(proponer('III-B', 4.2).lineas).toEqual(proponer('III-B', 4.2, { tipoSeccion: '5x5' }).lineas);
+  });
+  it('ensanche 9x5 en III-B usa ST-II del plano', () => {
+    const p = proponer('III-B', 1.0, { tipoSeccion: '9x5' });
+    expect(p.pernosPorFila).toBe(19);
+    expect(p.longitudPies).toBe(10);
+    expect(p.malla).toBe(true);
+    expect(p.lineas.some(l => l.startsWith('Cable bolting L=10 m'))).toBe(true);
+  });
+  it('otra sección 8.5x5 → la más parecida (9x5) con alerta', () => {
+    const p = proponer('IV', 1.0, { tipoSeccion: 'otra', ancho: 8.5, alto: 5 });
+    expect(p.seccion.id).toBe('9x5');
+    expect(p.seccionOtra).toBe(true);
+    expect(p.alertas.length).toBeGreaterThan(0);
+  });
+  it('ST-V en una sección sin patrón V usa la 5x5 con alerta', () => {
+    const p = proponer('V', 1.0, { tipoSeccion: '6x6' });
+    expect(p.marcos).toMatch(/Marcos/);
+    expect(p.alertas[0]).toMatch(/no desarrolla/);
+  });
+});

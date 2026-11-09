@@ -24,7 +24,7 @@ export function calcular(r: Reporte) {
   const tipoFinal = rmrFinal != null ? tipoRoca(rmrFinal) : null;
   const fams = r.familias.filter(f => f.dip != null && f.dipdir != null) as { abrev: string; dip: number; dipdir: number }[];
   const ajusteIA = r.azimut != null && fams.length ? ajusteSugerido(fams, r.azimut) : null;
-  const propuesta = tipoFinal ? proponer(tipoFinal, r.avance, { ordenFilas: r.ordenFilas }) : null;
+  const propuesta = tipoFinal ? proponer(tipoFinal, r.avance, { ordenFilas: r.ordenFilas, tipoSeccion: r.tipoSeccion, ancho: r.ancho, alto: r.alto }) : null;
   return { rqd, puntajeRqdSugerido: rqd != null ? puntajeRqd(rqd) : null, zonas, diseno, rmrFinal, tipoFinal, ajusteIA, propuesta };
 }
 export type Calculo = ReturnType<typeof calcular>;
