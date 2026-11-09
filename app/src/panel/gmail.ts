@@ -15,20 +15,20 @@ function decodificar(b64: string): string {
 }
 
 export interface Recibido { hilo: string; otros?: string[]; paquete: Paquete }
-export interface Lectura { recibidos: Recibido[]; incompletos: number; errores: string[] }
+export interface Lectura { recibidos: Recibido[]; incompletos: number; errores: string[]; yaCargados?: string[] }
 
 /** Busca los correos del puente que aún no se cargaron. `hechos` = hilos ya procesados. */
 export async function leerGmail(mcp: Mcp, hechos: Set<string>, avance: (t: string) => void): Promise<Lectura> {
-  const hilos: string[] = [];
+  const hilos: string[] = [], ya: string[] = [];
   let token: string | undefined;
   for (let pag = 0; pag < 6; pag++) {
     const r = await mcp.callTool(GMAIL, 'search_threads', { query: '"MAPEO-LK" newer_than:120d', pageSize: 50, view: 'THREAD_VIEW_IDS_ONLY', ...(token ? { pageToken: token } : {}) });
     const p = r.payload as Obj | undefined;
-    for (const t of lista(p, 'threads')) { const id = String(t.id ?? ''); if (id && !hechos.has(id) && !hilos.includes(id)) hilos.push(id); }
+    for (const t of lista(p, 'threads')) { const id = String(t.id ?? ''); if (!id) continue; if (hechos.has(id)) { if (!ya.includes(id)) ya.push(id); } else if (!hilos.includes(id)) hilos.push(id); }
     token = (p?.nextPageToken ?? p?.next_page_token) as string | undefined;
     if (!token) break;
   }
-  const res: Lectura = { recibidos: [], incompletos: 0, errores: [] };
+  const res: Lectura = { recibidos: [], incompletos: 0, errores: [], yaCargados: ya };
   // mapeos grandes llegan en trozos (cada trozo es un correo/hilo distinto): se unen cuando están todos
   const trozos = new Map<string, { n: number; p: Map<number, string>; hilos: string[] }>();
   for (const [i, hilo] of hilos.entries()) {

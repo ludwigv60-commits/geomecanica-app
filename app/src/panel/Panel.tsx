@@ -167,6 +167,16 @@ export function Panel() {
       const ya = new Set(hechos.current ?? []);
       const l = await leerGmail(mcp, ya, t => setGmail({ estado: 'leyendo', texto: t }));
       let texto = l.recibidos.length ? '' : 'No hay mapeos nuevos del celular.';
+      const borrar = async (ids: string[]) => {
+        let n = 0;
+        for (const h of ids) {
+          try { await mcp.callTool(GMAIL, 'trash_thread', { threadId: h }); n++; }
+          catch { try { await mcp.callTool(GMAIL, 'unlabel_thread', { threadId: h, labelIds: ['INBOX', 'UNREAD'] }); } catch { /* sin permiso */ } }
+        }
+        return n;
+      };
+      // correos de mapeos que ya estaban cargados y siguen en Gmail: a la papelera
+      const viejos = l.yaCargados?.length ? await borrar(l.yaCargados) : 0;
       if (l.recibidos.length) {
         // el más reciente al final: un mapeo corregido y reenviado (mismo id) queda con su última versión
         const orden = [...l.recibidos].sort((a, b) => (a.paquete.enviadoEn ?? '').localeCompare(b.paquete.enviadoEn ?? ''));
@@ -174,12 +184,11 @@ export function Panel() {
         const nuevos = [...new Set([...(hechos.current ?? []), ...l.recibidos.flatMap(x => [x.hilo, ...(x.otros ?? [])])])].slice(-3000);
         hechos.current = nuevos;
         await db.doc('config/gmail').set({ hechos: nuevos });
-        // Ya cargados: se archivan (salen de la bandeja de entrada, quedan en "Todos" y se pueden volver a leer).
-        const leidos = l.recibidos.flatMap(x => [x.hilo, ...(x.otros ?? [])]);
-        let archivados = 0;
-        for (const h of leidos) { try { await mcp.callTool(GMAIL, 'unlabel_thread', { threadId: h, labelIds: ['INBOX', 'UNREAD'] }); archivados++; } catch { /* sin permiso: quedan en la bandeja */ } }
-        if (archivados) texto += ` ${archivados} correo(s) del celular archivados en Gmail.`;
+        // Ya cargados: los correos del puente van a la papelera de Gmail (el usuario no quiere verlos; Gmail los guarda 30 días).
+        const borrados = await borrar(l.recibidos.flatMap(x => [x.hilo, ...(x.otros ?? [])]));
+        if (borrados) texto += ` ${borrados} correo(s) del celular ya cargados se borraron de Gmail.`;
       }
+      if (viejos) texto += ` ${viejos} correo(s) ya cargados se borraron de Gmail.`;
       if (l.incompletos) texto += ` ${l.incompletos} envío(s) aún incompleto(s): se completan al llegar el resto de correos.`;
       if (l.errores.length) texto += ` ${l.errores.length} correo(s) no se pudieron leer.`;
       setGmail({ estado: 'ok', texto, cuando: new Date().toISOString() });
