@@ -7,6 +7,36 @@ import { marcarEnviado } from '../store';
 
 /** Pendiente para el Centro: solo cuenta lo que el puente confirmó (el archivo antiguo "enviado" no llega solo al Centro). */
 export const pendiente = (r: Reporte) => !r.alCentro || r.modificado > r.alCentro;
+/** Nunca llegó al Centro: se envía solo en el próximo turno (7:00 o 19:00). */
+export const nuevo = (r: Reporte) => !r.alCentro;
+/** Ya estaba en el Centro y se corrigió después: NO se manda solo; el usuario toca Enviar. */
+export const corregido = (r: Reporte) => !!r.alCentro && r.modificado > r.alCentro;
+
+/** Turnos de envío automático: 7:00 y 19:00 (hora del celular). Devuelve el último turno ya cumplido. */
+export function turnoActual(d = new Date()): Date {
+  const t = new Date(d); t.setSeconds(0, 0); t.setMinutes(0);
+  const h = d.getHours();
+  if (h >= 19) t.setHours(19); else if (h >= 7) t.setHours(7); else { t.setDate(t.getDate() - 1); t.setHours(19); }
+  return t;
+}
+export function proximoTurno(d = new Date()): Date {
+  const t = turnoActual(d); t.setHours(t.getHours() + 12); return t;
+}
+const CLAVE_TURNO = 'lk-envio-turno';
+/** Envío automático: una vez por turno (7:00 y 19:00). Si el celular no tuvo señal a esa hora, envía apenas pueda.
+ * Solo manda los mapeos nuevos; los corregidos esperan al botón Enviar. Devuelve -1 si este turno ya se cumplió. */
+export async function enviarProgramado(reportes: Reporte[], listas: Listas, ahora = new Date()): Promise<number> {
+  if (!listas.puenteUrl) return 0;
+  const k = turnoActual(ahora).toISOString();
+  let hecho: string | null = null;
+  try { hecho = localStorage.getItem(CLAVE_TURNO); } catch { /* */ }
+  if (hecho === k) return -1;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 0;
+  const lista = reportes.filter(nuevo);
+  const n = lista.length ? await enviarLista(lista, listas) : 0;
+  if (n === lista.length) { try { localStorage.setItem(CLAVE_TURNO, k); } catch { /* */ } }
+  return n;
+}
 let enCurso = false;
 
 /** Último intento de envío automático, visible en la lista (se guarda en el celular). */

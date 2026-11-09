@@ -17,7 +17,7 @@ type QSnap = { docs: Snap[]; metadata: { fromCache: boolean } };
 type DbErr = { code: string; message: string };
 type DocRef = { set(d: Record<string, unknown>): Promise<void>; delete(): Promise<void>; onSnapshot(n: (s: Snap) => void, e?: (x: DbErr) => void): () => void };
 type DB = { doc(p: string): DocRef; collection(p: string): { doc(id: string): DocRef; onSnapshot(n: (s: QSnap) => void, e?: (x: DbErr) => void): () => void } };
-type Assets = { upload(b: Blob, o?: { type?: string }): Promise<{ id: string; url: string }> };
+type Assets = { upload(b: Blob, o?: { type?: string }): Promise<{ id: string; url: string }>; delete?(id: string): Promise<void> };
 type User = { id(): Promise<string | null>; canEdit(): Promise<boolean> | boolean; can(n: string): Promise<boolean | null> | boolean | null; profiles(ids: string[]): Promise<Record<string, { name?: string }>> };
 type Downloads = { save(o: { filename: string; data: Uint8Array | Blob }): Promise<unknown> };
 type Claude = { use(n: string): Promise<unknown> };
@@ -141,6 +141,12 @@ export function Panel() {
             fotos.push({ ...f, data: up.url }); fotosSub++;
           }
           await escribir(r.id, { ...r, importado: undefined, fotos, panel: { subidoPor: uid ?? undefined, subidoEn: new Date().toISOString(), dispositivo: p.dispositivo } });
+          // el mapeo corregido reemplaza al antiguo: las fotos antiguas que ya no usa se borran para no llenar el Centro
+          if (ex && assets?.delete) for (const f of ex.fotos ?? []) {
+            if (fotos.some(x => x.data === f.data)) continue;
+            const aid = /([0-9a-f]{32})/.exec(f.data)?.[1];
+            if (aid) await assets.delete(aid).catch(() => {});
+          }
           ex ? actualizados++ : nuevos++; ids.push(r.id);
         }
       }
