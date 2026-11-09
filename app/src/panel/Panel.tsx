@@ -7,7 +7,7 @@ import { TIPOS } from '../core/rmr';
 import { FILTRO_VACIO, filtrar, fila, infoTipo, type Filtro, type Herramienta } from './centro';
 import { excelDe, Herramientas, Inicio, PESTANAS, ResumenPk, Tabla, Visor, type Pestana } from './vistas';
 import { usarEntrega } from '../export/compartir';
-import { leerGmail, type Mcp } from './gmail';
+import { GMAIL, leerGmail, type Mcp } from './gmail';
 import { Puente } from './vistas';
 import { leerPaquete, type Paquete } from '../export/envio';
 
@@ -17,7 +17,7 @@ type QSnap = { docs: Snap[]; metadata: { fromCache: boolean } };
 type DbErr = { code: string; message: string };
 type DocRef = { set(d: Record<string, unknown>): Promise<void>; delete(): Promise<void>; onSnapshot(n: (s: Snap) => void, e?: (x: DbErr) => void): () => void };
 type DB = { doc(p: string): DocRef; collection(p: string): { doc(id: string): DocRef; onSnapshot(n: (s: QSnap) => void, e?: (x: DbErr) => void): () => void } };
-type Assets = { upload(b: Blob, o?: { type?: string }): Promise<{ id: string; url: string }> };
+type Assets = { upload(b: Blob, o?: { type?: string }): Promise<{ id: string; url: string }>; delete?(id: string): Promise<void> };
 type User = { id(): Promise<string | null>; canEdit(): Promise<boolean> | boolean; can(n: string): Promise<boolean | null> | boolean | null; profiles(ids: string[]): Promise<Record<string, { name?: string }>> };
 type Downloads = { save(o: { filename: string; data: Uint8Array | Blob }): Promise<unknown> };
 type Claude = { use(n: string): Promise<unknown> };
@@ -141,6 +141,12 @@ export function Panel() {
             fotos.push({ ...f, data: up.url }); fotosSub++;
           }
           await escribir(r.id, { ...r, importado: undefined, fotos, panel: { subidoPor: uid ?? undefined, subidoEn: new Date().toISOString(), dispositivo: p.dispositivo } });
+          // el mapeo corregido reemplaza al antiguo: las fotos antiguas que ya no usa se borran para no llenar el Centro
+          if (ex && assets?.delete) for (const f of ex.fotos ?? []) {
+            if (fotos.some(x => x.data === f.data)) continue;
+            const aid = /([0-9a-f]{32})/.exec(f.data)?.[1];
+            if (aid) await assets.delete(aid).catch(() => {});
+          }
           ex ? actualizados++ : nuevos++; ids.push(r.id);
         }
       }
@@ -167,6 +173,16 @@ export function Panel() {
       const ya = new Set(hechos.current ?? []);
       const l = await leerGmail(mcp, ya, t => setGmail({ estado: 'leyendo', texto: t }));
       let texto = l.recibidos.length ? '' : 'No hay mapeos nuevos del celular.';
+      const borrar = async (ids: string[]) => {
+        let n = 0;
+        for (const h of ids) {
+          try { await mcp.callTool(GMAIL, 'trash_thread', { threadId: h }); n++; }
+          catch { try { await mcp.callTool(GMAIL, 'unlabel_thread', { threadId: h, labelIds: ['INBOX', 'UNREAD'] }); } catch { /* sin permiso */ } }
+        }
+        return n;
+      };
+      // correos de mapeos que ya estaban cargados y siguen en Gmail: a la papelera
+      const viejos = l.yaCargados?.length ? await borrar(l.yaCargados) : 0;
       if (l.recibidos.length) {
         // el más reciente al final: un mapeo corregido y reenviado (mismo id) queda con su última versión
         const orden = [...l.recibidos].sort((a, b) => (a.paquete.enviadoEn ?? '').localeCompare(b.paquete.enviadoEn ?? ''));
@@ -174,7 +190,11 @@ export function Panel() {
         const nuevos = [...new Set([...(hechos.current ?? []), ...l.recibidos.flatMap(x => [x.hilo, ...(x.otros ?? [])])])].slice(-3000);
         hechos.current = nuevos;
         await db.doc('config/gmail').set({ hechos: nuevos });
+        // Ya cargados: los correos del puente van a la papelera de Gmail (el usuario no quiere verlos; Gmail los guarda 30 días).
+        const borrados = await borrar(l.recibidos.flatMap(x => [x.hilo, ...(x.otros ?? [])]));
+        if (borrados) texto += ` ${borrados} correo(s) del celular ya cargados se borraron de Gmail.`;
       }
+      if (viejos) texto += ` ${viejos} correo(s) ya cargados se borraron de Gmail.`;
       if (l.incompletos) texto += ` ${l.incompletos} envío(s) aún incompleto(s): se completan al llegar el resto de correos.`;
       if (l.errores.length) texto += ` ${l.errores.length} correo(s) no se pudieron leer.`;
       setGmail({ estado: 'ok', texto, cuando: new Date().toISOString() });

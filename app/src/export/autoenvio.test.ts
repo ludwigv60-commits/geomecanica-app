@@ -41,3 +41,26 @@ test('un mapeo grande se parte en trozos que vuelven a unirse igual', () => {
   expect(c.map(x => x.trozo.datos).join('')).toBe(JSON.stringify(p));
   expect(cuerpos({ ...(p as object), reportes: [{ id: 'r' }] } as never).length).toBe(1);
 });
+
+import { turnoActual, proximoTurno, enviarProgramado } from './autoenvio';
+test('turnos de envío a las 7:00 y 19:00', () => {
+  const h = (s: string) => { const d = turnoActual(new Date(s)); return `${d.getDate()} ${d.getHours()}`; };
+  expect(h('2026-11-09T06:59:00')).toBe('8 19');
+  expect(h('2026-11-09T07:00:00')).toBe('9 7');
+  expect(h('2026-11-09T18:59:00')).toBe('9 7');
+  expect(h('2026-11-09T19:30:00')).toBe('9 19');
+  expect(proximoTurno(new Date('2026-11-09T10:00:00')).getHours()).toBe(19);
+});
+
+test('una vez por turno, solo los nuevos; los corregidos no se mandan solos', async () => {
+  const mem: Record<string, string> = {};
+  vi.stubGlobal('localStorage', { getItem: (k: string) => mem[k] ?? null, setItem: (k: string, v: string) => { mem[k] = v; } });
+  const cuerpos: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (_u: string, o: RequestInit) => { cuerpos.push(o.body as string); return new Response('{"ok":true}'); }));
+  const L = { ...LISTAS_INICIALES, puenteUrl: 'https://script.google.com/macros/s/x/exec?k=c' };
+  const lista = [r('nuevo'), r('corr', { alCentro: '2026-11-05T00:00', modificado: '2026-11-06T00:00' } as never), r('ok', { alCentro: '2026-11-07T00:00' } as never)];
+  expect(await enviarProgramado(lista, L, new Date('2026-11-09T08:00:00'))).toBe(1);
+  expect(cuerpos.map(c => JSON.parse(c).reportes[0].id)).toEqual(['nuevo']);
+  expect(await enviarProgramado(lista, L, new Date('2026-11-09T12:00:00'))).toBe(-1); // mismo turno
+  expect(await enviarProgramado(lista, L, new Date('2026-11-09T19:05:00'))).toBe(1);  // turno de la noche
+});

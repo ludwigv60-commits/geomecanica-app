@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { nuevoReporte, siguienteCorrelativo, LISTAS_INICIALES, type Listas, type Reporte } from '../model';
 import { borrarReporte, guardarListas, guardarReporte, leerConfig, leerListas, listarReportes, marcarEnviado, pedirPersistencia } from '../store';
 import { PANEL_LISTO, PANEL_URL, enviarMapeos } from '../export/envio';
+import { corregido, nuevo, pendiente, proximoTurno } from '../export/autoenvio';
 import { Editor } from './Editor';
 import { EditorListas } from './EditorListas';
 import { TIPOS, tipoRoca } from '../core/rmr';
@@ -22,7 +23,6 @@ export function App() {
 
   const recargar = () => listarReportes().then(setReportes);
   const [envio, setEnvio] = useState<string | null>(null);
-  const pendiente = (r: Reporte) => !r.enviado || r.modificado > r.enviado;
   const [auto, setAuto] = useState<string | null>(null);
   const enviar = async (lista: Reporte[]) => {
     if (!lista.length) return;
@@ -79,16 +79,18 @@ export function App() {
     return () => { clearTimeout(t); window.removeEventListener('hashchange', alCambiarEnlace); };
   }, []);
 
-  // Con internet, los mapeos pendientes se envían solos al Centro de Control (si hay puente configurado).
+  // Envío automático al Centro: una vez por turno (7:00 y 19:00). Si a esa hora no hubo señal o la app estaba cerrada,
+  // se envía apenas se pueda. Solo los mapeos nuevos; los corregidos esperan al botón Enviar.
   const [enviando, setEnviando] = useState(false);
   const intentarRef = useRef<() => void>(() => {});
   useEffect(() => {
     if (!listas.puenteUrl) return;
-    const intentar = () => { setEnviando(true); import('../export/autoenvio').then(m => m.enviarPendientes(reportes, listas))
-      .then(n => { if (n) { setAuto(`☁️ ${n} mapeo(s) enviados solos al Centro de Control.`); recargar(); } else setAuto(a => a); })
+    const intentar = () => { setEnviando(true); import('../export/autoenvio').then(m => m.enviarProgramado(reportes, listas))
+      .then(n => { if (n > 0) { setAuto(`☁️ ${n} mapeo(s) nuevos enviados solos al Centro de Control.`); recargar(); } else setAuto(a => a); })
       .catch(e => setAuto(`⚠️ No se pudo enviar al Centro de Control (se reintenta solo cada 2 min): ${(e as Error).message}`))
       .finally(() => setEnviando(false)); };
-    intentarRef.current = intentar;
+    // botón: manda ya los nuevos y los corregidos (el corregido reemplaza al antiguo en el Centro)
+    intentarRef.current = () => { void enviar(reportes.filter(pendiente)); };
     intentar();
     window.addEventListener('online', intentar);
     const t = setInterval(intentar, 120000);
@@ -133,12 +135,13 @@ export function App() {
           <span>Abra una vez el enlace privado del Centro que le dieron, o toque ⚙️ y pegue la URL del puente.</span>
         </div>}
         {listas.puenteUrl && (() => {
-          const p = reportes.filter(pendiente).length;
+          const nn = reportes.filter(nuevo).length, nc = reportes.filter(corregido).length;
+          const prox = proximoTurno().toLocaleString('es-PE', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
           return <div className={`autoenvio${auto?.startsWith('⚠️') ? ' error' : ''}`}>
-            <b>☁️ Envío automático activo</b>
-            <span>{enviando ? 'Enviando…' : p ? `${p} mapeo(s) por enviar` : 'Todo enviado al Centro de Control'}</span>
+            <b>☁️ Envío automático a las 7:00 y 19:00</b>
+            <span>{enviando ? 'Enviando…' : nn + nc === 0 ? 'Todo enviado al Centro de Control' : [nn ? `${nn} nuevo(s) se envían solos (próximo: ${prox})` : '', nc ? `${nc} corregido(s): toque Enviar para reemplazar el antiguo en el Centro` : ''].filter(Boolean).join(' · ')}</span>
             {auto && <small>{auto}</small>}
-            {p > 0 && !enviando && <button className="btn mini" onClick={() => intentarRef.current()}>Enviar ahora</button>}
+            {nn + nc > 0 && !enviando && <button className="btn mini" onClick={() => intentarRef.current()}>☁️ Enviar ahora</button>}
           </div>;
         })()}
         {reportes.length > 0 && PANEL_LISTO && <div className="enviar-panel">
@@ -159,7 +162,8 @@ export function App() {
                 <span className="li-txt"><b>{r.labor || 'Sin labor'}</b>{r.desde && <> · PK {r.desde}{r.hasta ? ` a ${r.hasta}` : ''}</>}<br />
                   <small>{[r.fecha, r.turno, `RMR ${c.rmrFinal ?? '—'}`].filter(Boolean).join(' · ')}</small><br />
                   <span className="chip" style={t ? { background: t.color, color: t.texto, borderColor: t.color } : {}}>{t ? `ST-${t.tipo}` : 'Sin tipo'}</span>
-                  {!falta(r) && <span className="chip enviado">☁️ {listas.puenteUrl ? 'en el Centro' : 'enviado'}</span>}</span>
+                  {!falta(r) && <span className="chip enviado">☁️ {listas.puenteUrl ? 'en el Centro' : 'enviado'}</span>}
+                  {listas.puenteUrl && corregido(r) && <span className="chip enviado">✏️ corregido · sin enviar</span>}</span>
                 <button className={confirmar === r.id ? 'btn mini peligro' : 'btn mini'} onClick={async e => {
                   e.stopPropagation();
                   if (confirmar !== r.id) { setConfirmar(r.id); setTimeout(() => setConfirmar(c => (c === r.id ? null : c)), 4000); return; }

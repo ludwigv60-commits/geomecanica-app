@@ -126,6 +126,7 @@ export const PRINCIPALES: { nombre: string; color: string; corto: string }[] = [
   { nombre: 'PERVOL Mallas Mina Justa', color: '#c2410c', corto: 'Mallas PERVOL' },
   { nombre: 'Vale de explosivos', color: '#b91c1c', corto: 'Vale de explosivos' },
   { nombre: 'Valorización Shotcrete AESA', color: '#4d7c0f', corto: 'Valorización shotcrete' },
+  { nombre: 'Simulador del ciclo de minado', color: '#083a66', corto: 'Simulador del ciclo' },
   { nombre: 'Utilización de Equipos AESA', color: '#6d28d9', corto: 'Utilización de equipos' },
   { nombre: 'Actualizador de PETS', color: '#a16207', corto: 'Actualizador de PETS' },
   { nombre: 'Dip y dip dir con el celular', color: '#334155', corto: 'Dip con el celular' },
@@ -160,6 +161,7 @@ export const HERRAMIENTAS: Grupo[] = [
     { icono: '🛡️', nombre: 'Guardias Shotcrete y Calidad', que: 'Control por guardia', url: H('art-TBMGaYP5jajy5g5z4LoELS.html') },
   ] },
   { titulo: 'Equipos y ciclo', icono: '🚜', items: [
+    { icono: '⛏️', nombre: 'Simulador del ciclo de minado', que: 'Gantt + simulación 2D desde los cubos AESA Core', url: H('simulador-ciclo-minado.html') },
     { icono: '📊', nombre: 'Utilización de Equipos AESA', que: 'Centro de control de flota (versión del 07-nov)', url: H('utilizacion-equipos.html'), local: true },
     { icono: '⚙️', nombre: 'Rendimiento de Equipos Justa', que: 'Real vs estándar por equipo', url: H('art-DKmTK1wJcWX1q5jUM5gUPC.html') },
     { icono: '🔄', nombre: 'Ciclo operativo Rampa Sur', que: '22 de setiembre', url: H('art-EX6U5K9hRkk6asb2WE7Bkv.html') },
