@@ -14,7 +14,7 @@ function decodificar(b64: string): string {
   return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
 }
 
-export interface Recibido { hilo: string; paquete: Paquete }
+export interface Recibido { hilo: string; otros?: string[]; paquete: Paquete }
 export interface Lectura { recibidos: Recibido[]; incompletos: number; errores: string[] }
 
 /** Busca los correos del puente que aún no se cargaron. `hechos` = hilos ya procesados. */
@@ -29,6 +29,8 @@ export async function leerGmail(mcp: Mcp, hechos: Set<string>, avance: (t: strin
     if (!token) break;
   }
   const res: Lectura = { recibidos: [], incompletos: 0, errores: [] };
+  // mapeos grandes llegan en trozos (cada trozo es un correo/hilo distinto): se unen cuando están todos
+  const trozos = new Map<string, { n: number; p: Map<number, string>; hilos: string[] }>();
   for (const [i, hilo] of hilos.entries()) {
     avance(`Leyendo correo ${i + 1} de ${hilos.length} del celular…`);
     try {
@@ -48,7 +50,11 @@ export async function leerGmail(mcp: Mcp, hechos: Set<string>, avance: (t: strin
       for (const g of partes.values()) {
         if (g.p.size < g.n) { completo = false; continue; }
         const b64 = [...Array(g.n).keys()].map(k => g.p.get(k + 1) ?? '').join('');
-        res.recibidos.push({ hilo, paquete: leerPaquete(decodificar(b64)) });
+        const obj = JSON.parse(decodificar(b64).replace(/^\uFEFF/, '')) as Obj & { trozo?: { id: string; i: number; n: number; datos: string } };
+        if (obj.trozo) {
+          const t = trozos.get(obj.trozo.id) ?? { n: obj.trozo.n, p: new Map<number, string>(), hilos: [] as string[] };
+          t.p.set(obj.trozo.i, obj.trozo.datos); t.hilos.push(hilo); trozos.set(obj.trozo.id, t);
+        } else res.recibidos.push({ hilo, paquete: leerPaquete(obj as unknown as Paquete) });
       }
       if (!completo) res.incompletos++;
     } catch (e) {
@@ -56,6 +62,14 @@ export async function leerGmail(mcp: Mcp, hechos: Set<string>, avance: (t: strin
       if (x.code && x.code !== 'tool_error') throw e; // conector no disponible: lo maneja quien llama
       res.errores.push(x.message ?? String(e));
     }
+  }
+  for (const t of trozos.values()) {
+    if (t.p.size < t.n) { res.incompletos++; continue; }
+    try {
+      const s = [...Array(t.n).keys()].map(k => t.p.get(k + 1) ?? '').join('');
+      const [h0, ...otros] = t.hilos;
+      res.recibidos.push({ hilo: h0!, otros, paquete: leerPaquete(s) });
+    } catch (e) { res.errores.push((e as Error).message); }
   }
   return res;
 }

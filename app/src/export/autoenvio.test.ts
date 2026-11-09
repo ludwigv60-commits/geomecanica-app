@@ -31,3 +31,13 @@ describe('problemaUrl', () => {
     expect(problemaUrl('https://example.com/exec?k=abc')).toMatch(/script\.google/);
   });
 });
+
+import { cuerpos, TROZO } from './autoenvio';
+test('un mapeo grande se parte en trozos que vuelven a unirse igual', () => {
+  const p = { formato: 'mapeos-geomecanica/1', enviadoEn: 'x', dispositivo: 'd', reportes: [{ id: 'r1', labor: 'Rampa Sur', foto: 'A'.repeat(TROZO * 2.5) }] } as never;
+  const c = cuerpos(p).map(s => JSON.parse(s));
+  expect(c.length).toBe(3);
+  expect(c.every(x => x.formato === 'mapeos-geomecanica/1' && x.reportes.length === 1 && JSON.stringify(x).length < TROZO + 1000)).toBe(true);
+  expect(c.map(x => x.trozo.datos).join('')).toBe(JSON.stringify(p));
+  expect(cuerpos({ ...(p as object), reportes: [{ id: 'r' }] } as never).length).toBe(1);
+});
