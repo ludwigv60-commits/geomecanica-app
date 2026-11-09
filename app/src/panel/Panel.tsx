@@ -171,7 +171,7 @@ export function Panel() {
         // el más reciente al final: un mapeo corregido y reenviado (mismo id) queda con su última versión
         const orden = [...l.recibidos].sort((a, b) => (a.paquete.enviadoEn ?? '').localeCompare(b.paquete.enviadoEn ?? ''));
         texto = (await importar(orden.map(x => x.paquete), t => setGmail({ estado: 'leyendo', texto: t }))).texto;
-        const nuevos = [...new Set([...(hechos.current ?? []), ...l.recibidos.map(x => x.hilo)])].slice(-3000);
+        const nuevos = [...new Set([...(hechos.current ?? []), ...l.recibidos.flatMap(x => [x.hilo, ...(x.otros ?? [])])])].slice(-3000);
         hechos.current = nuevos;
         await db.doc('config/gmail').set({ hechos: nuevos });
       }
