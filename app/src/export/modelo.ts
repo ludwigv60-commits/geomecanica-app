@@ -85,7 +85,7 @@ export function datosModelo(r: Reporte, listas?: Partial<Listas>) {
     desde: r.desde, hasta: r.hasta, avance: r.avance, ancho: r.ancho, alto: r.alto, azimut: r.azimut,
     supervisor: r.supervisor, fecha: r.fecha, turno: r.turno, hora, riesgo: r.nivelRiesgo,
     cobertura: cob, zonas, rqd: c.rqd, jv: r.jv,
-    rmrFinal: c.rmrFinal, tipoFinal: tipo, estructuras,
+    rmrFinal: c.rmrFinal, tipoFinal: tipo, estructuras, propuesta: c.propuesta,
     formacion: lit, macizo: r.condicion || redactarCondicion(r, c), discontinuidades: discont,
     sostenimiento: r.sostenimiento.filter(Boolean), tipoSostenimiento: tipo ? `ST - ${tipo.replace('-', ' ')}` : '',
     observaciones: r.observaciones, verificacion: r.verificacion, adicionales: r.adicionales, firmas: r.firmas,
