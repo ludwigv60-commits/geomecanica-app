@@ -47,19 +47,28 @@ export function App() {
     : <p className="tenue">{envio}</p>);
   useEffect(() => {
     recargar(); recargarBd(); pedirPersistencia();
-    // APK: si el celular aún no tiene el puente al Centro, se pone solo el que viene de fábrica.
-    leerListas().then(async l => {
-      // Web (GitHub): el enlace privado …/formulario/#puente=URL deja el puente puesto en este navegador.
-      // Lo que va después de # nunca sale del celular, así la clave no queda en el código público.
+    // Web (GitHub): el enlace privado …/formulario/#puente=URL deja el puente puesto en este navegador.
+    // Lo que va después de # nunca sale del celular, así la clave no queda en el código público.
+    // Se revisa al abrir y también si la app ya estaba abierta (Safari solo cambia el # sin recargar).
+    const aplicarEnlace = async (l: Listas): Promise<Listas> => {
       const h = new URLSearchParams(location.hash.slice(1)).get('puente');
-      if (h) {
-        history.replaceState(null, '', location.pathname + location.search);
-        const { problemaUrl } = await import('../export/autoenvio');
-        if (!problemaUrl(h)) { l = { ...l, puenteUrl: h.trim() }; await guardarListas(l).catch(() => {}); setAviso('☁️ Envío automático al Centro de Control activado en este celular.'); }
-      }
+      if (!h) return l;
+      history.replaceState(null, '', location.pathname + location.search);
+      const { problemaUrl } = await import('../export/autoenvio');
+      const mal = problemaUrl(h);
+      if (mal) { setAviso(`⚠️ El enlace del Centro llegó incompleto: ${mal}`); return l; }
+      l = { ...l, puenteUrl: h.trim() }; await guardarListas(l).catch(() => {});
+      setAviso('☁️ Envío automático al Centro de Control activado en este celular.');
+      return l;
+    };
+    leerListas().then(async l => {
+      l = await aplicarEnlace(l);
+      // APK: si el celular aún no tiene el puente al Centro, se pone solo el que viene de fábrica.
       if (!l.puenteUrl) { const u = await import('../export/autoenvio').then(m => m.puenteDeFabrica()).catch(() => null); if (u) { l = { ...l, puenteUrl: u }; await guardarListas(l).catch(() => {}); } }
       setListas(l);
     });
+    const alCambiarEnlace = () => { leerListas().then(aplicarEnlace).then(setListas); };
+    window.addEventListener('hashchange', alCambiarEnlace);
     // APK: los mapeos de Justa y la IA entrenada vienen dentro de la app y se cargan solos la primera vez.
     import('../ia/paquete').then(m => m.cargarPaqueteIncluido()).then(msg => { if (msg) { recargarBd(); setAviso(msg); } }).catch(() => {});
     // Deja listo en el celular todo lo necesario para exportar sin señal.
@@ -67,7 +76,7 @@ export function App() {
       import('../export/xlsx').catch(() => {}); import('../export/pdf').catch(() => {});
       fetch('./plantilla/formato.xlsx').catch(() => {}); fetch('./plantilla/formato.pdf').catch(() => {});
     }, 1500);
-    return () => clearTimeout(t);
+    return () => { clearTimeout(t); window.removeEventListener('hashchange', alCambiarEnlace); };
   }, []);
 
   // Con internet, los mapeos pendientes se envían solos al Centro de Control (si hay puente configurado).
