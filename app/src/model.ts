@@ -44,6 +44,7 @@ export interface Reporte {
   desde: string;            // PK, ej. 0+924.7
   hasta: string;
   avance: number | null;    // medido por topografía
+  tipoSeccion?: string;     // sección tipo (core/sostenimiento SECCIONES); vacío = 5x5; 'otra' = ancho x alto a mano
   ancho: number | null;
   alto: number | null;
   azimut: number | null;    // cuadrícula UTM
@@ -91,7 +92,7 @@ export function nuevoReporte(prev?: Reporte, correlativo = ''): Reporte {
     id: crypto.randomUUID(), creado: ahora, modificado: ahora, sincronizado: false,
     correlativo, labor: prev?.labor ?? '', rampa: prev?.rampa, supervisor: prev?.supervisor ?? '',
     fecha: hoy, turno: h >= 7 && h < 19 ? 'Día' : 'Noche', desde: prev?.hasta ?? '', hasta: '', avance: null,
-    ancho: prev?.ancho ?? null, alto: prev?.alto ?? null, azimut: null, nivelRiesgo: '',
+    tipoSeccion: prev?.tipoSeccion ?? '5x5', ancho: prev?.ancho ?? 5, alto: prev?.alto ?? 5, azimut: null, nivelRiesgo: '',
     rmr: z3(() => ({})), ajuste: z3(() => null), rmrDisenoManual: null, jv: null,
     litologia: z3(() => ''), familias: [{ abrev: 'SD', dip: null, dipdir: null }],
     q: z3(() => ({})), condicion: '',

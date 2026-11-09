@@ -21,6 +21,7 @@ import { PlantaEditable } from './PlantaEditable';
 import { analizarCunas, fsTxt, graficoFS, resumen as resumenCunas, vistaCunas } from '../export/cunas2d';
 import { aplicarPlantilla, plantillaTipo, revisarTipo } from '../ia/plantilla-roca';
 import type { TipoRoca } from '../core/rmr';
+import { SECCIONES, SECCION_OTRA, seccionDe, seccionPorId } from '../core/sostenimiento';
 
 
 type Props = { inicial: Reporte; listas: Listas; historial: Reporte[]; onGuardar: (r: Reporte) => Promise<void>; onSalir: () => void; onBase?: () => void; modoInicial?: 'campo' | 'detalle'; textoGuardado?: string; onEnviar?: (r: Reporte) => void };
@@ -285,6 +286,21 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
       : pk(r.desde) == null ? 'La cobertura sale al escribir el PK Desde.' : `Falta la tabla de cobertura de la rampa ${rampa}: escríbala en ⚙️ Listas.`}</p>}
     {camara && <p className="tenue">En la cámara, Desde y Hasta son su propio PK: empieza en 0+00 y llega a su longitud (por ejemplo 0+32).</p>}
   </>;
+  const secR = seccionDe(r);
+  const ponerSeccion = (id: string) => setR(p => {
+    const s = seccionPorId(id);
+    return s ? { ...p, tipoSeccion: id, ancho: s.ancho, alto: s.alto } : { ...p, tipoSeccion: id };
+  });
+  const campoSeccion = <>
+    <Campo t="Tipo de sección (Systra)">
+      <select value={r.tipoSeccion || (secR.otra ? SECCION_OTRA : secR.sec.id)} onChange={e => ponerSeccion(e.target.value)}>
+        {SECCIONES.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+        <option value={SECCION_OTRA}>Otra sección (escribir ancho y alto)</option>
+      </select></Campo>
+    <p className="tenue">{secR.otra
+      ? <>Sección fuera de la lista: el sostenimiento se propone con la sección tipo más parecida, <b>{secR.sec.nombre}</b>. Escriba el ancho y alto reales.</>
+      : <>{secR.sec.uso}. Ancho y alto se llenan con la sección de diseño; corríjalos si la labor real es distinta (las cuñas usan esas medidas).</>}</p>
+  </>;
   const campo = (
     <main className="contenido campo">
       {paso === 0 && <>
@@ -292,6 +308,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
           <h3>Labor</h3>
           <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={ponerLabor} /></Campo>
           {campoRampa}
+          {campoSeccion}
           <Campo t="Sup. de geomecánica"><Lista valor={r.supervisor} opciones={listas.supervisores} on={v => setR(p => ({ ...p, supervisor: v, firmas: p.firmas.map((f, i) => (i === 0 && (!f.nombre || f.nombre === p.supervisor) ? { ...f, nombre: v } : f)) }))} /></Campo>
           <div className="rejilla2">
             <Campo t="Fecha"><input type="date" value={r.fecha} onChange={e => set('fecha', e.target.value)} /></Campo>
@@ -403,6 +420,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
           <Campo t="N° correlativo (sale en el formato)"><input inputMode="numeric" value={r.correlativo} onChange={e => set('correlativo', e.target.value)} /></Campo>
           <Campo t="Labor"><Lista valor={r.labor} opciones={listas.labores} on={ponerLabor} /></Campo>
           {campoRampa}
+          {campoSeccion}
           <Campo t="Sup. de geomecánica"><Lista valor={r.supervisor} opciones={listas.supervisores} on={v => set('supervisor', v)} /></Campo>
           <div className="rejilla2">
             <Campo t="Fecha"><input type="date" value={r.fecha} onChange={e => set('fecha', e.target.value)} /></Campo>
@@ -480,7 +498,10 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
           <Campo t="RMR de diseño (vacío = el calculado)">
             <input inputMode="decimal" placeholder={String(c.diseno?.rmr ?? '')} value={r.rmrDisenoManual ?? ''} onChange={e => set('rmrDisenoManual', num(e.target.value))} /></Campo>
           {c.propuesta && <section className="tarjeta">
-            <h3>Propuesta según Systra (sección 5.0×5.0) <span className="sugerido">Sugerido por la app</span></h3>
+            <h3>Propuesta según Systra (sección {c.propuesta.seccion.nombre.split(' · ')[0]}) <span className="sugerido">Sugerido por la app</span></h3>
+            {c.propuesta.alertas.map(a => <p key={a} className="alerta">{a}</p>)}
+            {c.propuesta.seccion.nota && <p className="tenue">{c.propuesta.seccion.nota}</p>}
+            {c.propuesta.avanceMax != null && r.avance != null && r.avance > c.propuesta.avanceMax && <p className="alerta">El avance ({r.avance} m) pasa el máximo de Systra para esta sección y roca ({c.propuesta.avanceMax} m).</p>}
             <ul>{c.propuesta.lineas.map(l => <li key={l}>{l}</li>)}</ul>
             {c.propuesta.filas != null && <p className="tenue">Con {r.avance} m de avance salen {c.propuesta.filas} filas.</p>}
             <label className="interruptor"><input type="checkbox" checked={r.ordenFilas === 'mayorPrimero'} onChange={e => set('ordenFilas', e.target.checked ? 'mayorPrimero' : 'menorPrimero')} /> Escribir filas mayor primero (11x10)</label>
