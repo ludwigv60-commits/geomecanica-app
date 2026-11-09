@@ -7,7 +7,7 @@ import { TIPOS } from '../core/rmr';
 import { FILTRO_VACIO, filtrar, fila, infoTipo, type Filtro, type Herramienta } from './centro';
 import { excelDe, Herramientas, Inicio, PESTANAS, ResumenPk, Tabla, Visor, type Pestana } from './vistas';
 import { usarEntrega } from '../export/compartir';
-import { leerGmail, type Mcp } from './gmail';
+import { GMAIL, leerGmail, type Mcp } from './gmail';
 import { Puente } from './vistas';
 import { leerPaquete, type Paquete } from '../export/envio';
 
@@ -174,6 +174,11 @@ export function Panel() {
         const nuevos = [...new Set([...(hechos.current ?? []), ...l.recibidos.flatMap(x => [x.hilo, ...(x.otros ?? [])])])].slice(-3000);
         hechos.current = nuevos;
         await db.doc('config/gmail').set({ hechos: nuevos });
+        // Ya cargados: se archivan (salen de la bandeja de entrada, quedan en "Todos" y se pueden volver a leer).
+        const leidos = l.recibidos.flatMap(x => [x.hilo, ...(x.otros ?? [])]);
+        let archivados = 0;
+        for (const h of leidos) { try { await mcp.callTool(GMAIL, 'unlabel_thread', { threadId: h, labelIds: ['INBOX', 'UNREAD'] }); archivados++; } catch { /* sin permiso: quedan en la bandeja */ } }
+        if (archivados) texto += ` ${archivados} correo(s) del celular archivados en Gmail.`;
       }
       if (l.incompletos) texto += ` ${l.incompletos} envío(s) aún incompleto(s): se completan al llegar el resto de correos.`;
       if (l.errores.length) texto += ` ${l.errores.length} correo(s) no se pudieron leer.`;
