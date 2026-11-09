@@ -2,7 +2,7 @@
 // (nuevo o modificado después del último envío) se manda solo al puente de la cuenta Google del usuario
 // (Apps Script), y el Centro lo carga al abrirse. Mismo paquete que "📥 Subir mapeos", uno por mapeo.
 import type { Listas, Reporte } from '../model';
-import { armarPaquete } from './envio';
+import { armarPaquete, type Paquete } from './envio';
 import { marcarEnviado } from '../store';
 
 /** Pendiente para el Centro: solo cuenta lo que el puente confirmó (el archivo antiguo "enviado" no llega solo al Centro). */
@@ -46,8 +46,8 @@ export async function probarPuente(url: string): Promise<string> {
   throw new Error(`el puente respondió: ${t.slice(0, 120)}`);
 }
 
-/** Reduce una foto (dataURL) a 1600 px de lado como máximo, JPEG 0.7: Gmail gratis parte el mapeo en correos de 300 KB. */
-async function reducir(data: string, max = 1600): Promise<string> {
+/** Reduce una foto (dataURL) a 1280 px de lado como máximo, JPEG 0.62: Gmail gratis acepta ~100 correos al día y el mapeo va en trozos de 100 KB. */
+async function reducir(data: string, max = 1280): Promise<string> {
   if (!data?.startsWith('data:image') || typeof document === 'undefined') return data;
   try {
     const img = new Image(); img.src = data; await img.decode();
@@ -55,7 +55,7 @@ async function reducir(data: string, max = 1600): Promise<string> {
     const c = document.createElement('canvas');
     c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
     c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-    const out = c.toDataURL('image/jpeg', 0.7);
+    const out = c.toDataURL("image/jpeg", 0.62);
     return out.length < data.length ? out : data;
   } catch { return data; }
 }
@@ -63,6 +63,27 @@ async function reducir(data: string, max = 1600): Promise<string> {
 export async function paraEnvio(r: Reporte): Promise<Reporte> {
   if (!r.fotos?.length) return r;
   return { ...r, fotos: await Promise.all(r.fotos.map(async f => ({ ...f, data: await reducir(f.data) }))) };
+}
+
+/** Gmail no acepta correos de más de ~200 KB: un mapeo con fotos se manda en trozos (cada uno es un paquete válido
+ * para el puente, con `trozo` = parte del paquete real) y el Centro los vuelve a unir. */
+export const TROZO = 100000;
+export function cuerpos(p: Paquete): string[] {
+  const s = JSON.stringify(p);
+  if (s.length <= TROZO) return [s];
+  const n = Math.ceil(s.length / TROZO), id = `${p.reportes[0]?.id ?? 'm'}-${Date.now().toString(36)}`;
+  const r0 = p.reportes[0];
+  const cab = r0 ? [{ id: r0.id, labor: r0.labor, desde: r0.desde, fecha: r0.fecha }] : [];
+  return Array.from({ length: n }, (_, i) => JSON.stringify({ formato: p.formato, enviadoEn: p.enviadoEn, dispositivo: p.dispositivo, reportes: cab, trozo: { id, i: i + 1, n, datos: s.slice(i * TROZO, (i + 1) * TROZO) } }));
+}
+async function postear(url: string, cuerpo: string): Promise<void> {
+  // Cuerpo string = text/plain sin cabeceras extra: no hay permiso previo (CORS); Apps Script responde 302 y se sigue.
+  let res: Response, t: string;
+  try { res = await fetch(url, { method: 'POST', body: cuerpo, redirect: 'follow' }); t = await res.text(); }
+  catch (e) { throw new Error(`sin conexión con Google (${(e as Error).message})`); }
+  let ok = res.ok;
+  try { ok = ok && JSON.parse(t).ok !== false; } catch { ok = false; }
+  if (!ok) throw new Error(/"clave"/.test(t) ? 'la clave (?k=…) de la URL no coincide con la del script.' : /L[ií]mite|Service invoked too many/i.test(t) ? `Gmail llegó a su límite diario de correos del puente; se reintenta solo más tarde (${t.slice(0, 80)})` : `el puente respondió: ${t.slice(0, 120)}`);
 }
 
 /** Devuelve cuántos mapeos se enviaron; lanza si el puente respondió con error. */
@@ -82,13 +103,7 @@ export async function enviarLista(lista: Reporte[], listas: Listas): Promise<num
   try {
     for (const r of lista) {
       const p = armarPaquete([await paraEnvio(r)], listas);
-      // Cuerpo string = text/plain sin cabeceras extra: no hay permiso previo (CORS); Apps Script responde 302 y se sigue.
-      let res: Response, t: string;
-      try { res = await fetch(url, { method: 'POST', body: JSON.stringify(p), redirect: 'follow' }); t = await res.text(); }
-      catch (e) { throw new Error(`sin conexión con Google (${(e as Error).message})`); }
-      let ok = res.ok;
-      try { ok = ok && JSON.parse(t).ok !== false; } catch { ok = false; }
-      if (!ok) throw new Error(/"clave"/.test(t) ? 'la clave (?k=…) de la URL no coincide con la del script.' : `el puente respondió: ${t.slice(0, 120)}`);
+      for (const cuerpo of cuerpos(p)) await postear(url, cuerpo);
       await marcarEnviado([r.id], p.enviadoEn, true);
       n++;
     }
