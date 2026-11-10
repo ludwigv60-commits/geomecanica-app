@@ -19,7 +19,7 @@
       d.textContent = t;
       d.setAttribute('style', 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483647;max-width:90vw;padding:10px 14px;border-radius:10px;font:600 14px system-ui,sans-serif;box-shadow:0 6px 20px #0005;color:#fff;background:' + (mal ? '#b3261e' : '#1f7a3f'));
       (document.body || document.documentElement).appendChild(d);
-      setTimeout(function () { d.remove(); }, 4500);
+      setTimeout(function () { d.remove(); }, mal ? 9000 : 4500);
     } catch (e) {}
   }
   var clicOriginal = HTMLAnchorElement.prototype.click;
@@ -35,13 +35,40 @@
       : function (d) { return c.use('downloads').then(function (dl) { if (!dl) throw new Error('sin permiso de descargas'); return dl.save({ filename: nombre, data: d }); }); };
     var nombre = a.getAttribute('download') || 'archivo';
     var href = a.href;
+    // si el archivo tardó en armarse, el clic de la persona ya "venció": se le muestra un botón para confirmar la descarga
+    var activo = !navigator.userActivation || navigator.userActivation.isActive;
+    function enviar(datos) {
+      return guardarEn(datos)
+        .then(function () { aviso('⬇ Descargado: ' + nombre); })
+        .catch(function (e) {
+          if (e && e.code === 'declined') { aviso('Descarga cancelada.'); return; }
+          if (e && e.code === 'rate_limited') { boton(datos, 'Hay otra descarga esperando tu respuesta. Cuando termines, toca aquí:'); return; }
+          aviso('No se pudo descargar ' + nombre + ': ' + ((e && (e.message || e.code)) || e), true);
+        });
+    }
+    function boton(datos, texto) {
+      try {
+        var viejo = document.getElementById('lk-descarga'); if (viejo) viejo.remove();
+        var caja = document.createElement('div'); caja.id = 'lk-descarga';
+        caja.setAttribute('style', 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483647;max-width:92vw;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 14px;border-radius:12px;font:600 14px system-ui,sans-serif;box-shadow:0 8px 24px #0006;color:#fff;background:#1b2330');
+        var t = document.createElement('span'); t.textContent = texto || 'Tu archivo está listo:';
+        var b = document.createElement('button'); b.type = 'button'; b.textContent = '⬇ Descargar ' + nombre;
+        b.setAttribute('style', 'font:inherit;font-weight:800;min-height:44px;padding:8px 16px;border-radius:10px;border:0;background:#2f9e5a;color:#fff;cursor:pointer');
+        var x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.title = 'Cerrar';
+        x.setAttribute('style', 'font:inherit;min-height:44px;min-width:44px;border-radius:10px;border:1px solid #fff5;background:transparent;color:#fff;cursor:pointer');
+        b.onclick = function () { caja.remove(); enviar(datos); };
+        x.onclick = function () { caja.remove(); };
+        caja.appendChild(t); caja.appendChild(b); caja.appendChild(x);
+        (document.body || document.documentElement).appendChild(caja);
+      } catch (e) { enviar(datos); }
+    }
     fetch(href).then(function (r) { return r.arrayBuffer(); })
       .then(function (ab) {
         var datos = new w.Uint8Array(ab.byteLength); datos.set(new Uint8Array(ab));
-        return guardarEn(datos);
+        if (activo) return enviar(datos);
+        boton(datos);
       })
-      .then(function () { aviso('⬇ Descargado: ' + nombre); })
-      .catch(function (e) { aviso(e && e.code === 'declined' ? 'Descarga cancelada.' : 'No se pudo descargar ' + nombre + ': ' + ((e && (e.message || e.code)) || e), !(e && e.code === 'declined')); });
+      .catch(function (e) { aviso('No se pudo preparar ' + nombre + ': ' + ((e && (e.message || e.code)) || e), true); });
     return true;
   }
   HTMLAnchorElement.prototype.click = function () { if (esDescarga(this) && guardar(this)) return; return clicOriginal.apply(this, arguments); };
