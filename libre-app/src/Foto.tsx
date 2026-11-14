@@ -50,6 +50,26 @@ export function EditorFoto({ foto, disc, onCambio, onCerrar }: Props) {
   const [recta, setRecta] = useState(true);
   const [actual, setActual] = useState<[number, number][] | null>(null);
   const svg = useRef<SVGSVGElement>(null);
+  const [ia, setIa] = useState<string | null>(null);
+
+  const detectar = async () => {
+    setIa('Analizando la foto con la IA…');
+    try {
+      const { detectarConRed } = await import('./ia/modelo-trazas');
+      const { modeloUsado } = await import('./ia/onnx');
+      const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = foto.src; });
+      const r = await detectarConRed(img);
+      const nuevas: Traza[] = r.segmentos.filter(sg => sg.familia >= 0).map(sg => ({
+        tipo: 'D', nombre: `IA-D${sg.familia + 1}`, ia: true,
+        pts: [[sg.x1 / r.w, sg.y1 / r.h], [sg.x2 / r.w, sg.y2 / r.h]],
+      }));
+      onCambio({ ...foto, trazas: [...foto.trazas.filter(t => !t.ia), ...nuevas] });
+      const { modeloUsado: m2 } = await import('./ia/onnx');
+      setIa(nuevas.length
+        ? `IA (${m2 || modeloUsado}): ${nuevas.length} trazas en ${new Set(nuevas.map(t => t.nombre)).size} familias, confianza ${r.nivel}. Son propuestas (línea punteada): borre las que no correspondan y cambie el rótulo con dip/dd.`
+        : 'La IA no encontró trazas largas claras en esta foto. Dibújelas a mano.');
+    } catch (e) { setIa('No se pudo correr la IA: ' + (e as Error).message); }
+  };
 
   const punto = (e: React.PointerEvent): [number, number] => {
     const r = svg.current!.getBoundingClientRect();
@@ -87,7 +107,10 @@ export function EditorFoto({ foto, disc, onCambio, onCerrar }: Props) {
         <button className={modo === 'borrar' ? 'activo' : ''} onClick={() => setModo('borrar')}>🧽 Borrar</button>
         <button onClick={() => onCambio({ ...foto, trazas: foto.trazas.slice(0, -1) })} disabled={!foto.trazas.length}>↶ Deshacer</button>
         <label className="chk"><input type="checkbox" checked={recta} onChange={e => setRecta(e.target.checked)} /> Recta</label>
+        <button onClick={detectar}>🤖 IA trazas</button>
+        {foto.trazas.some(t => t.ia) && <button onClick={() => onCambio({ ...foto, trazas: foto.trazas.map(t => ({ ...t, ia: false })) })}>✓ Aceptar IA</button>}
       </div>
+      {ia && <div className="barra-foto aviso-ia" onClick={() => setIa(null)}>{ia}</div>}
       <div className="barra-foto">
         {(Object.keys(TIPOS_ESTRUCTURA) as TipoEstructura[]).map(t => (
           <button key={t} className={tipo === t ? 'activo' : ''} style={{ borderColor: TIPOS_ESTRUCTURA[t].color }} onClick={() => setTipo(t)}>
@@ -111,7 +134,7 @@ export function EditorFoto({ foto, disc, onCambio, onCerrar }: Props) {
               const [x, y] = t.pts[t.pts.length - 1]!;
               return <g key={i}>
                 <path d={d} stroke="#000" strokeWidth={lw * 2} fill="none" strokeLinecap="round" opacity={0.4} />
-                <path d={d} stroke={col} strokeWidth={lw} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={d} stroke={col} strokeWidth={lw} fill="none" strokeLinecap="round" strokeLinejoin="round" strokeDasharray={'ia' in t && t.ia ? `${lw * 3} ${lw * 2}` : undefined} />
                 {t.nombre && <text x={x * foto.w + 6} y={y * foto.h - 6} fill={col} stroke="#000" strokeWidth={lw / 2} paintOrder="stroke" fontSize={Math.max(foto.w, foto.h) / 40} fontWeight="bold">{t.nombre}</text>}
               </g>;
             })}

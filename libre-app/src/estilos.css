@@ -146,3 +146,4 @@ select.sug, input.sug { border:2px solid #7a4dd8; background:#7a4dd812; }
 .fotos figcaption { padding:4px; display:flex; flex-direction:column; gap:4px; }
 .fotos figcaption input { min-height:34px; padding:4px 6px; font-size:13px; }
 .notas li { margin:4px 0; font-size:13px; }
+.aviso-ia { white-space:normal; font-size:13px; background:#2e7d5b; }

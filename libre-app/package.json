@@ -9,14 +9,20 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@capacitor/core": "^7.6.10",
+    "@capacitor/filesystem": "^7.1.9",
+    "@capacitor/share": "^7.0.4",
+    "onnxruntime-web": "^1.29.0",
     "pdf-lib": "^1.17.1",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.6.10",
+    "@capacitor/cli": "^7.6.10",
+    "@types/node": "^22.10.2",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
-    "@types/node": "^22.10.2",
     "@vitejs/plugin-react": "4.7.0",
     "typescript": "5.9.3",
     "vite": "6.4.5",

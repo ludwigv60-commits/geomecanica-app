@@ -23,7 +23,7 @@ export interface Discontinuidad {
   obs: string;
 }
 
-export interface Traza { tipo: TipoEstructura; nombre: string; pts: [number, number][] } // coordenadas 0..1
+export interface Traza { tipo: TipoEstructura; nombre: string; pts: [number, number][]; ia?: boolean } // coordenadas 0..1
 export interface Foto { id: string; titulo: string; src: string; w: number; h: number; trazas: Traza[] }
 
 export interface Mapeo {

@@ -5,7 +5,7 @@ import { join, relative } from 'node:path';
 import { createHash } from 'node:crypto';
 
 // Se publica en la carpeta libre/ del repositorio (GitHub Pages), separada de la app existente.
-const SALIDA = '../libre';
+const SALIDA = process.env.SALIDA || '../libre';
 
 /** Escribe sw.js con la lista de todos los archivos de la app para que funcione sin señal desde la primera apertura. */
 function serviceWorker(): Plugin {

@@ -10,6 +10,7 @@ import { TIPOS_ESTRUCTURA, calcular, uid, type Discontinuidad, type Foto, type M
 import { EditorFoto, leerFoto, nuevaFoto } from './Foto';
 import { Medidor } from './Medidor';
 import { generarPdf } from './reporte';
+import { entregar } from './nativo';
 
 type Props = { m: Mapeo; set: (f: (m: Mapeo) => Mapeo) => void; decl: number; labores: string[]; onVolver: () => void };
 
@@ -29,15 +30,7 @@ const num = (s: string) => { const v = parseFloat(s.replace(',', '.')); return N
 export async function descargarPdf(m: Mapeo, compartir: boolean) {
   const bytes = await generarPdf(m);
   const nombre = `Reporte_${(m.labor || 'mapeo').replace(/[^\w.-]+/g, '_')}_${m.fecha}.pdf`;
-  const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' });
-  const file = new File([blob], nombre, { type: 'application/pdf' });
-  if (compartir && navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: nombre }); return; } catch (e) { if ((e as Error).name === 'AbortError') return; }
-  }
-  const url = URL.createObjectURL(blob);
-  const a = Object.assign(document.createElement('a'), { href: url, download: nombre });
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  await entregar(bytes, nombre, 'application/pdf', compartir);
 }
 
 export function Editor({ m, set, decl, labores, onVolver }: Props) {

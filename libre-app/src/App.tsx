@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Editor, descargarPdf } from './Editor';
 import { calcular, nuevoMapeo, type Mapeo } from './model';
 import { borrar, guardar, guardarConfig, leerConfig, listar, persistir, type Config } from './store';
+import { entregar } from './nativo';
 import { aCsv, importarRespaldo, respaldo } from './exportar';
 
 export function App() {
@@ -25,11 +26,7 @@ export function App() {
     labores={[...new Set(lista.map(x => x.labor).filter(Boolean))]}
     onVolver={async () => { clearTimeout(timer.current); await guardar(actual); setActual(null); recargar(); }} />;
 
-  const bajar = (nombre: string, contenido: BlobPart, tipo: string) => {
-    const url = URL.createObjectURL(new Blob([contenido], { type: tipo }));
-    const a = Object.assign(document.createElement('a'), { href: url, download: nombre }); document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-  };
+  const bajar = (nombre: string, contenido: string, tipo: string) => entregar(new TextEncoder().encode(contenido), nombre, tipo);
 
   return (
     <div className="pantalla">
