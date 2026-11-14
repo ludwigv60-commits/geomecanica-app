@@ -132,7 +132,7 @@ select.sug, input.sug { border:2px solid #7a4dd8; background:#7a4dd812; }
 .disc { border:1px solid var(--borde); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:6px; }
 .disc .fila { margin:0; flex-wrap:wrap; }
 .pantalla-foto { position:fixed; inset:0; z-index:25; background:#111; color:#fff; display:flex; flex-direction:column; }
-.barra-foto { display:flex; gap:6px; padding:6px 8px; overflow-x:auto; align-items:center; flex:none; }
+.barra-foto { display:flex; flex-wrap:wrap; gap:6px; padding:6px 8px; overflow-x:auto; align-items:center; flex:none; }
 .barra-foto button { font:inherit; font-size:13px; font-weight:600; white-space:nowrap; min-height:38px; padding:4px 10px; border-radius:8px; border:2px solid #555; background:#222; color:#fff; display:flex; align-items:center; gap:6px; }
 .barra-foto button.activo { background:#fff; color:#111; }
 .barra-foto input { min-height:36px; padding:4px 8px; background:#222; color:#fff; border-color:#555; }

@@ -1,6 +1,6 @@
 // Funciona sin señal: al abrir la app con señal se guarda TODO en el celular (lista generada al compilar).
-const CACHE = 'geolibre-03dff3e151';
-const ARCHIVOS = ["./","./assets/index-CCU8sVAz.js","./assets/index-D0gwCHn2.css","./assets/modelo-trazas-D2EKflCf.js","./assets/onnx-DHWlHtt_.js","./assets/ort-wasm-simd-threaded-DDx2apAW.wasm","./assets/ort.wasm.bundle.min-CfTt_KA_.js","./assets/web-CANJVXZ_.js","./assets/web-Dg8ergrr.js","./icon-192.png","./icon-512.png","./index.html","./manifest.webmanifest","./modelos/trazas.onnx","./modelos/zona.onnx"];
+const CACHE = 'geolibre-f81dd6c0b6';
+const ARCHIVOS = ["./","./assets/index-7CmRA3s4.js","./assets/index-7HI9gdhb.css","./assets/modelo-trazas-BLoOxV-M.js","./assets/onnx-DvHuKfxx.js","./assets/ort-wasm-simd-threaded-DDx2apAW.wasm","./assets/ort.wasm.bundle.min-CfTt_KA_.js","./assets/web-CqueWorU.js","./assets/web-Db3B0QIY.js","./icon-192.png","./icon-512.png","./index.html","./manifest.webmanifest","./modelos/trazas.onnx","./modelos/zona.onnx"];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS))); });
 // Se conserva también la versión anterior: una pantalla abierta antes de actualizar todavía pide sus archivos
 // (PDF, Excel) y, si se borraran, la descarga fallaría hasta reabrir la app.

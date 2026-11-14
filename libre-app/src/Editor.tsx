@@ -73,23 +73,23 @@ export function Editor({ m, set, decl, labores, onVolver }: Props) {
   };
 
   const foto = m.fotos.find(f => f.id === fotoAbierta);
-  if (foto) return <EditorFoto foto={foto} disc={m.disc} onCambio={setFoto} onCerrar={() => setFotoAbierta(null)} />;
   const dMed = m.disc.find(d => d.id === medir);
-  if (dMed) return <Medidor modo="pl" titulo={`${dMed.nombre}: apoye el celular sobre la estructura`} decl={decl} conv={0}
-    onCancelar={() => setMedir(null)}
-    onListo={l => { if (l.dip != null && l.dd != null) setDisc(dMed.id, { dip: Math.round(l.dip), dd: Math.round(l.dd) % 360 }); setMedir(null); }} />;
-
+  const capa = foto ? <EditorFoto foto={foto} disc={m.disc} onCambio={setFoto} onCerrar={() => setFotoAbierta(null)} />
+    : dMed ? <Medidor modo="pl" titulo={`${dMed.nombre}: apoye el celular sobre la estructura`} decl={decl} conv={0}
+      onCancelar={() => setMedir(null)}
+      onListo={l => { if (l.dip != null && l.dd != null) setDisc(dMed.id, { dip: Math.round(l.dip), dd: Math.round(l.dd) % 360 }); setMedir(null); }} /> : null;
   const rec = c.rec;
   const clase = rec?.clase;
 
   return (
     <div className="pantalla">
-      <header className="barra">
+      {capa}
+      <header className="barra" hidden={!!capa}>
         <button className="btn mini claro" onClick={onVolver}>‹ Mapeos</button>
         <h1>{m.labor || 'Nuevo mapeo'}<div className="sub">{m.fecha} {m.hora}</div></h1>
         {clase && <span className="chip" style={{ background: clase.color, color: clase.texto, borderColor: clase.color }}>{clase.tipo} · {c.rmr}</span>}
       </header>
-      <main className="contenido">
+      <main className="contenido" hidden={!!capa}>
         <Seccion titulo="1. Datos generales" res={m.labor} abierta={!m.labor}>
           <div className="rejilla2">
             <Campo t="Labor"><input list="labores" value={m.labor} onChange={e => up('labor', e.target.value)} placeholder="ej. RP 450" /></Campo>
@@ -282,7 +282,7 @@ export function Editor({ m, set, decl, labores, onVolver }: Props) {
         </Seccion>
         {error && <p className="alerta">{error}</p>}
       </main>
-      <footer className="pie">
+      <footer className="pie" hidden={!!capa}>
         <button className="btn primario" disabled={ocupado} onClick={() => pdf(false)}>{ocupado ? 'Generando…' : '⬇ Reporte PDF'}</button>
         <button className="btn" disabled={ocupado} onClick={() => pdf(true)}>Compartir</button>
       </footer>

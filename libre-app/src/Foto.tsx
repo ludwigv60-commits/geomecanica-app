@@ -108,7 +108,7 @@ export function EditorFoto({ foto, disc, onCambio, onCerrar }: Props) {
         <button onClick={() => onCambio({ ...foto, trazas: foto.trazas.slice(0, -1) })} disabled={!foto.trazas.length}>↶ Deshacer</button>
         <label className="chk"><input type="checkbox" checked={recta} onChange={e => setRecta(e.target.checked)} /> Recta</label>
         <button onClick={detectar}>🤖 IA trazas</button>
-        {foto.trazas.some(t => t.ia) && <button onClick={() => onCambio({ ...foto, trazas: foto.trazas.map(t => ({ ...t, ia: false })) })}>✓ Aceptar IA</button>}
+        {foto.trazas.some(t => t.ia) && <button onClick={() => onCambio({ ...foto, trazas: foto.trazas.map(t => t.ia ? { ...t, ia: false, nombre: t.nombre.replace(/^IA-/, '') } : t) })}>✓ Aceptar IA</button>}
       </div>
       {ia && <div className="barra-foto aviso-ia" onClick={() => setIa(null)}>{ia}</div>}
       <div className="barra-foto">

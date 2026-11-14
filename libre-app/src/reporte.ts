@@ -178,17 +178,6 @@ export async function generarPdf(m: Mapeo): Promise<Uint8Array> {
     for (const l of partir(m.observaciones, W - 2 * M - 6, 8.5)) { espacio(11); txt(l, M + 3, y - 9, { size: 8.5 }); y -= 11; }
   }
 
-  // Firmas
-  espacio(52); y -= 40;
-  const fw = (W - 2 * M - 40) / 2;
-  [[m.mapeadoPor, 'Mapeado por'], [m.revisadoPor, 'Revisado por']].forEach(([n, k], i) => {
-    const x = M + i * (fw + 40);
-    pg.drawLine({ start: { x, y }, end: { x: x + fw, y }, thickness: 0.6, color: OSC });
-    txt(n || ' ', x + (fw - ancho(n || ' ', 8, fb)) / 2, y - 10, { size: 8, font: fb });
-    txt(k!, x + (fw - ancho(k!, 7)) / 2, y - 19, { size: 7, color: BORDE });
-  });
-  y -= 26;
-
   // 7. Fotografías
   if (m.fotos.length) {
     let primera = true;
@@ -211,6 +200,17 @@ export async function generarPdf(m: Mapeo): Promise<Uint8Array> {
       }
     }
   }
+  // Firmas
+  espacio(52); y -= 40;
+  const fw = (W - 2 * M - 40) / 2;
+  [[m.mapeadoPor, 'Mapeado por'], [m.revisadoPor, 'Revisado por']].forEach(([n, k], i) => {
+    const x = M + i * (fw + 40);
+    pg.drawLine({ start: { x, y }, end: { x: x + fw, y }, thickness: 0.6, color: OSC });
+    txt(n || ' ', x + (fw - ancho(n || ' ', 8, fb)) / 2, y - 10, { size: 8, font: fb });
+    txt(k!, x + (fw - ancho(k!, 7)) / 2, y - 19, { size: 7, color: BORDE });
+  });
+  y -= 26;
+
   pie();
   return pdf.save();
 }
