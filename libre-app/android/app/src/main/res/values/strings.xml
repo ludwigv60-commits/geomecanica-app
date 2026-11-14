@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Geomecánico Libre</string>
+    <string name="title_activity_main">Geomecánico Libre</string>
+    <string name="package_name">pe.geomecanico.libre</string>
+    <string name="custom_url_scheme">pe.geomecanico.libre</string>
+</resources>
