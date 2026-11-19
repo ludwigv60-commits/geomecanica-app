@@ -8,7 +8,7 @@ import type { Preset, Vista3D } from '../export/render3d';
 import { COLOR_CAE, COLOR_RIESGO } from '../export/cunas2d';
 
 const CAPAS: { c: Capa; t: string }[] = [
-  { c: 'cunas', t: 'Cuñas' }, { c: 'diaclasas', t: 'Diaclasas' }, { c: 'fallas', t: 'Fallas / vetas' }, { c: 'influencia', t: 'Zona de influencia' }, { c: 'anterior', t: 'Labor anterior' },
+  { c: 'cunas', t: 'Cuñas' }, { c: 'diaclasas', t: 'Diaclasas' }, { c: 'fallas', t: 'Fallas / vetas' }, { c: 'influencia', t: 'Zona de influencia' },
 ];
 const PRESETS: { p: Preset; t: string }[] = [{ p: 'lateral', t: 'Costado' }, { p: 'frente', t: 'Frente' }, { p: 'planta', t: 'Planta' }, { p: 'contra', t: 'Otro lado' }];
 

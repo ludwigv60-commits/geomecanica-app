@@ -13,7 +13,7 @@
 //  - Deslizamiento sobre una cara: FS = tan φ / tan ψ (ψ: inclinación de la cara). Bloque trabado: no es cuña.
 //  - FS < 1: CAE al desatar (se retira y el contorno queda con ese realce); 1–1.5 ALTO; 1.5–2 MEDIO; ≥ 2 BAJO.
 //  - Después del desatado: contorno nuevo sin las cuñas que cayeron, con shotcrete pegado a ese contorno y pernos
-//    (densidad 1/esp² × base del bloque, solo si anclan ≥ 0.5 m detrás) y corte del shotcrete (τ = 0.35 MPa).
+//    (densidad 1/esp² × base del bloque, solo si anclan ≥ 0.5 m detrás) y corte del shotcrete (τ = 2 MPa, shotcrete con fibra f'c 30 MPa).
 // Es un análisis 2D de la sección: para el factor de seguridad 3D de una cuña con tres planos use Unwedge.
 import { rmrTotal, tipoRoca, type Zona } from '../core/rmr';
 import type { Reporte } from '../model';
@@ -24,7 +24,7 @@ import {
 } from './croquis';
 
 const rad = (g: number) => (g * Math.PI) / 180, gra = (r: number) => (r * 180) / Math.PI;
-const GAMMA = 2.7, PHI = 30, TAU = 35; // t/m³, °, t/m²
+const GAMMA = 2.7, PHI = 30, TAU = 200; // t/m³, °, t/m² (corte del shotcrete con fibra, f'c 30 MPa de la S400: 2 MPa)
 export type Nivel = 'ALTO' | 'MEDIO' | 'BAJO';
 export const nivel = (fs: number): Nivel => (fs >= 2 ? 'BAJO' : fs >= 1.5 ? 'MEDIO' : 'ALTO');
 export const COLOR_RIESGO: Record<Nivel, string> = { ALTO: '#D32F2F', MEDIO: '#F59E0B', BAJO: '#2E9D4F' };
