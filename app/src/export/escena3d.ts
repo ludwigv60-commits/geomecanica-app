@@ -11,7 +11,8 @@
 // Ejes de la escena (m): X a la derecha mirando el frente, Y hacia arriba (piso = 0), Z hacia atrás (frente = 0,
 // Desde = avance). Este módulo no depende de three.js (se prueba en node); render3d.ts lo dibuja.
 import type { Reporte } from '../model';
-import { analizarCunas, planoLocal, COLOR_CAE, COLOR_RIESGO, type Bloque, type Nivel } from './cunas2d';
+import { analizarCunas, planoLocal, colorFam, COLOR_CAE, COLOR_RIESGO, type Bloque, type Nivel } from './cunas2d';
+export { colorFam, COLOR_SD, COLOR_EST } from './cunas2d';
 import { colorTipo, dentro, dd3, familiasMedidas, type Fam, type P, type RmrZonas } from './croquis';
 import { rmrTotal, tipoRoca } from '../core/rmr';
 
@@ -29,13 +30,6 @@ export interface Escena3 {
 }
 
 const GAMMA = 2.7;
-/** Colores por familia (sirven en fondo claro y oscuro). */
-export const COLOR_SD = ['#D9A400', '#2E9BC6', '#8E5CC9', '#3FA45B', '#C8582F'];
-export const COLOR_EST: Record<string, string> = { F: '#E0282E', V: '#F08A00', C: '#00A9C9' };
-export function colorFam(fams: Fam[], f: Fam) {
-  if (f.abrev !== 'SD') return COLOR_EST[f.abrev] ?? '#555555';
-  return COLOR_SD[fams.filter(x => x.abrev === 'SD').indexOf(f) % COLOR_SD.length]!;
-}
 export const colorBloque = (b: Bloque) => (b.cae && !b.desatada ? COLOR_CAE : COLOR_RIESGO[b.riesgo0]);
 
 /** Triangulación por orejas de un polígono simple (índices). */

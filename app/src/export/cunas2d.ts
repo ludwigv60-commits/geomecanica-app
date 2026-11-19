@@ -29,6 +29,13 @@ export type Nivel = 'ALTO' | 'MEDIO' | 'BAJO';
 export const nivel = (fs: number): Nivel => (fs >= 2 ? 'BAJO' : fs >= 1.5 ? 'MEDIO' : 'ALTO');
 export const COLOR_RIESGO: Record<Nivel, string> = { ALTO: '#D32F2F', MEDIO: '#F59E0B', BAJO: '#2E9D4F' };
 export const COLOR_CAE = '#6E0B0B';
+/** Colores por familia (sirven en fondo claro y oscuro): los mismos en la vista 3D y en la red estereográfica. */
+export const COLOR_SD = ['#D9A400', '#2E9BC6', '#8E5CC9', '#3FA45B', '#C8582F'];
+export const COLOR_EST: Record<string, string> = { F: '#E0282E', V: '#F08A00', C: '#00A9C9' };
+export function colorFam(fams: Fam[], f: Fam) {
+  if (f.abrev !== 'SD') return COLOR_EST[f.abrev] ?? '#555555';
+  return COLOR_SD[fams.filter(x => x.abrev === 'SD').indexOf(f) % COLOR_SD.length]!;
+}
 
 export interface Bloque {
   zona: 'CORONA' | 'HI' | 'HD'; familias: number[]; pol: P[]; area: number; peso: number; prof: number; base: number; phi: number;
@@ -310,7 +317,8 @@ export const fsTxt = (fs: number) => (fs > 10 ? '>10' : fs < 0.05 ? '0' : fs.toF
 
 /** Vista de la sección para el análisis: ANTES del desatado (sin sostener) o DESPUÉS (shotcrete + pernos).
  *  `aspecto` = ancho/alto del recuadro donde va (la mitad del recuadro del formato ≈ 136/215). */
-export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues', aspecto = 136 / 215, compacto = false): Vista | null {
+/** `ptAncho`: ancho del recuadro en puntos donde se dibuja (los textos van en pt fijos), para medir la tarjeta. */
+export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues', aspecto = 136 / 215, compacto = false, ptAncho = 135): Vista | null {
   const a = analizarCunas(r); if (!a || !r.ancho || !r.alto) return null;
   const B = r.ancho, H = r.alto, real = modo === 'despues' ? a.realD : a.real, fams = familiasMedidas(r);
   const lado = Math.max(...a.real.map(p => Math.abs(p[0]))), techo = Math.max(...a.real.map(p => p[1]));
@@ -392,6 +400,14 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
   }
   // títulos
   const w = caja[2] - caja[0], xL = caja[0] + w * 0.04, ln = alto * 0.03 * fL;
+  // espacio libre sobre la zona de influencia: red estereográfica (antes) o medidor del FS (después)
+  // (en recuadros apaisados no queda alto sobre la corona: va a la derecha del túnel, en la esquina de arriba)
+  if (!compacto) {
+    const yB = Math.max(...limite.map(p => p[1]), techo) + ln * 0.5, xD = lado + zH + ln * 0.8;
+    const zona = top - ln * 2.75 - yB >= (w / ptAncho) * 6.4 * 4.6 ? { x0: caja[0], x1: caja[2], yTop: top - ln * 2.75, yBot: yB, pt: w / ptAncho }
+      : { x0: xD, x1: caja[2] - w * 0.02, yTop: top - ln * 0.4, yBot: ln * 0.6, pt: w / ptAncho };
+    prims.push(...tarjetaCorona(r, a, modo, fams, zona));
+  }
   const tit = compacto ? (modo === 'antes' ? 'ANTES DEL DESATADO' : 'DESPUÉS: SOSTENIDO') : modo === 'antes' ? 'ANTES DEL DESATADO' : 'DESPUÉS: CON SOSTENIMIENTO';
   const sub = modo === 'antes' ? 'sin pernos ni shotcrete · análisis de cuñas' : [a.shot > 0 ? `shotcrete ${(a.shot * 100).toFixed(0)} cm` : 'sin shotcrete', a.perno ? `${a.perno.tipo.toLowerCase()} ${a.perno.pies != null ? a.perno.pies + "'" : a.perno.largo.toFixed(1) + ' m'} ${a.perno.esp}×${a.perno.esp} m${(() => { const m = sost.match(/filas?\s*=?\s*(\d+)\s*[x×]\s*(\d+)/); return m ? ` · filas ${m[1]}/${m[2]} (se ve la de ${Math.max(+m[1]!, +m[2]!)})` : ''; })()}` : 'sin pernos', /malla/.test(sost) ? 'malla' : ''].filter(Boolean).join(' · ');
   prims.push({ t: 'texto', p: [xL, top - ln * 1.1], s: tit, tam: compacto ? 5.2 : 6.2, negrita: true, color: modo === 'antes' ? '#9E1B1B' : '#1B5E20', ancla: 'izq', fondo: true });
@@ -413,8 +429,7 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
     lin.push({ s: `${n} cuñas · ${rs.caen} caen al desatar` });
     lin.push({ s: f0 < 1.5 ? '→ Desatar y sostener ya' : '→ Desatar y verificar', c: f0 < 1.5 ? COLOR_RIESGO.ALTO : '#222222', b: true });
   } else {
-    const g = sostenimientoGlobal(r, a), fsC = rs.quedan ? rs.fsMin ?? 0 : null;
-    const fsFinal = g ? (fsC != null ? Math.min(g.fs, fsC) : g.fs) : fsC;
+    const fsC = rs.quedan ? rs.fsMin ?? 0 : null, fsFinal = fsDespues(r, a);
     if (fsFinal != null) lin.push({ s: `FS CON SOSTENIMIENTO: ${fsTxt(fsFinal)}`, c: colFs(fsFinal), b: true });
     lin.push({ s: rs.quedan ? `Queda${rs.quedan === 1 ? '' : 'n'} ${rs.quedan} cuña${rs.quedan === 1 ? '' : 's'} · FS ${fsTxt(fsC ?? 0)}` : 'No quedan cuñas sueltas' });
     const malo = fsFinal != null && fsFinal < 1.5;
@@ -443,6 +458,111 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
   for (const e of Object.entries(a.esp)) if (e[1].fuente !== 'medido') { notas.push(`Espaciamiento de ${nomFam(r, Number(e[0]))}: ${e[1].s} m (${e[1].fuente}); mídalo para un resultado más fino.`); }
   notas.push(...a.notas);
   return { prims, caja, notas };
+}
+
+/** FS final después del desatado: el menor entre la cuña que queda y el sostenimiento global. */
+function fsDespues(r: Reporte, a: Analisis): number | null {
+  const rs = resumen(a), g = sostenimientoGlobal(r, a), fsC = rs.quedan ? rs.fsMin ?? 0 : null;
+  return g ? (fsC != null ? Math.min(g.fs, fsC) : g.fs) : fsC;
+}
+
+/** Tarjeta para el espacio libre sobre la corona. Antes: red estereográfica de igual área (hemisferio inferior) con
+ *  los planos de cada familia, las intersecciones (ejes de cuña) y el eje de la labor. Después: medidor del FS. */
+function tarjetaCorona(r: Reporte, a: Analisis, modo: 'antes' | 'despues', fams: Fam[], o: { x0: number; x1: number; yTop: number; yBot: number; pt: number }): Prim[] {
+  const pt = o.pt, ln = pt * 6.4, w = o.x1 - o.x0, hD = o.yTop - o.yBot, xc = (o.x0 + o.x1) / 2;
+  if (hD < ln * 4.2) return [];
+  const txtW = (s: string, tam: number) => s.length * tam * 0.6 * pt; // ancho aproximado del texto (m)
+  const hc = Math.min(hD, ln * 9), pad = ln * 0.45, out: Prim[] = [];
+  const caja = (x0: number, x1: number, y0: number, y1: number) => out.push(
+    { t: 'poly', pts: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], cerrado: true, relleno: '#FFFFFF', borde: '#0D2A6B', ancho: 0.45 });
+  const circ = (c: P, rr: number, n = 72): P[] => Array.from({ length: n }, (_, i) => [c[0] + rr * Math.cos((2 * Math.PI * i) / n), c[1] + rr * Math.sin((2 * Math.PI * i) / n)] as P);
+  if (modo === 'antes') {
+    if (fams.length < 1) return [];
+    // leyenda completa (familia con dip/dip dir) o corta si el espacio es angosto
+    const opc = (corta: boolean) => {
+      const ley = fams.slice(0, 6).map(f => corta ? `${f.abrev}${f.n}` : `${f.abrev}${f.n} ${Math.round(f.dip)}°/${dd3(f.dipdir)}°`);
+      const ej = corta ? ['eje cuña', 'labor'] : ['eje de cuña', `labor ${dd3(r.azimut ?? 0)}°`];
+      const wl = Math.max(...[...ley, ...ej].map(s => txtW(s, 4.3))) + ln * 1.4;
+      return { ley, ej, wl, R: Math.min((hc - pad * 2 - ln * 1.1) / 2, (w - pad * 3 - wl) / 2) };
+    };
+    let L = opc(false); if (L.R < ln * 2.6) { const k = opc(true); if (k.R > L.R) L = k; }
+    const { ley, ej, wl, R } = L;
+    if (R < ln * 1.5) return [];
+    const wc = Math.min(w, pad * 3 + 2 * R + wl), x0 = xc - wc / 2, y0 = o.yTop - hc;
+    caja(x0, x0 + wc, y0, o.yTop);
+    out.push({ t: 'texto', p: [x0 + pad, o.yTop - ln * 0.85], s: 'RED ESTEREOGRÁFICA', tam: 4.6, negrita: true, color: '#0D2A6B', ancla: 'izq' });
+    const c: P = [x0 + pad + R, y0 + pad + R];
+    const pr = (tr: number, pl: number): P => { const rr = R * Math.SQRT2 * Math.sin(rad(90 - pl) / 2); return [c[0] + rr * Math.sin(rad(tr)), c[1] + rr * Math.cos(rad(tr))]; };
+    out.push({ t: 'poly', pts: circ(c, R), cerrado: true, relleno: '#F4F7FB', borde: '#333333', ancho: 0.45 });
+    out.push({ t: 'poly', pts: [[c[0] - R * 0.06, c[1]], [c[0] + R * 0.06, c[1]]], borde: '#999999', ancho: 0.3 }, { t: 'poly', pts: [[c[0], c[1] - R * 0.06], [c[0], c[1] + R * 0.06]], borde: '#999999', ancho: 0.3 });
+    out.push({ t: 'poly', pts: [[c[0], c[1] + R], [c[0], c[1] + R * 1.1]], borde: '#333333', ancho: 0.45 });
+    out.push({ t: 'texto', p: [c[0] + R * 0.1, c[1] + R * 1.0], s: 'N', tam: 4.2, negrita: true, ancla: 'izq' });
+    // eje de la labor
+    if (r.azimut != null) out.push({ t: 'poly', pts: [pr(r.azimut + 180, 0), pr(r.azimut, 0)], borde: '#555555', ancho: 0.5, trazos: [1.6, 1] });
+    // planos (círculos mayores)
+    const vec = (tr: number, pl: number) => [Math.sin(rad(tr)) * Math.cos(rad(pl)), Math.cos(rad(tr)) * Math.cos(rad(pl)), -Math.sin(rad(pl))];
+    const lin = (v: number[]): [number, number] => { const n = Math.hypot(v[0]!, v[1]!, v[2]!); let [x, y, z] = v.map(q => q / n) as [number, number, number]; if (z > 0) { x = -x; y = -y; z = -z; } return [(gra(Math.atan2(x, y)) + 360) % 360, gra(Math.asin(-z))]; };
+    fams.slice(0, 6).forEach(f => {
+      const s = vec(f.dipdir - 90, 0), d = vec(f.dipdir, f.dip), pts: P[] = [];
+      for (let k = 0; k <= 48; k++) { const t = (Math.PI * k) / 48; const [tr, pl] = lin([0, 1, 2].map(i => Math.cos(t) * s[i]! + Math.sin(t) * d[i]!)); pts.push(pr(tr, pl)); }
+      out.push({ t: 'poly', pts, borde: colorFam(fams, f), ancho: f.abrev === 'SD' ? 0.7 : 1.0 });
+    });
+    // intersecciones = ejes posibles de cuña
+    const nor = (f: Fam) => [Math.sin(rad(f.dip)) * Math.sin(rad(f.dipdir)), Math.sin(rad(f.dip)) * Math.cos(rad(f.dipdir)), Math.cos(rad(f.dip))];
+    for (let i = 0; i < Math.min(fams.length, 6); i++) for (let j = i + 1; j < Math.min(fams.length, 6); j++) {
+      const p = nor(fams[i]!), q = nor(fams[j]!), x = [p[1]! * q[2]! - p[2]! * q[1]!, p[2]! * q[0]! - p[0]! * q[2]!, p[0]! * q[1]! - p[1]! * q[0]!];
+      if (Math.hypot(x[0]!, x[1]!, x[2]!) < 0.05) continue;
+      const [tr, pl] = lin(x); out.push({ t: 'poly', pts: circ(pr(tr, pl), R * 0.045, 12), cerrado: true, relleno: '#111111' });
+    }
+    // leyenda
+    const lx = c[0] + R + pad * 1.2; let ly = o.yTop - ln * 2.1;
+    const paso = Math.min(ln * 1.05, (o.yTop - ln * 1.6 - y0 - pad) / (ley.length + 2));
+    ley.forEach((s, k) => {
+      const f = fams[k]!;
+      out.push({ t: 'poly', pts: [[lx, ly + ln * 0.22], [lx + ln * 0.9, ly + ln * 0.22]], borde: colorFam(fams, f), ancho: 1.2 });
+      out.push({ t: 'texto', p: [lx + ln * 1.15, ly], s, tam: 4.3, ancla: 'izq', negrita: f.abrev !== 'SD', color: f.abrev === 'SD' ? '#111111' : colorFam(fams, f) });
+      ly -= paso;
+    });
+    out.push({ t: 'poly', pts: circ([lx + ln * 0.45, ly + ln * 0.22], ln * 0.17, 12), cerrado: true, relleno: '#111111' });
+    out.push({ t: 'texto', p: [lx + ln * 1.15, ly], s: ej[0]!, tam: 4.3, ancla: 'izq' });
+    ly -= paso;
+    if (r.azimut != null) {
+      out.push({ t: 'poly', pts: [[lx, ly + ln * 0.22], [lx + ln * 0.9, ly + ln * 0.22]], borde: '#555555', ancho: 0.5, trazos: [1.6, 1] });
+      out.push({ t: 'texto', p: [lx + ln * 1.15, ly], s: ej[1]!, tam: 4.3, ancla: 'izq' });
+    }
+    return out;
+  }
+  // después: medidor semicircular del FS (0 a 3; más de 3 = aguja al tope)
+  const fs = fsDespues(r, a), fs0 = resumen(a).fs0Min;
+  if (fs == null) return [];
+  const tx = [`FS ${fsTxt(fs)}`, fs >= 2 ? 'ESTABLE' : fs >= 1.5 ? 'ACEPTABLE' : 'INESTABLE', `antes ${fsTxt(fs0 ?? 0)} · ahora ${fsTxt(fs)}`];
+  const rG = (wt: number) => Math.min((hc - pad * 2 - ln * 1.3) / 1.15, w * 0.22, (w - pad * 3 - wt) / 2.25);
+  let wt0 = Math.max(txtW(tx[0]!, 7.5), txtW(tx[2]!, 4.3)) + pad;
+  if (rG(wt0) < ln * 2.2) { const k = Math.max(txtW(tx[0]!, 7.5), txtW(tx[1]!, 5)) + pad; if (rG(k) > rG(wt0)) { wt0 = k; tx[2] = ''; } }
+  const R = rG(wt0);
+  if (R < ln * 1.2) return [];
+  const wt = wt0 + R * 0.45;
+  const wc = Math.min(w, pad * 3 + 2 * R + wt), x0 = xc - wc / 2, y0 = o.yTop - hc;
+  caja(x0, x0 + wc, y0, o.yTop);
+  out.push({ t: 'texto', p: [x0 + pad, o.yTop - ln * 0.85], s: 'FACTOR DE SEGURIDAD', tam: 4.6, negrita: true, color: '#0D2A6B', ancla: 'izq' });
+  const c: P = [x0 + pad + R * 1.15, y0 + pad + ln * 0.5], MAX = 3, ang = (v: number) => Math.PI * (1 - Math.min(MAX, Math.max(0, v)) / MAX);
+  const arco = (v0: number, v1: number, r0: number, r1: number): P[] => {
+    const n = 16, ex: P[] = [], inn: P[] = [];
+    for (let k = 0; k <= n; k++) { const t = ang(v0 + ((v1 - v0) * k) / n); ex.push([c[0] + r1 * Math.cos(t), c[1] + r1 * Math.sin(t)]); inn.push([c[0] + r0 * Math.cos(t), c[1] + r0 * Math.sin(t)]); }
+    return [...ex, ...inn.reverse()];
+  };
+  ([[0, 1, COLOR_CAE], [1, 1.5, COLOR_RIESGO.ALTO], [1.5, 2, COLOR_RIESGO.MEDIO], [2, MAX, COLOR_RIESGO.BAJO]] as [number, number, string][])
+    .forEach(([v0, v1, col]) => out.push({ t: 'poly', pts: arco(v0, v1, R * 0.62, R), cerrado: true, relleno: col, borde: '#FFFFFF', ancho: 0.3 }));
+  [0, 1, 1.5, 2, 3].forEach(v => { const t = ang(v); out.push({ t: 'texto', p: [c[0] + R * 1.16 * Math.cos(t), c[1] + R * 1.1 * Math.sin(t) + (Math.sin(t) < 0.2 ? ln * 0.25 : -ln * 0.1)], s: v === 3 ? '3+' : String(v), tam: 3.6, ancla: 'centro', color: '#333333' }); });
+  if (fs0 != null) { const t = ang(fs0); out.push({ t: 'poly', pts: [[c[0] + R * 0.5 * Math.cos(t), c[1] + R * 0.5 * Math.sin(t)], [c[0] + R * 1.02 * Math.cos(t), c[1] + R * 1.02 * Math.sin(t)]], borde: '#7A7A7A', ancho: 0.6, trazos: [1, 0.8] }); }
+  const t = ang(fs), q = R * 0.09;
+  out.push({ t: 'poly', pts: [[c[0] + R * 0.92 * Math.cos(t), c[1] + R * 0.92 * Math.sin(t)], [c[0] - q * Math.sin(t), c[1] + q * Math.cos(t)], [c[0] + q * Math.sin(t), c[1] - q * Math.cos(t)]], cerrado: true, relleno: '#111111' });
+  out.push({ t: 'poly', pts: circ(c, q * 1.3, 16), cerrado: true, relleno: '#111111' });
+  const col = fs >= 2 ? '#1B5E20' : fs >= 1.5 ? '#B26B00' : COLOR_RIESGO.ALTO, tx0 = c[0] + R * 1.3 + pad * 1.1, ym = c[1] + R * 0.5;
+  out.push({ t: 'texto', p: [tx0, ym + ln * 0.35], s: tx[0]!, tam: 7.5, negrita: true, color: col, ancla: 'izq' });
+  out.push({ t: 'texto', p: [tx0, ym - ln * 0.85], s: tx[1]!, tam: 5, negrita: true, color: col, ancla: 'izq' });
+  if (tx[2]) out.push({ t: 'texto', p: [tx0, ym - ln * 1.95], s: tx[2]!, tam: 4.3, color: '#333333', ancla: 'izq' });
+  return out;
 }
 
 /** Gráfico del factor de seguridad de cada cuña, antes (sin sostener) y después (con sostenimiento), en escala
@@ -501,7 +621,7 @@ export type { Zona };
 
 /** Las dos secciones (antes | después) lado a lado en un solo SVG de W × H. */
 export function seccionDobleSvg(r: Reporte, rmr: RmrZonas, W: number, H: number): string | null {
-  const a = vistaCunas(r, rmr, 'antes', (W / 2) / H), d = vistaCunas(r, rmr, 'despues', (W / 2) / H);
+  const a = vistaCunas(r, rmr, 'antes', (W / 2) / H, false, 280), d = vistaCunas(r, rmr, 'despues', (W / 2) / H, false, 280);
   if (!a || !d) return null;
   const sub = (v: Vista, x: number) => aSvg(v, W / 2, H).replace('<svg ', `<svg x="${x}" y="0" width="${W / 2}" height="${H}" `).replace(' width="100%"', '');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" style="background:#fff">${sub(a, 0)}${sub(d, W / 2)}<line x1="${W / 2}" y1="0" x2="${W / 2}" y2="${H}" stroke="#000" stroke-width="1.2"/></svg>`;

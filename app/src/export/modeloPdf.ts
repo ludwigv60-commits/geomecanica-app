@@ -27,7 +27,7 @@ export async function generarModeloPdf(r: Reporte, listas?: Partial<Listas>, rec
       planta: rec.img3d?.caja ? async c => { await plantaConPerspectiva(doc, page, f, fb, r, rmr, rec.img3d!.apaisada ?? rec.img3d!.caja!, caja(c)); } : pl ? c => dibujarVista(page, f, fb, pl, caja(c)) : undefined,
       seccion: r.ancho && r.alto && r.familias.some(x => x.dip != null && x.dipdir != null) ? c => {
         const [x0, y0, x1, y1] = caja(c), w = (x1 - x0) / 2, h = y1 - y0;
-        const a = vistaCunas(r, rmr, 'antes', (w - 3) / h), d = vistaCunas(r, rmr, 'despues', (w - 3) / h);
+        const a = vistaCunas(r, rmr, 'antes', (w - 3) / h, false, w - 3), d = vistaCunas(r, rmr, 'despues', (w - 3) / h, false, w - 3);
         if (a && d) { dibujarVista(page, f, fb, a, [x0, y0, x0 + w - 1.5, y1]); dibujarVista(page, f, fb, d, [x0 + w + 1.5, y0, x1, y1]); }
         else dibujarVista(page, f, fb, vistaSeccion(r, rmr), [x0, y0, x1, y1]);
       } : undefined,
