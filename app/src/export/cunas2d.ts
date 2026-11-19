@@ -535,7 +535,7 @@ function tarjetaCorona(r: Reporte, a: Analisis, modo: 'antes' | 'despues', fams:
   // después: medidor semicircular del FS (0 a 3; más de 3 = aguja al tope)
   const fs = fsDespues(r, a), fs0 = resumen(a).fs0Min;
   if (fs == null) return [];
-  const tx = [`FS ${fsTxt(fs)}`, fs >= 2 ? 'ESTABLE' : fs >= 1.5 ? 'ACEPTABLE' : 'INESTABLE', `antes ${fsTxt(fs0 ?? 0)} · ahora ${fsTxt(fs)}`];
+  const tx = [`FS ${fsTxt(fs)}`, fs >= 2 ? 'ESTABLE' : fs >= 1.5 ? 'ACEPTABLE' : fs >= 1 ? 'MARGINAL' : 'INESTABLE', `antes ${fsTxt(fs0 ?? 0)} · ahora ${fsTxt(fs)}`];
   const rG = (wt: number) => Math.min((hc - pad * 2 - ln * 1.3) / 1.15, w * 0.22, (w - pad * 3 - wt) / 2.25);
   let wt0 = Math.max(txtW(tx[0]!, 7.5), txtW(tx[2]!, 4.3)) + pad;
   if (rG(wt0) < ln * 2.2) { const k = Math.max(txtW(tx[0]!, 7.5), txtW(tx[1]!, 5)) + pad; if (rG(k) > rG(wt0)) { wt0 = k; tx[2] = ''; } }

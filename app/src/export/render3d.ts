@@ -57,7 +57,7 @@ export function crearVista(canvas: HTMLCanvasElement, esc: Escena3, o: { tema?: 
   const cam = new THREE.PerspectiveCamera(32, o.w / o.h, 0.05, 400);
   scene.add(new THREE.HemisphereLight('#FFFFFF', tema === 'oscuro' ? '#3A3430' : '#9C9284', 1.25));
   const sol = new THREE.DirectionalLight('#FFFFFF', 1.9); sol.position.set(-6, 14, -8); scene.add(sol);
-  const rel = new THREE.DirectionalLight('#DDE8FF', 0.55); rel.position.set(8, 4, 12); scene.add(rel);
+  const rel = new THREE.DirectionalLight('#DDE8FF', 0.95); rel.position.set(9, 6, -7); scene.add(rel);
   scene.add(new THREE.AmbientLight('#FFFFFF', 0.25));
 
   const grupos = new Map<Capa, THREE.Group>();
@@ -65,15 +65,16 @@ export function crearVista(canvas: HTMLCanvasElement, esc: Escena3, o: { tema?: 
   const lineMats: LineMaterial[] = [];
   for (const m of esc.mallas) {
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(m.pos, 3)); geo.computeVertexNormals();
+    if (m.colores) geo.setAttribute('color', new THREE.Float32BufferAttribute(m.colores.map(x => Math.pow(Math.min(1, Math.max(0, x)), 2.2)), 3)); // sRGB → lineal
     const solido = m.opac >= 0.9;
     const mat = new THREE.MeshStandardMaterial({
-      color: m.color, transparent: !solido, opacity: m.opac, side: THREE.DoubleSide, depthWrite: solido, roughness: solido ? 0.55 : 0.92, metalness: 0.04,
-      emissive: new THREE.Color(m.color), emissiveIntensity: m.brillo ?? (solido ? 0 : 0.08), flatShading: solido, polygonOffset: true, polygonOffsetFactor: solido ? 1 : 2, polygonOffsetUnits: 1,
+      color: m.color, vertexColors: !!m.colores, transparent: !solido, opacity: m.opac, side: THREE.DoubleSide, depthWrite: solido, roughness: solido ? 0.55 : 0.92, metalness: 0.04,
+      emissive: new THREE.Color(m.colores ? '#000000' : m.color), emissiveIntensity: m.brillo ?? (solido ? 0 : 0.08), flatShading: solido, polygonOffset: true, polygonOffsetFactor: solido ? 1 : 2, polygonOffsetUnits: 1,
     });
     const mesh = new THREE.Mesh(geo, mat); mesh.renderOrder = solido ? 0 : 2;
     grupo(m.capa).add(mesh);
     if (m.capa === 'cunas') { // aristas de los bloques
-      const ar = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 28), new THREE.LineBasicMaterial({ color: tema === 'oscuro' ? '#1A0F0A' : '#3B1A12', transparent: true, opacity: 0.55 }));
+      const ar = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), new THREE.LineBasicMaterial({ color: '#140805', transparent: true, opacity: 0.85 }));
       ar.renderOrder = 1; grupo(m.capa).add(ar);
     }
   }

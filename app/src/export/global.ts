@@ -4,8 +4,10 @@
 //     (Hoek, Carranza-Torres y Corkum 2002). Si σcm/p0 es alto no hay deformación por esfuerzos (Hoek y Marinos 2000).
 //  2. Gravedad: carga de la zona aflojada sobre la corona, la mayor de Unal (1983) con el RMR
 //     (P = γ·B·(100 − RMR)/100) y Barton (1974) con Q y Jr (P = 2·Jr⁻¹·Q^(−1/3) kg/cm²).
-// Capacidad del sostenimiento (Hoek y Brown 1980, Carranza-Torres): shotcrete como anillo delgado
-// p = σcc/2·[1 − ((ri − t)/ri)²] y pernos p = T/(eT·eL).
+// Capacidad del sostenimiento frente a la carga por gravedad: pernos p = T/(eT·eL) y shotcrete por CORTE en los dos
+// bordes del bloque aflojado (τ = 0.35 MPa, Barrett y McCreath 1995): p = 2·t·τ/B. No se usa la fórmula del anillo
+// cerrado p = σcc/2·[1 − ((ri − t)/ri)²]: supone un anillo completo (con piso) bajo presión pareja y shotcrete de 28
+// días, y en una labor de herradura con carga en la corona daba FS irreales (≈ 8 con 2" de shotcrete).
 // FS global = capacidad / carga. Todo es una PROPUESTA referencial: los valores supuestos se indican.
 import type { Reporte } from '../model';
 import { calcular } from '../calc';
@@ -13,7 +15,7 @@ import { cobertura } from '../core/cobertura';
 import type { Analisis } from './cunas2d';
 
 const GAMMA = 0.027;   // MN/m³ (2.7 t/m³)
-const SCC = 25;        // MPa, shotcrete a 28 días (referencial; a pocas horas es mucho menor)
+const TAU_SH = 0.35;   // MPa, resistencia al corte del shotcrete (la misma del análisis de cuñas)
 const UCS: Record<number, number> = { 15: 250, 12: 150, 7: 75, 4: 37, 2: 15, 1: 3, 0: 1 }; // MPa, centro de la clase RMR
 const mi = (lito: string) => /andesit|diorit|basalt/i.test(lito) ? 25 : /piroclast|tob|toba|brech/i.test(lito) ? 15 : /granit|granodior/i.test(lito) ? 32 : /arenisc/i.test(lito) ? 17 : 20;
 
@@ -36,7 +38,7 @@ export function sostenimientoGlobal(r: Reporte, a: Analisis): Global | null {
   const B = r.ancho, unal = GAMMA * B * (100 - rmr) / 100;
   const q = z.q, jr = r.q.CORONA.jr, barton = q && jr ? (2 / jr) * Math.pow(q, -1 / 3) * 0.0981 : 0;
   const carga = Math.max(unal, barton), cargaFuente = barton > unal ? `Barton (Q ${q}, Jr ${jr})` : `Unal (RMR ${rmr})`;
-  const ri = B / 2, t = a.shot, capShot = t > 0 ? (SCC / 2) * (1 - Math.pow((ri - t) / ri, 2)) : 0;
+  const t = a.shot, capShot = t > 0 ? (2 * t * TAU_SH) / B : 0;
   const capPernos = a.perno ? (a.perno.cap * 0.00981) / (a.perno.esp * a.perno.esp) : 0;
   const capacidad = capShot + capPernos, fs = carga > 0 ? capacidad / carga : 0;
   const nota = deformacion == null ? 'sin cobertura: no se revisan esfuerzos'
