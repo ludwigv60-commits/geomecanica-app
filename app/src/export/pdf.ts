@@ -198,7 +198,7 @@ export function anexoCunas(doc: PDFDocument, font: PDFFont, negrita: PDFFont, r:
   partirLineas(limpiar(`${a.bloques.length} cuñas potenciales dentro de la zona de influencia${a.zi ? ` (${Math.round(a.zi.pct * 100)} %, roca ${a.zi.tipo})` : ''}. Antes del desatado: ${rs.caen} CAEN (FS<1, ${rs.pesoCae.toFixed(2)} t/m; ${rs.caida} en caída libre), ${rs.antes.ALTO - rs.caen} ALTO, ${rs.antes.MEDIO} MEDIO, ${rs.antes.BAJO} BAJO. El desatado perfila el contorno y saca ${rs.desatadas} cuñas en total; quedan ${rs.quedan}; con sostenimiento FS mínimo ${fsTxt(rs.fsMin ?? 0)}: ${rs.despues.ALTO} ALTO, ${rs.despues.MEDIO} MEDIO, ${rs.despues.BAJO} BAJO.`), font, 7, W - 2 * m)
     .forEach((l, i) => T(l, m, m + 17 + i * 8.5, 7));
   const y0 = m + 34, hV = 330, wV = (W - 2 * m - 8) / 2;
-  const va = vistaCunas(r, rmr, 'antes', wV / hV), vd = vistaCunas(r, rmr, 'despues', wV / hV);
+  const va = vistaCunas(r, rmr, 'antes', wV / hV, false, wV), vd = vistaCunas(r, rmr, 'despues', wV / hV, false, wV);
   for (const [v, x] of [[va, m], [vd, m + wV + 8]] as [Vista | null, number][]) {
     if (!v) continue;
     dibujarVista(page, font, negrita, v, [x, y0, x + wV, y0 + hV]);

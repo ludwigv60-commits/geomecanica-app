@@ -76,7 +76,7 @@ export async function vistasPng(r: Reporte, modelo = false, img3d?: Uint8Array):
     if (pl && !out.planta) out.planta = await lienzoAPng(wP, hP, ctx => dibujarCanvas(ctx, pl, 0, 0, wP, hP));
   } catch (e) { err('planta', e); }
   try {
-    const a = vistaCunas(r, rmr, 'antes', (wS / 2) / hS), d = vistaCunas(r, rmr, 'despues', (wS / 2) / hS);
+    const a = vistaCunas(r, rmr, 'antes', (wS / 2) / hS, false, 280), d = vistaCunas(r, rmr, 'despues', (wS / 2) / hS, false, 280);
     if (a && d) out.seccion = await lienzoAPng(wS, hS, ctx => {   // antes | después del sostenimiento
       dibujarCanvas(ctx, a, 0, 0, wS / 2, hS); dibujarCanvas(ctx, d, wS / 2, 0, wS / 2, hS);
       ctx.strokeStyle = '#000'; ctx.lineWidth = 1.2 * k; ctx.beginPath(); ctx.moveTo(wS / 2, 0); ctx.lineTo(wS / 2, hS); ctx.stroke();

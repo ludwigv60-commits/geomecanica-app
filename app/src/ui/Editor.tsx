@@ -221,7 +221,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
   const tarjetaVistas = (<>
           {r.familias.some(f => f.dip != null && f.dipdir != null) && (() => {
             const rz = { HI: c.zonas.HI.total, CORONA: c.zonas.CORONA.total, HD: c.zonas.HD.total };
-            const an = analizarCunas(r), va = vistaCunas(r, rz, 'antes', 0.72), vd = vistaCunas(r, rz, 'despues', 0.72), gf = graficoFS(r, 1.7);
+            const an = analizarCunas(r), va = vistaCunas(r, rz, 'antes', 0.72, false, 280), vd = vistaCunas(r, rz, 'despues', 0.72, false, 280), gf = graficoFS(r, 1.7);
             const se = va ? null : r.ancho && r.alto ? vistaSeccion(r, rz) : null, rs = an ? resumenCunas(an) : null;
             return <section className="tarjeta vistas">
               <h3>Vista planta y vista sección</h3>
