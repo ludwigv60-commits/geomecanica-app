@@ -7,6 +7,7 @@ import { medidas } from './xlsxSimple';
 import { dibujarFoto, dibujarVista, rmrDe } from './pdf';
 import { vistaPlanta, vistaSeccion } from './croquis';
 import { vistaCunas } from './cunas2d';
+import { hojaCunas3D, plantaConPerspectiva } from './hoja3d';
 
 export const A4: [number, number] = [595.28, 841.89];
 
@@ -21,9 +22,9 @@ export async function generarModeloPdf(r: Reporte, listas?: Partial<Listas>, rec
   let frenteAspecto: number | undefined;
   if (frente?.data.startsWith('data:')) try { const [w, h] = medidas(Uint8Array.from(atob(frente.data.split(',')[1] ?? ''), ch => ch.charCodeAt(0))); if (w && h) frenteAspecto = w / h; } catch { /* sin medida */ }
   const L = hojaModelo(r, listas, {
-    logoAesa: rec.logoAesa, logoMarcobre: rec.logoMarcobre, frenteAspecto,
+    logoAesa: rec.logoAesa, logoMarcobre: rec.logoMarcobre, frenteAspecto, con3d: !!rec.img3d?.caja,
     pdf: {
-      planta: pl ? c => dibujarVista(page, f, fb, pl, caja(c)) : undefined,
+      planta: rec.img3d?.caja ? async c => { await plantaConPerspectiva(doc, page, f, fb, r, rmr, rec.img3d!.apaisada ?? rec.img3d!.caja!, caja(c)); } : pl ? c => dibujarVista(page, f, fb, pl, caja(c)) : undefined,
       seccion: r.ancho && r.alto && r.familias.some(x => x.dip != null && x.dipdir != null) ? c => {
         const [x0, y0, x1, y1] = caja(c), w = (x1 - x0) / 2, h = y1 - y0;
         const a = vistaCunas(r, rmr, 'antes', (w - 3) / h), d = vistaCunas(r, rmr, 'despues', (w - 3) / h);
@@ -34,6 +35,7 @@ export async function generarModeloPdf(r: Reporte, listas?: Partial<Listas>, rec
     },
   });
   await libroAPagina(L, doc, page, f, fb, fi);
+  if (rec.img3d) await hojaCunas3D(doc, f, fb, r, rec.img3d);
   doc.setTitle(`Reporte modelo ${r.labor} ${r.desde}`);
   doc.setProducer('App Geomecánica (Reporte modelo)');
   return doc.save();

@@ -224,7 +224,8 @@ function cruceRayo(o: P, n: P, p: P, q: P): number | null {
 }
 
 // ---------- PLANTA ----------
-export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | null {
+/** `mini`: planta chica (recuadro dentro de la vista 3D): sin leyenda, título ni escala; solo el número de cada estructura. */
+export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true, mini = false): Vista | null {
   if (r.azimut == null) return null;
   const B = r.ancho ?? 5, L = Math.max(3.2 * B, 14), av = Math.min(Math.max(r.avance ?? 3, 1.5), B * 1.2), az = rad(r.azimut);
   const u: P = [Math.sin(az), Math.cos(az)], v: P = [Math.cos(az), -Math.sin(az)];   // u: avance, v: derecha
@@ -309,7 +310,7 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | nu
       const c: P = [o[0] + tk[0] * m + dx * B * 0.08, o[1] + tk[1] * m - B * 0.03], n = choca(cajaTexto(c, sd, 5.5, 'centro')) * 1 + Math.abs(dx) * 0.3 + (m - 1.9) * 0.2;
       if (n < mejorD) { mejorD = n; pd = c; }
     }
-    prims.push({ t: 'texto', p: pd, s: sd, tam: 5.5, color: st.borde, ancla: 'centro', fondo: true });
+    if (!mini) prims.push({ t: 'texto', p: pd, s: sd, tam: 5.5, color: st.borde, ancla: 'centro', fondo: true });
     ocupadas.push(cajaTexto(pd, sd, 5.5, 'centro'));
   }
   // número y rótulo: se prueba en ambos extremos y a varias distancias; gana el sitio más despejado
@@ -327,6 +328,7 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | nu
     const { p, an, c } = mejor!;
     ocupadas.push(c);
     const numAncho = 8 * mpp;
+    if (mini) { prims.push({ t: 'texto', p, s: `${f.abrev}${f.n}`, tam: 5.4, negrita: true, color: st.borde, ancla: an, fondo: true }); continue; }
     if (an === 'izq') {
       prims.push({ t: 'texto', p, s: `${f.n}`, tam: 7, negrita: true, color: st.borde, ancla: 'izq' });
       prims.push({ t: 'texto', p: [p[0] + numAncho, p[1]], s: txt, tam: 5, color: st.borde, ancla: 'izq', fondo: true });
@@ -335,13 +337,14 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true): Vista | nu
       prims.push({ t: 'texto', p: [p[0] - numAncho, p[1]], s: txt, tam: 5, color: st.borde, ancla: 'der', fondo: true });
     }
   }
-  leyenda(prims, r, rmr, [caja[0] + w * 0.015, caja[1] + h * 0.02], mpp);
+  if (!mini) leyenda(prims, r, rmr, [caja[0] + w * 0.015, caja[1] + h * 0.02], mpp);
   const manijas: Manija[] = lineas.map(l => ({ n: l.f.n, abrev: l.f.abrev, o: l.o, d: l.d, R, u, v }));
   if (norte) {
     const nx = caja[2] - w * 0.07, ny = caja[3] - h * 0.06;
     prims.push({ t: 'poly', pts: [[nx, ny - h * 0.13], [nx - w * 0.018, ny - h * 0.13], [nx, ny]], cerrado: true, relleno: '#000000' }, { t: 'poly', pts: [[nx, ny - h * 0.13], [nx + w * 0.018, ny - h * 0.13], [nx, ny]], cerrado: true, borde: '#000000', ancho: 0.5 });
-    prims.push({ t: 'texto', p: [nx, ny + h * 0.015], s: 'N', tam: 6.5, negrita: true, ancla: 'centro' });
+    prims.push({ t: 'texto', p: [nx, ny + h * 0.015], s: 'N', tam: mini ? 6 : 6.5, negrita: true, ancla: 'centro' });
   }
+  if (mini) return { prims, caja, notas: [], manijas };
   prims.push({ t: 'texto', p: [caja[0] + w * 0.03, caja[3] - h * 0.07], s: `${r.labor || 'Labor'} · Az ${Math.round(r.azimut)}°`, tam: 5.5, negrita: true, color: GRIS, ancla: 'izq' });
   escala(prims, [caja[0] + w * 0.04, caja[3] - h * 0.17], w * 0.22);
   return { prims, caja, notas: [], manijas };

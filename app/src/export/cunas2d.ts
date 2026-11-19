@@ -45,13 +45,24 @@ export interface Analisis {
 export const espDeRmr = (pts: number | null | undefined) => pts == null ? null : pts >= 20 ? 2.5 : pts >= 15 ? 1.0 : pts >= 10 ? 0.4 : pts >= 8 ? 0.13 : 0.05;
 const MAX_LINEAS = 90, MAX_BLOQUES = 400;
 
-const cache = new WeakMap<Reporte, Analisis | null>();
-export function analizarCunas(r: Reporte): Analisis | null {
-  if (cache.has(r)) return cache.get(r)!;
-  const a = calcular(r); cache.set(r, a); return a;
+const cache = new WeakMap<Reporte, Map<string, Analisis | null>>();
+/** Opciones del análisis en otra sección de la labor (vista 3D): `sSec` m detrás del frente; `ubicar` lleva la
+ *  falla que no corta el frente a la sección donde sí corta (solo para el frente); `rapido` usa una grilla más gruesa. */
+export interface OpcSeccion { sSec?: number; ubicar?: boolean; rapido?: boolean }
+export function analizarCunas(r: Reporte, o: OpcSeccion = {}): Analisis | null {
+  const k = `${o.sSec ?? 0}|${o.ubicar !== false}|${!!o.rapido}`;
+  let m = cache.get(r); if (!m) { m = new Map(); cache.set(r, m); }
+  if (m.has(k)) return m.get(k)!;
+  const a = calcular(r, o.sSec ?? 0, o.ubicar !== false, !!o.rapido); m.set(k, a); return a;
 }
 
-function calcular(r: Reporte): Analisis | null {
+/** Normal del plano en ejes de la labor: a = hacia la derecha, b = arriba, nu = hacia el avance. */
+export function planoLocal(dip: number, dipdir: number, az: number) {
+  const N = [Math.sin(rad(dip)) * Math.sin(rad(dipdir)), Math.sin(rad(dip)) * Math.cos(rad(dipdir)), Math.cos(rad(dip))] as const;
+  return { a: N[0] * Math.cos(rad(az)) - N[1] * Math.sin(rad(az)), b: N[2], nu: N[0] * Math.sin(rad(az)) + N[1] * Math.cos(rad(az)) };
+}
+
+function calcular(r: Reporte, sSec = 0, ubicar = true, rapido = false): Analisis | null {
   if (!r.ancho || !r.alto || r.azimut == null) return null;
   const B = r.ancho, H = r.alto, az = r.azimut, fams = familiasMedidas(r);
   if (fams.length < 2) return null;
@@ -92,8 +103,10 @@ function calcular(r: Reporte): Analisis | null {
     // fallas, vetas y contactos: una sola traza (la estructura mapeada), no una red
     // falla/veta/contacto movida a mano en la planta: su traza en el frente; si en el frente queda fuera de la
     // labor, se muestra en la sección del último avance donde sí la corta (es donde afecta a la excavación)
-    let fija = trazaSeccion(f, r); // con pos (movida a mano en la planta)
-    if (fija && f.abrev !== 'SD') {
+    // la traza se corre al pasar a otra sección: c(sSec) = c0 + σ·(nu/proy)·sSec (σ: sentido de n respecto de la normal)
+    const pl = planoLocal(f.dip, f.dipdir, az), sg = n[0] * pl.a + n[1] * pl.b >= 0 ? 1 : -1, sh = sg * (pl.nu / proy) * sSec;
+    let fija = trazaSeccion(f, r, sSec); // con pos (movida a mano en la planta)
+    if (fija && f.abrev !== 'SD' && ubicar && sSec === 0) {
       const dist = (t: { o: P; d: P } | null) => t ? (t.o[0] * t.d[1] - (t.o[1] - H / 2) * t.d[0]) : 0;
       const d0 = dist(fija), t1 = trazaSeccion(f, r, 1), pend = dist(t1) - d0, av = Math.max(0, r.avance ?? 0);
       if (Math.abs(d0) > B / 2 + 0.3 && av > 0 && Math.abs(pend) > 1e-6) {
@@ -104,8 +117,8 @@ function calcular(r: Reporte): Analisis | null {
     const azarF = f.abrev === 'SD' ? 0 : rnd(); // mismo orden de azar que antes: la red de diaclasas no cambia al mover una falla
     const offs = f.abrev === 'SD' ? (() => {
       // diaclasas: red con su espaciamiento; si se movió en la planta, una de sus trazas pasa por esa posición
-      const fase = rnd(), ini = fija ? c0 - R + ((((n[0] * fija.o[0] + n[1] * fija.o[1]) - (c0 - R)) % paso) + paso) % paso : c0 - R + fase * paso;
-      const o: number[] = []; for (let c = ini; c <= c0 + R; c += paso) o.push(c); return o; })() : [fija ? n[0] * fija.o[0] + n[1] * fija.o[1] : c0 + (azarF - 0.5) * B * 0.4];
+      const fase = rnd(), ini = fija ? c0 - R + ((((n[0] * fija.o[0] + n[1] * fija.o[1]) - (c0 - R)) % paso) + paso) % paso : c0 - R + (((fase * paso + sh) % paso) + paso) % paso;
+      const o: number[] = []; for (let c = ini; c <= c0 + R; c += paso) o.push(c); return o; })() : [fija ? n[0] * fija.o[0] + n[1] * fija.o[1] : c0 + (azarF - 0.5) * B * 0.4 + sh];
     for (const c of offs) {
       const o: P = [n[0] * c + d[0] * (d[0] * cx + d[1] * cy), n[1] * c + d[1] * (d[0] * cx + d[1] * cy)];
       lineas.push({ fam: f, a: [o[0] - d[0] * R * 1.5, o[1] - d[1] * R * 1.5], b: [o[0] + d[0] * R * 1.5, o[1] + d[1] * R * 1.5] });
@@ -116,7 +129,7 @@ function calcular(r: Reporte): Analisis | null {
   const lado = Math.max(...real.map(p => Math.abs(p[0]))), techo = Math.max(...real.map(p => p[1]));
   const zC = lim('CORONA'), zH = lim('HI');
   const X0 = -(lado + zH + 0.2), X1 = lado + zH + 0.2, Y0 = 0, Y1 = techo + zC + 0.2;
-  const px = Math.max(0.012, Math.max(X1 - X0, Y1 - Y0) / 650), nx = Math.ceil((X1 - X0) / px), ny = Math.ceil((Y1 - Y0) / px), NT = nx * ny;
+  const px = Math.max(rapido ? 0.02 : 0.012, Math.max(X1 - X0, Y1 - Y0) / (rapido ? 340 : 650)), nx = Math.ceil((X1 - X0) / px), ny = Math.ceil((Y1 - Y0) / px), NT = nx * ny;
   const EXC = -2, BAR = -3, LEJOS = -4;
   const lab = new Int32Array(NT).fill(-1), barra = new Int32Array(NT).fill(-1);
   const xc = (i: number) => X0 + (i + 0.5) * px, yc = (j: number) => Y0 + (j + 0.5) * px;

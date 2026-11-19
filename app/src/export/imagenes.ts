@@ -48,7 +48,22 @@ async function lienzoAPng(w: number, h: number, pinta: (ctx: CanvasRenderingCont
 }
 
 /** `modelo`: vistas para la hoja única del reporte modelo (sección compacta, cajas de esa hoja). */
-export async function vistasPng(r: Reporte, modelo = false): Promise<{ planta?: Uint8Array; seccion?: Uint8Array; fs?: Uint8Array; errores?: string[] }> {
+/** Perspectiva 3D (JPEG) con la planta chica arriba a la izquierda, del tamaño w × h (px). */
+async function plantaConPerspectivaPng(r: Reporte, rmr: Partial<Record<'HI' | 'CORONA' | 'HD', number | null>>, img: Uint8Array, w: number, h: number): Promise<Uint8Array> {
+  const bm = await createImageBitmap(new Blob([img as BlobPart], { type: 'image/jpeg' }));
+  return lienzoAPng(w, h, ctx => {
+    const k = Math.min(w / bm.width, h / bm.height), iw = bm.width * k, ih = bm.height * k, x0 = (w - iw) / 2, y0 = (h - ih) / 2;
+    ctx.drawImage(bm, x0, y0, iw, ih);
+    const iwI = iw * 0.3, ihI = ih * 0.36, xi = x0 + 6, yi = y0 + 6;
+    ctx.fillStyle = 'rgba(255,255,255,.96)'; ctx.strokeStyle = '#7F8A97'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(xi, yi, iwI, ihI, 8); ctx.fill(); ctx.stroke();
+    const mini = vistaPlanta(r, rmr, true, true);
+    if (mini) dibujarCanvas(ctx, mini, xi + 2, yi + 14, iwI - 4, ihI - 16);
+    ctx.fillStyle = '#0D2A6B'; ctx.font = `700 ${Math.round(ihI * 0.06)}px Helvetica, Arial, sans-serif`; ctx.textAlign = 'left'; ctx.fillText('PLANTA', xi + 8, yi + ihI * 0.075);
+  });
+}
+
+export async function vistasPng(r: Reporte, modelo = false, img3d?: Uint8Array): Promise<{ planta?: Uint8Array; seccion?: Uint8Array; fs?: Uint8Array; errores?: string[] }> {
   const z = calcular(r).zonas, rmr = { HI: z.HI.total, CORONA: z.CORONA.total, HD: z.HD.total };
   const out: { planta?: Uint8Array; seccion?: Uint8Array; fs?: Uint8Array; errores?: string[] } = {};
   const err = (q: string, e: unknown) => { (out.errores ??= []).push(`${q}: ${e instanceof Error ? e.message : String(e)}`); };
@@ -57,7 +72,8 @@ export async function vistasPng(r: Reporte, modelo = false): Promise<{ planta?: 
   const wP = cP.w * k, hP = cP.h * k, wS = cS.w * k, hS = cS.h * k;
   try {
     const pl = vistaPlanta(r, rmr, true);
-    if (pl) out.planta = await lienzoAPng(wP, hP, ctx => dibujarCanvas(ctx, pl, 0, 0, wP, hP));
+    if (img3d) out.planta = await plantaConPerspectivaPng(r, rmr, img3d, wP, hP).catch(() => undefined);
+    if (pl && !out.planta) out.planta = await lienzoAPng(wP, hP, ctx => dibujarCanvas(ctx, pl, 0, 0, wP, hP));
   } catch (e) { err('planta', e); }
   try {
     const a = vistaCunas(r, rmr, 'antes', (wS / 2) / hS), d = vistaCunas(r, rmr, 'despues', (wS / 2) / hS);
