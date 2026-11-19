@@ -18,6 +18,7 @@ import { textoFamilia } from '../ia/anotacion';
 import { entregar, nombreArchivo, MIME_PDF, MIME_XLSX } from '../export/compartir';
 import { aSvg, vistaSeccion } from '../export/croquis';
 import { PlantaEditable } from './PlantaEditable';
+import { Visor3D } from './Visor3D';
 import { analizarCunas, fsTxt, graficoFS, resumen as resumenCunas, vistaCunas } from '../export/cunas2d';
 import { aplicarPlantilla, plantillaTipo, revisarTipo } from '../ia/plantilla-roca';
 import type { TipoRoca } from '../core/rmr';
@@ -226,6 +227,8 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
               <h3>Vista planta y vista sección</h3>
               <p className="tenue">Calculadas con el dip / dip direction de cada estructura, el azimut, la sección y la excavación real. Así salen en el PDF.</p>
               <PlantaEditable r={r} rz={rz} onMover={cs => setR(p => ({ ...p, familias: p.familias.map((f, i) => { const x = cs.find(c => c.n === i + 1); return x ? { ...f, pos: x.pos } : f; }) }))} />
+              <h3>Vista 3D: cuñas a lo largo del avance</h3>
+              <Visor3D r={r} rz={rz} />
               {va && vd ? <>
                 <h3>Sección: antes del desatado y con sostenimiento</h3>
                 <div className="rejilla2 secciones">
@@ -647,18 +650,22 @@ function Descargas({ r, listas, onEnviar }: { r: Reporte; listas: Listas; onEnvi
   const bajar = async (tipo: 'xlsx' | 'pdf', modelo = false) => {
     setMsg('Generando…'); setListo(null);
     try {
+      // vista 3D antes del desatado (si el equipo no tiene WebGL, el reporte sale con la planta 2D)
+      setMsg('Generando la vista 3D…');
+      const cz = calcular(r).zonas, img3d = await (await import('../export/imagenes3d')).imagenes3d(r, { HI: cz.HI.total, CORONA: cz.CORONA.total, HD: cz.HD.total }).catch(() => null);
+      setMsg('Generando…');
       if (modelo) {
         let datos: Uint8Array;
         const mx = await import('../export/modeloXlsx');
         // logos de AESA y Marcobre desde la plantilla oficial que ya trae la app
         const logos = await fetch('./plantilla/formato.xlsx').then(x => x.ok ? x.arrayBuffer() : null).then(b => b ? mx.logosDePlantilla(new Uint8Array(b)) : {}).catch(() => ({}));
-        if (tipo === 'pdf') datos = await (await import('../export/modeloPdf')).generarModeloPdf(r, listas, logos);
+        if (tipo === 'pdf') datos = await (await import('../export/modeloPdf')).generarModeloPdf(r, listas, { ...logos, img3d });
         else {
           const im = await import('../export/imagenes');
-          const v = await im.vistasPng(r, true).catch(() => ({} as { planta?: Uint8Array; seccion?: Uint8Array }));
+          const v = await im.vistasPng(r, true, img3d?.apaisada ?? img3d?.caja).catch(() => ({} as { planta?: Uint8Array; seccion?: Uint8Array }));
           const fr = (r.fotos ?? []).find(x => x.zona === 'FRENTE') ?? r.fotos?.[0];
           const frente = fr ? await im.fotoConTrazas(r, fr).catch(() => null) : null;
-          datos = await mx.generarModeloXlsx(r, listas, { ...logos, planta: v.planta, seccion: v.seccion, fs: (v as { fs?: Uint8Array }).fs, frente: frente ?? undefined });
+          datos = await mx.generarModeloXlsx(r, listas, { ...logos, planta: v.planta, seccion: v.seccion, fs: (v as { fs?: Uint8Array }).fs, frente: frente ?? undefined, con3d: !!img3d?.caja && !!v.planta });
         }
         const { nombreModelo } = await import('../export/modelo');
         const nombre = nombreModelo(r, tipo), mime = tipo === 'xlsx' ? MIME_XLSX : MIME_PDF, t = tipo === 'xlsx' ? 'Excel' : 'PDF';
@@ -670,10 +677,10 @@ function Descargas({ r, listas, onEnviar }: { r: Reporte; listas: Listas; onEnvi
       }
       const plantilla = await fetch(`./plantilla/formato.${tipo}`).then(x => { if (!x.ok) throw new Error('No se encontró la plantilla'); return x.arrayBuffer(); });
       let aviso = '';
-      const vistas = tipo === 'xlsx' ? await (await import('../export/imagenes')).vistasPng(r).catch(e => ({ errores: [String(e)] } as { errores: string[]; planta?: undefined; seccion?: undefined })) : null;
+      const vistas = tipo === 'xlsx' ? await (await import('../export/imagenes')).vistasPng(r, false, img3d?.caja).catch(e => ({ errores: [String(e)] } as { errores: string[]; planta?: undefined; seccion?: undefined })) : null;
       if (vistas && r.familias.some(f => f.dip != null && f.dipdir != null) && (!vistas.planta || !vistas.seccion))
         aviso = ` Ojo: el Excel salió sin ${!vistas.planta && !vistas.seccion ? 'las vistas' : !vistas.planta ? 'la vista en planta' : 'la vista en sección'}${vistas.errores?.length ? ` (${vistas.errores.join('; ')})` : '; revise azimut, ancho y alto'}.`;
-      const datos = tipo === 'xlsx' ? await (await import('../export/xlsx')).generarXlsx(r, plantilla, vistas ?? {}) : await (await import('../export/pdf')).generarPdf(r, plantilla);
+      const datos = tipo === 'xlsx' ? await (await import('../export/xlsx')).generarXlsx(r, plantilla, vistas ?? {}) : await (await import('../export/pdf')).generarPdf(r, plantilla, img3d);
       const nombre = nombreArchivo(r, tipo), mime = tipo === 'xlsx' ? MIME_XLSX : MIME_PDF;
       const res = await entregar(datos, nombre, mime);
       if (res === 'tocar') { setListo({ datos, nombre, mime, tipo: tipo === 'xlsx' ? 'Excel' : 'PDF' }); setMsg(`Listo. Toque el botón para guardar o enviar el ${tipo === 'xlsx' ? 'Excel' : 'PDF'}.${aviso}`); return; }

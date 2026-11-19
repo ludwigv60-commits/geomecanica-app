@@ -8,6 +8,8 @@ import { alargar, colorFamilia, rotulos, textoFamilia } from '../ia/anotacion';
 import { aPuntos, vistaPlanta, vistaSeccion, type Vista } from './croquis';
 import { COLOR_CAE, COLOR_RIESGO, analizarCunas, fsTxt, graficoFS, resumen, tablaCunas, vistaCunas } from './cunas2d';
 import { calcular } from '../calc';
+import type { Imagenes3D } from './imagenes3d';
+import { hojaCunas3D, plantaConPerspectiva } from './hoja3d';
 
 const TINTA = rgb(0.05, 0.2, 0.62); // azul lapicero, como en los reportes llenados a mano
 const celdas = MAPA.celdas as unknown as Record<string, [number, number, number, number]>;
@@ -51,7 +53,8 @@ function escribir(page: PDFPage, font: PDFFont, rect: [number, number, number, n
   page.drawText(t, { x, y: y0 + (alto - size * 0.7) / 2, size, font, color: TINTA });
 }
 
-export async function generarPdf(r: Reporte, plantilla: ArrayBuffer | Uint8Array): Promise<Uint8Array> {
+/** `img3d`: imágenes de la vista 3D (solo en el navegador); sin ellas sale la planta 2D y no va la hoja 3D. */
+export async function generarPdf(r: Reporte, plantilla: ArrayBuffer | Uint8Array, img3d?: Imagenes3D | null): Promise<Uint8Array> {
   const doc = await PDFDocument.load(plantilla);
   const page = doc.getPage(0);
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -79,7 +82,8 @@ export async function generarPdf(r: Reporte, plantilla: ArrayBuffer | Uint8Array
     page.drawEllipse({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, xScale: Math.max(6, (x1 - x0) / 2 - 1.5), yScale: Math.max(3.2, (y1 - y0) / 2 + 0.6), borderColor: TINTA, borderWidth: 0.9 });
   }
   const negrita = await doc.embedFont(StandardFonts.HelveticaBold);
-  croquis(page, font, negrita, r);
+  await croquis(doc, page, font, negrita, r, img3d);
+  if (img3d) await hojaCunas3D(doc, font, negrita, r, img3d);
   anexoCunas(doc, font, negrita, r);
   await anexoFotos(doc, font, r);
   doc.setTitle(`Indicación Geomecánica ${r.labor} ${r.desde}`);
@@ -165,11 +169,13 @@ export const rmrDe = (r: Reporte) => { const z = calcular(r).zonas; return { HI:
 
 /** Vista planta y vista sección en los recuadros del formato. La sección va en dos: ANTES del desatado
  *  (sin sostener, con las cuñas y su riesgo) y DESPUÉS (con shotcrete y pernos, con su FS). */
-function croquis(page: PDFPage, font: PDFFont, negrita: PDFFont, r: Reporte) {
+async function croquis(doc: PDFDocument, page: PDFPage, font: PDFFont, negrita: PDFFont, r: Reporte, img3d?: Imagenes3D | null) {
   const rmr = rmrDe(r), Hp = page.getHeight();
   // Recuadros medidos en la plantilla (puntos, y hacia abajo): planta x 20–300, sección x 300–574, y 398–615.
+  // Vista planta: la perspectiva 3D antes del desatado con la planta chica en la esquina (o la planta 2D si no hay 3D).
   const pl = vistaPlanta(r, rmr, false);
-  if (pl) dibujarVista(page, font, negrita, pl, [21, 399, 299, 614]);
+  if (img3d?.caja) await plantaConPerspectiva(doc, page, font, negrita, r, rmr, img3d.caja, [21, 399, 299, 614]);
+  else if (pl) dibujarVista(page, font, negrita, pl, [21, 399, 299, 614]);
   const antes = vistaCunas(r, rmr, 'antes', 135 / 214), despues = vistaCunas(r, rmr, 'despues', 135 / 214);
   if (antes && despues) {
     page.drawRectangle({ x: 300.6, y: Hp - 614.4, width: 272.8, height: 215.8, color: rgb(1, 1, 1) }); // tapa el contorno impreso

@@ -20,6 +20,10 @@ export interface RecursosModelo {
   planta?: Uint8Array; seccion?: Uint8Array; frente?: Uint8Array; fs?: Uint8Array; frenteAspecto?: number;
   /** Dibujo en vectores para el PDF (caja en puntos, y hacia abajo). */
   pdf?: { planta?: ImagenLibro['pdf']; seccion?: ImagenLibro['pdf']; frente?: ImagenLibro['pdf']; fs?: ImagenLibro['pdf'] };
+  /** La vista planta va como perspectiva 3D antes del desatado (con la planta chica en la esquina). */
+  con3d?: boolean;
+  /** Imágenes 3D (solo para el PDF: la hoja A4 de la vista 3D). */
+  img3d?: import('./imagenes3d').Imagenes3D | null;
 }
 
 const num = (v: number | null | undefined, d = 0): string | number => (v == null ? '' : d ? Number(v.toFixed(d)) : v);
@@ -111,7 +115,7 @@ export function hojaModelo(r: Reporte, listas: Partial<Listas> | undefined, rec:
   const cF = asp < 0.95 ? 7 : asp < 1.2 ? 9 : 12;            // columnas de la foto
   const anchoF = cF * L.anchoDe(0), filasF = Math.min(15, Math.max(12, Math.round(anchoF / asp / 11)));
   const f0 = 33, f1 = f0 + filasF - 1, fc = f1 + 1;
-  alto(32, 32, 12); banda(32, 0, cF - 1, 'FOTOGRAFÍA DEL FRENTE'); banda(32, cF, 23, 'VISTA PLANTA');
+  alto(32, 32, 12); banda(32, 0, cF - 1, 'FOTOGRAFÍA DEL FRENTE'); banda(32, cF, 23, rec.con3d ? 'VISTA PLANTA · PERSPECTIVA 3D (ANTES DEL DESATADO)' : 'VISTA PLANTA');
   alto(f0, f1, 11);
   put(f0, 0, cF - 1, rec.frente || rec.pdf?.frente ? '' : 'Sin fotografía del frente', { tam: 6 }, f1);
   put(f0, cF, 23, rec.planta || rec.pdf?.planta ? '' : 'Falta azimut y estructuras', { tam: 6 }, f1);
@@ -119,7 +123,7 @@ export function hojaModelo(r: Reporte, listas: Partial<Listas> | undefined, rec:
   if (rec.planta || rec.pdf?.planta) L.imagen(rec.planta, 'png', [cF, f0, 24, f1 + 1], rec.pdf?.planta);
   alto(fc, fc, 10);
   put(fc, 0, cF - 1, 'Amarillo: diaclasas · rojo: fallas', { tam: 5, i: true });
-  put(fc, cF, 23, `${d.labor || 'Labor'}${d.azimut != null ? ` · Az ${Math.round(d.azimut)}°` : ''} · fallas, vetas y contactos en su posición`, { tam: 5.2, i: true });
+  put(fc, cF, 23, rec.con3d ? `${d.labor || 'Labor'} · ${d.desde || '—'} a ${d.hasta || '—'} · cuñas por riesgo a lo largo del avance; planta (norte arriba) en la esquina` : `${d.labor || 'Labor'}${d.azimut != null ? ` · Az ${Math.round(d.azimut)}°` : ''} · fallas, vetas y contactos en su posición`, { tam: 5.2, i: true });
 
   // ---- sección antes del desatado | con sostenimiento, cada una con su factor de seguridad ----
   const b0 = fc + 1, s0 = b0 + 1, s1 = s0 + 13, sc = s1 + 1;
