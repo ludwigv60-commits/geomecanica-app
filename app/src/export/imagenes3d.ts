@@ -20,9 +20,9 @@ export async function imagenes3d(r: Reporte, rmr: RmrZonas): Promise<Imagenes3D 
   try {
     const [{ escena3d }, { imagen3d }] = await Promise.all([import('./escena3d'), import('./render3d')]);
     const e = escena3d(r, rmr); if (!e) return null;
-    const caja = await imagen3d(e, { w: 1500, h: 1186, preset: 'lateral', tema: 'claro', correr: [0.11, -0.02], zoom: 0.94, rotulos: 1.45 });
+    const caja = await imagen3d(e, { w: 1500, h: 1186, preset: 'lateral', tema: 'claro', correr: [0.19, -0.03], zoom: 0.9, rotulos: 1.45 });
     if (!caja) return null;
-    const apaisada = await imagen3d(e, { w: 2200, h: 900, preset: 'lateral', tema: 'claro', correr: [0.1, -0.02], zoom: 1.22, rotulos: 1.7 });
+    const apaisada = await imagen3d(e, { w: 2200, h: 900, preset: 'lateral', tema: 'claro', correr: [0.14, -0.02], zoom: 1.15, rotulos: 1.7 });
     const ancho = await imagen3d(e, { w: 2200, h: 1100, preset: 'lateral', tema: 'claro', correr: [0.06, -0.01], zoom: 1.1, rotulos: 1.1 });
     const frente = await imagen3d(e, { w: 1000, h: 1000, preset: 'frente', tema: 'claro', capas: { anterior: false }, zoom: 1.05, rotulos: 1.7 });
     const { conteo, volCae, pesoCae, volTotal, tramos, L, familias, zi, tipo } = e;
