@@ -54,7 +54,7 @@ async function plantaConPerspectivaPng(r: Reporte, rmr: Partial<Record<'HI' | 'C
   return lienzoAPng(w, h, ctx => {
     const k = Math.min(w / bm.width, h / bm.height), iw = bm.width * k, ih = bm.height * k, x0 = (w - iw) / 2, y0 = (h - ih) / 2;
     ctx.drawImage(bm, x0, y0, iw, ih);
-    const iwI = iw * 0.3, ihI = ih * 0.36, xi = x0 + 6, yi = y0 + 6;
+    const ihI = ih * 0.56, iwI = Math.min(iw * 0.44, ihI * 1.25), xi = x0 + 6, yi = y0 + 6;
     ctx.fillStyle = 'rgba(255,255,255,.96)'; ctx.strokeStyle = '#7F8A97'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.roundRect(xi, yi, iwI, ihI, 8); ctx.fill(); ctx.stroke();
     const mini = vistaPlanta(r, rmr, true, true);

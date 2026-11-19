@@ -265,7 +265,7 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true, mini = fals
     { t: 'poly', pts: [en(-av, -B / 2), en(-av, B / 2)], borde: GRIS, ancho: 0.4, trazos: [2, 1.5] },
   ];
   const fams = familiasMedidas(r), R = B * 1.35;
-  const cx = en(-av * 0.5, 0), ext = Math.max(R * 1.25, L * 0.62);
+  const cx = en(-av * 0.5, 0), ext = mini ? R * 0.9 : Math.max(R * 1.25, L * 0.62);
   const caja: Vista['caja'] = [cx[0] - ext, cx[1] - ext * 0.78, cx[0] + ext, cx[1] + ext * 0.78];
   const w = caja[2] - caja[0], h = caja[3] - caja[1], mpp = w / 278;  // metros por punto en el PDF
   // cajas ocupadas por textos y trazos ya puestos, para que los rótulos no se monten
@@ -283,7 +283,8 @@ export function vistaPlanta(r: Reporte, rmr: RmrZonas, norte = true, mini = fals
     for (const [a, b] of trazos) for (let i = 0; i <= 24; i++) { const x = a[0] + ((b[0] - a[0]) * i) / 24, y = a[1] + ((b[1] - a[1]) * i) / 24; if (x > c[0] && x < c[2] && y > c[1] && y < c[3]) { n += 1; break; } }
     return n;
   };
-  ocupadas.push([caja[0], caja[3] - h * 0.2, caja[0] + w * 0.45, caja[3]], [caja[2] - w * 0.12, caja[3] - h * 0.25, caja[2], caja[3]], [caja[0], caja[1], caja[0] + w * 0.36, caja[1] + h * 0.47]);
+  if (mini) ocupadas.push([caja[2] - w * 0.12, caja[3] - h * 0.25, caja[2], caja[3]]);
+  else ocupadas.push([caja[0], caja[3] - h * 0.2, caja[0] + w * 0.45, caja[3]], [caja[2] - w * 0.12, caja[3] - h * 0.25, caja[2], caja[3]], [caja[0], caja[1], caja[0] + w * 0.36, caja[1] + h * 0.47]);
   frente.slice(1, -1).forEach((p, i, a) => { if (i) trazos.push([a[i - 1]!, p]); });
   const lineas = fams.map((f, k) => {
     const rumbo = rad(f.dipdir - 90), d: P = [Math.sin(rumbo), Math.cos(rumbo)];

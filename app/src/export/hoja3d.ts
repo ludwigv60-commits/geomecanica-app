@@ -33,11 +33,11 @@ function imagenEn(page: PDFPage, im: PDFImage, [x0, y0, x1, y1]: Caja) {
 /** Recuadro de la VISTA PLANTA del formato: perspectiva 3D (antes del desatado) con la planta chica arriba a la izquierda. */
 export async function plantaConPerspectiva(doc: PDFDocument, page: PDFPage, font: PDFFont, negrita: PDFFont, r: Reporte, rmr: RmrZonas, img: Uint8Array, caja: Caja) {
   const im = await embeber(doc, img), [x0, y0, x1, y1] = imagenEn(page, im, caja), H = page.getHeight();
-  const w = x1 - x0, h = y1 - y0, ins: Caja = [x0 + 3, y0 + 3, x0 + 3 + w * 0.3, y0 + 3 + h * 0.36];
+  const w = x1 - x0, h = y1 - y0, ih = h * 0.56, iw = Math.min(w * 0.44, ih * 1.25), ins: Caja = [x0 + 3, y0 + 3, x0 + 3 + iw, y0 + 3 + ih];
   redondo(page, ins, 3, { relleno: '#FFFFFF', borde: '#7F8A97', ancho: 0.5, opac: 0.96 });
   const mini = vistaPlanta(r, rmr, true, true);
   if (mini) dibujarVista(page, font, negrita, mini, [ins[0] + 1, ins[1] + 7, ins[2] - 1, ins[3] - 1]);
-  page.drawText('PLANTA', { x: ins[0] + 3, y: H - ins[1] - 6, size: 4.6, font: negrita, color: hex(NAVY) });
+  page.drawText('PLANTA', { x: ins[0] + 3, y: H - ins[1] - 6, size: 5.2, font: negrita, color: hex(NAVY) });
   const t = limpiar('PERSPECTIVA 3D · ANTES DEL DESATADO'), tw = negrita.widthOfTextAtSize(t, 5);
   void font;
   redondo(page, [x1 - tw - 9, y1 - 11, x1 - 3, y1 - 3], 3, { relleno: '#FFFFFF', opac: 0.9, borde: '#9E1B1B', ancho: 0.4 });
