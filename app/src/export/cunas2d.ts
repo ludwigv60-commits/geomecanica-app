@@ -316,13 +316,15 @@ export function vistaCunas(r: Reporte, rmr: RmrZonas, modo: 'antes' | 'despues',
   const lado = Math.max(...a.real.map(p => Math.abs(p[0]))), techo = Math.max(...a.real.map(p => p[1]));
   const zC = a.zi?.corona ?? 0.6, zH = a.zi?.hastial ?? 0.6;
   // ventana: el túnel con su zona de influencia arriba y, bajo el piso, espacio para el panel de resultados
-  const fL = Math.max(1, Math.sqrt(aspecto / 0.63)), filas = compacto ? 0.6 : 6.2 * fL; // en recuadros apaisados las líneas de texto piden más alto
+  const fL = Math.max(1, Math.sqrt(aspecto / 0.63)), filas = compacto ? 0.6 : 5.1 * fL; // en recuadros apaisados las líneas de texto piden más alto
   let top = techo + zC + Math.max(0.5, H * 0.16);
   let ancho = 2 * (lado + zH) + B * 0.16, alto = ancho / aspecto;
   const altoMin = (top + 0.12) / (1 - filas * 0.03);
   if (alto < altoMin) { alto = altoMin; ancho = alto * aspecto; }
   // compacto: el túnel centrado en la caja (sin panel abajo)
   if (compacto) { const sobra = alto - (top + 0.12); if (sobra > 0) top += sobra / 2; }
+  // recuadro más alto que lo necesario: la sobra va a la roca sobre la corona, así el panel queda pegado abajo sin blanco
+  else if (alto > altoMin) top += (alto - altoMin) * 0.92;
   const y0 = top - alto;
   const caja: Vista['caja'] = [-ancho / 2, y0, ancho / 2, top];
   const marco: P[] = [[caja[0], 0], [caja[2], 0], [caja[2], caja[3]], [caja[0], caja[3]]];
