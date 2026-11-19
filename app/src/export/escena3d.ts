@@ -123,7 +123,7 @@ export function escena3d(r: Reporte, rmr: RmrZonas, opc: { tramos?: number } = {
   if (!r.ancho || !r.alto || r.azimut == null) return null;
   const a0 = analizarCunas(r, { ubicar: false }); if (!a0) return null;
   const B = r.ancho, H = r.alto, az = r.azimut, fams = familiasMedidas(r);
-  const L = Math.min(12, Math.max(0.8, r.avance ?? 3)), Lant = Math.min(7, Math.max(3, B * 1.1));
+  const L = Math.min(12, Math.max(0.8, r.avance ?? 3)), Lant = 0; // solo el avance del reporte: sin labor anterior hacia el fondo
   const real = a0.real, nor = a0.nor;
   const mallas: Malla3[] = [], lineas: Linea3[] = [], rotulos: Rotulo3[] = [];
   const P3 = (p: P, z: number, haciaDentro = 0, i = -1): V3 => (i >= 0 ? [p[0] - nor[i]![0] * haciaDentro, p[1] - nor[i]![1] * haciaDentro, z] : [p[0], p[1], z]);
@@ -142,27 +142,19 @@ export function escena3d(r: Reporte, rmr: RmrZonas, opc: { tramos?: number } = {
       const p = real[i]!, q = real[i + 1]!, z0 = (L * j) / nz, z1 = (L * (j + 1)) / nz;
       vtx(p, z0); vtx(q, z0); vtx(q, z1); vtx(p, z0); vtx(q, z1); vtx(p, z1);
     }
-    mallas.push({ id: 'pared', capa: 'labor', pos, color: '#FFFFFF', opac: 0.8, colores: col });
+    mallas.push({ id: 'pared', capa: 'labor', pos, color: '#FFFFFF', opac: 0.16, colores: col }); // casi transparente: adentro ya no hay roca
     const piso: number[] = [], x0 = real[0]![0], x1 = real.at(-1)![0];
     tri(piso, [x0, 0, 0], [x1, 0, 0], [x1, 0, L]); tri(piso, [x0, 0, 0], [x1, 0, L], [x0, 0, L]);
-    mallas.push({ id: 'piso', capa: 'labor', pos: piso, color: '#8C8478', opac: 0.55 });
+    mallas.push({ id: 'piso', capa: 'labor', pos: piso, color: '#8C8478', opac: 0.22 });
     // frente: roca del color del tipo
-    // frente: roca del color del tipo con textura (grilla fina recortada al contorno)
-    const fr: number[] = [], fc: number[] = [], cf = rgb(cRoca), hx = 0.1, xa = Math.min(...real.map(p => p[0])), xb = Math.max(...real.map(p => p[0])), yb = Math.max(...real.map(p => p[1]));
-    const fv = (x: number, y: number) => { fr.push(x, y, 0); const k = 0.74 + 0.4 * ruido(x * 2.3, y * 2.3, 0.5) + 0.12 * ruido(x * 9, y * 9, 3) - 0.06; fc.push(cf[0] * k, cf[1] * k, cf[2] * k); };
-    for (let x = xa; x < xb - 1e-9; x += hx) for (let y = 0; y < yb - 1e-9; y += hx) {
-      const x1 = Math.min(xb, x + hx), y1 = Math.min(yb, y + hx);
-      if (!dentro([(x + x1) / 2, (y + y1) / 2], real)) continue;
-      fv(x, y); fv(x1, y); fv(x1, y1); fv(x, y); fv(x1, y1); fv(x, y1);
-    }
-    mallas.push({ id: 'frente', capa: 'frente', pos: fr, color: '#FFFFFF', opac: 0.82, colores: fc });
+    // frente: vacío (solo su contorno), el volumen excavado no se rellena
     // contornos del frente y del Desde, y aristas del piso
     lineas.push({ capa: 'labor', pts: real.map(p => P3(p, -0.002)), color: '#111111', ancho: 2.4 });
     lineas.push({ capa: 'labor', pts: real.map(p => P3(p, L)), color: '#333333', ancho: 1.6 });
     for (const p of [real[0]!, real.at(-1)!, real[Math.floor(real.length / 2)]!]) lineas.push({ capa: 'labor', pts: [P3(p, 0), P3(p, L)], color: '#444444', ancho: 1 });
   }
-  // ---- labor existente hacia atrás (fantasma) ----
-  {
+  // ---- labor existente hacia atrás (fantasma): desactivada, solo se muestra el avance ----
+  if (Lant > 0) {
     const pos: number[] = [];
     for (let i = 0; i + 1 < real.length; i++) { const p = real[i]!, q = real[i + 1]!; tri(pos, P3(p, L), P3(q, L), P3(q, L + Lant)); tri(pos, P3(p, L), P3(q, L + Lant), P3(p, L + Lant)); }
     mallas.push({ id: 'anterior', capa: 'anterior', pos, color: '#9AA3AD', opac: 0.07 });
@@ -177,7 +169,7 @@ export function escena3d(r: Reporte, rmr: RmrZonas, opc: { tramos?: number } = {
     for (const z of [0, L]) lineas.push({ capa: 'influencia', pts: lim.map(p => P3(p, z)), color: '#2F6FB3', ancho: 1.6, trazos: true });
     const pos: number[] = [];
     for (let i = 0; i + 1 < lim.length; i++) { const p = lim[i]!, q = lim[i + 1]!; tri(pos, P3(p, 0), P3(q, 0), P3(q, L)); tri(pos, P3(p, 0), P3(q, L), P3(p, L)); }
-    mallas.push({ id: 'influencia', capa: 'influencia', pos, color: '#2F6FB3', opac: 0.06 });
+    mallas.push({ id: 'influencia', capa: 'influencia', pos, color: cRoca, opac: 0.1 }); // roca alrededor, del color de su tipo
     const tope = lim.reduce((m, p) => (p[1] > m[1] ? p : m), lim[0]!);
     if (a0.zi) rotulos.push({ capa: 'influencia', p: [tope[0], tope[1] + 0.35, L * 0.5], s: `Zona de influencia ${Math.round(a0.zi.pct * 100)} % (${a0.zi.tipo})`, color: '#1F4E8C', tam: 0.9 });
   }
@@ -230,12 +222,7 @@ export function escena3d(r: Reporte, rmr: RmrZonas, opc: { tramos?: number } = {
         }
         corta();
       }
-      // sobre el frente (s = 0): n·p = c dentro del contorno
-      const d: P = [e.n[1], -e.n[0]], o: P = [e.n[0] * c, e.n[1] * c], Rr = Math.max(B, H) * 1.6, pts: P[] = [];
-      for (let k = 0; k <= 160; k++) { const t = -Rr + (2 * Rr * k) / 160, p: P = [o[0] + d[0] * t, o[1] + d[1] * t]; pts.push(p); }
-      let seg: V3[] = [];
-      for (const p of pts) { if (dentro(p, real)) seg.push([p[0], p[1], -0.008]); else { if (seg.length > 1) lineas.push({ capa, pts: seg, color: col, ancho: ancho * (esSD ? 0.6 : 0.9), opac: esSD ? 0.75 : 1 }); seg = []; } }
-      if (seg.length > 1) lineas.push({ capa, pts: seg, color: col, ancho: ancho * (esSD ? 0.6 : 0.9), opac: esSD ? 0.75 : 1 });
+      // (el frente no se rellena ni se traza: es volumen ya excavado, la roca está afuera)
     }
     // fallas, vetas y contactos: el plano entero (con su potencia) cortando la labor
     if (!esSD) {
@@ -243,7 +230,7 @@ export function escena3d(r: Reporte, rmr: RmrZonas, opc: { tramos?: number } = {
       const N = { a: e.n[0] * e.proy, b: e.n[1] * e.proy, nu: e.k * e.proy };
       const w = f.potencia && f.potencia >= 0.04 ? f.potencia / 2 : 0;
       for (const dd of w ? [-w, w] : [0]) {
-        const pol = planoEnCaja(N.a, N.b, N.nu, K0 + dd, x0, x1, 0, y1, -(L + Lant * 0.45), 0.9);
+        const pol = planoEnCaja(N.a, N.b, N.nu, K0 + dd, x0, x1, 0, y1, -(L + 0.15), 0.35);
         if (pol.length < 3) continue;
         const pos: number[] = []; for (let i = 1; i + 1 < pol.length; i++) tri(pos, pol[0]!, pol[i]!, pol[i + 1]!);
         mallas.push({ id: `plano${f.n}${dd}`, capa: 'fallas', pos, color: col, opac: w ? 0.11 : 0.15 });
@@ -362,8 +349,8 @@ export function escena3d(r: Reporte, rmr: RmrZonas, opc: { tramos?: number } = {
   if (tipo) rotulos.push({ capa: 'labor', p: [-(B / 2) - 0.2, H * 0.35, L * 0.55], s: `Roca ${tipo}${v != null ? ` · RMR ${Math.round(v)}` : ''}`, color: '#5A3A12', tam: 0.8, fondo: '#FFFFFF' });
   // piso: grilla de 1 m y norte
   const gx = Math.ceil(B / 2 + zH + 2.2);
-  for (let x = -gx; x <= gx; x++) lineas.push({ capa: 'piso', pts: [[x, 0, -2], [x, 0, L + Lant]], color: '#9AA0A6', ancho: 0.6, opac: 0.35 });
-  for (let z = -2; z <= Math.ceil(L + Lant); z++) lineas.push({ capa: 'piso', pts: [[-gx, 0, z], [gx, 0, z]], color: '#9AA0A6', ancho: 0.6, opac: 0.35 });
+  for (let x = -gx; x <= gx; x++) lineas.push({ capa: 'piso', pts: [[x, 0, -1], [x, 0, L + 1]], color: '#9AA0A6', ancho: 0.6, opac: 0.35 });
+  for (let z = -1; z <= Math.ceil(L + 1); z++) lineas.push({ capa: 'piso', pts: [[-gx, 0, z], [gx, 0, z]], color: '#9AA0A6', ancho: 0.6, opac: 0.35 });
   const norte: [number, number] = [-Math.sin((az * Math.PI) / 180), -Math.cos((az * Math.PI) / 180)]; // (X, Z) del norte
   {
     const c: V3 = [-(B / 2 + zH + 1.2), 0.03, -1.1], s = 0.75, nx = norte[0], nz = norte[1], ox = -nz, oz = nx;

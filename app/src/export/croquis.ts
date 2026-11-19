@@ -163,7 +163,9 @@ export function pernoInfo(txt: string): PernoInfo | null {
   if (largo == null || !/perno|split|helicoidal|bolt|swellex|cable/.test(t)) return null;
   const tipo = /cable/.test(t) ? 'Cable bolting' : /split/.test(t) ? 'Split set' : /swellex/.test(t) ? 'Swellex' : 'Helicoidal';
   // capacidad de carga típica por perno (t); referencial, se debe confirmar con pruebas de arranque en mina
-  const cap = tipo === 'Cable bolting' ? 25 : tipo === 'Split set' ? 6 : tipo === 'Swellex' ? 11 : 18;
+  // helicoidal Ø22 A615 Gr75: 16.4 t = 80 % de la fluencia (20.5 t), carga a la que llegaron sin fallar todos los pull test de
+  // Mina Justa (informe JU-002-06-03401-0000-08-RE-0009 rev. B, feb-2026) y criterio de aceptación de la especificación S400
+  const cap = tipo === 'Cable bolting' ? 25 : tipo === 'Split set' ? 6 : tipo === 'Swellex' ? 11 : 16.4;
   const esp = Number(t.match(/(\d(?:[.,]\d+)?)\s*[x×]\s*\d/)?.[1]?.replace(',', '.')) || 1.5;
   const pies = /(\d+(?:[.,]\d+)?)\s*(pies|ft|')/i.test(txt) ? Number(RegExp.$1.replace(',', '.')) : null;
   return { tipo, largo, pies, esp, intercalado: /intercal|tresbolillo|alternad/.test(t), cap };
@@ -184,12 +186,12 @@ export function espesorShotcrete(txt: string): number {
 /** Nivel de riesgo de una cuña con el sostenimiento indicado (equilibrio límite 2D, por metro de labor).
  *  - Pernos: se reparten a lo largo de la base de la cuña con su espaciamiento; cada perno cuenta solo si
  *    cruza la cara de la cuña y queda anclado ≥ 0.5 m detrás (los de los bordes suelen pasar, los del centro no).
- *  - Shotcrete: resiste por corte en los dos bordes de la cuña (τ = 0.35 MPa, valor conservador a edad temprana).
+ *  - Shotcrete: resiste por corte en los dos bordes de la cuña (τ = 2 MPa, shotcrete con fibra f'c 30 MPa de la S400).
  *  - Corona: cae por su peso. Hastial: desliza por el plano de deslizamiento con fricción de 30°.
  *  FS ≥ 2 bajo, 1.5–2 medio, < 1.5 alto. */
 export interface Riesgo { nivel: 'ALTO' | 'MEDIO' | 'BAJO'; fs: number; fsPernos: number; pernosUtiles: number; pernosBase: number; motivo: string; accion: string }
 export function riesgoCuna(c: Cuna, perno: PernoInfo | null, shot = 0): Riesgo {
-  const W = Math.max(c.peso, 0.01), psi = rad(c.incl ?? 90), TAU = 35;  // t/m²
+  const W = Math.max(c.peso, 0.01), psi = rad(c.incl ?? 90), TAU = 200;  // t/m²: corte del shotcrete con fibra f'c 30 MPa (2 MPa)
   const caras: [P, P][] = c.zona === 'CORONA' ? [[c.pol[0]!, c.pol[1]!], [c.pol[1]!, c.pol[2]!]] : [[c.pol[0]!, c.pol[1]!], [c.pol[1]!, c.pol[2]!]];
   let utiles = 0, total = 0;
   if (perno && c.base && c.base.length > 1) {

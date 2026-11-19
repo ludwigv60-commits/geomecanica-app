@@ -5,7 +5,8 @@
 //  2. Gravedad: carga de la zona aflojada sobre la corona, la mayor de Unal (1983) con el RMR
 //     (P = γ·B·(100 − RMR)/100) y Barton (1974) con Q y Jr (P = 2·Jr⁻¹·Q^(−1/3) kg/cm²).
 // Capacidad del sostenimiento frente a la carga por gravedad: pernos p = T/(eT·eL) y shotcrete por CORTE en los dos
-// bordes del bloque aflojado (τ = 0.35 MPa, Barrett y McCreath 1995): p = 2·t·τ/B. No se usa la fórmula del anillo
+// bordes del bloque aflojado (τ = 2 MPa con f'c 30 MPa y fibra, S400 de Justa): p = 2·t·τ/B. Pernos: 16.4 t (pull test de Justa).
+// Criterio de aceptación (Justa no fija uno; diseño empírico Q de Systra): FS ≥ 1.5 permanente (helicoidal), ≥ 1.3 temporal. No se usa la fórmula del anillo
 // cerrado p = σcc/2·[1 − ((ri − t)/ri)²]: supone un anillo completo (con piso) bajo presión pareja y shotcrete de 28
 // días, y en una labor de herradura con carga en la corona daba FS irreales (≈ 8 con 2" de shotcrete).
 // FS global = capacidad / carga. Todo es una PROPUESTA referencial: los valores supuestos se indican.
@@ -15,7 +16,7 @@ import { cobertura } from '../core/cobertura';
 import type { Analisis } from './cunas2d';
 
 const GAMMA = 0.027;   // MN/m³ (2.7 t/m³)
-const TAU_SH = 0.35;   // MPa, resistencia al corte del shotcrete (la misma del análisis de cuñas)
+const TAU_SH = 2.0;    // MPa, corte del shotcrete con fibra maduro (f'c 30 MPa a 28 días, especificación S400 de Justa; valor usual de Unwedge)
 const UCS: Record<number, number> = { 15: 250, 12: 150, 7: 75, 4: 37, 2: 15, 1: 3, 0: 1 }; // MPa, centro de la clase RMR
 const mi = (lito: string) => /andesit|diorit|basalt/i.test(lito) ? 25 : /piroclast|tob|toba|brech/i.test(lito) ? 15 : /granit|granodior/i.test(lito) ? 32 : /arenisc/i.test(lito) ? 17 : 20;
 
