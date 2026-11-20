@@ -9,7 +9,8 @@ import { excelDe, Herramientas, Inicio, PESTANAS, ResumenPk, Tabla, Visor, type 
 import { usarEntrega } from '../export/compartir';
 import { GMAIL, leerGmail, type Mcp } from './gmail';
 import { Puente } from './vistas';
-import { leerPaquete, type Paquete } from '../export/envio';
+import { armarPaquete, leerPaquete, type Paquete } from '../export/envio';
+import { entregar } from '../export/compartir';
 
 /* Capacidades del artefacto (tipos mínimos de lo que se usa). */
 type Snap = { id: string; exists: boolean; data(): Record<string, unknown> | undefined };
@@ -37,6 +38,22 @@ function blobDeDataUrl(u: string): Blob {
   const [cab, b64] = u.split(',') as [string, string];
   const tipo = /data:([^;]+)/.exec(cab)?.[1] ?? 'image/jpeg';
   return new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], { type: tipo });
+}
+/** Foto guardada en el Centro (URL) → data: para el celular. Primero fetch; si no, a través de un canvas. */
+async function fotoADataUrl(url: string): Promise<string | null> {
+  try {
+    const r = await fetch(url); if (!r.ok) throw new Error(String(r.status));
+    const b = await r.blob();
+    return await new Promise<string>((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.onerror = () => rej(fr.error); fr.readAsDataURL(b); });
+  } catch {
+    try {
+      const img = new Image(); img.crossOrigin = 'anonymous';
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+      const c = Object.assign(document.createElement('canvas'), { width: img.naturalWidth, height: img.naturalHeight });
+      c.getContext('2d')!.drawImage(img, 0, 0);
+      return c.toDataURL('image/jpeg', 0.9);
+    } catch { return null; }
+  }
 }
 const fechaHora = (iso?: string) => (iso ? new Date(iso).toLocaleString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 
@@ -228,6 +245,31 @@ export function Panel() {
   const hayFiltro = JSON.stringify(f) !== JSON.stringify(FILTRO_VACIO);
   const poner = <K extends keyof Filtro>(k: K, v: Filtro[K]) => setF(x => ({ ...x, [k]: v, ...(k === 'tipoLabor' || k === 'rampa' ? { labor: '' } : {}) }));
 
+  /** Devuelve los mapeos (con sus fotos) a un celular que los perdió: archivo para "📥 Recuperar mapeos" en la app. */
+  const alCelular = async () => {
+    if (!vistas.length) return;
+    setOcupado(true);
+    try {
+      const ahora = new Date().toISOString();
+      const lista: Reporte[] = [];
+      for (const [i, x] of vistas.entries()) {
+        setMsg(`Preparando ${x.r.labor || 'mapeo'} ${x.r.desde ?? ''} (${i + 1} de ${vistas.length})…`);
+        const fotos: FotoZona[] = [];
+        for (const f of x.r.fotos ?? []) {
+          if (f.data.startsWith('data:')) { fotos.push(f); continue; }
+          const d = await fotoADataUrl(f.data);
+          if (d) fotos.push({ ...f, data: d }); // foto no disponible: el mapeo va sin ella
+        }
+        const mod = [x.r.modificado ?? '', x.r.panel?.editadoEn ?? ''].sort().pop() || ahora;
+        // ya está en el Centro: en el celular queda como enviado (no se vuelve a mandar)
+        lista.push({ ...x.r, fotos, modificado: mod, enviado: ahora, alCentro: ahora, panel: undefined, sincronizado: true });
+      }
+      const p = armarPaquete(lista, listas);
+      await entregar(new TextEncoder().encode(JSON.stringify(p)), `mapeos_para_celular_${ahora.slice(0, 10)}_${lista.length}.json`, 'application/json');
+      setMsg(`Archivo listo con ${lista.length} mapeo(s). Páselo al celular (correo, WhatsApp o Drive) y en la app toque 📥 Recuperar mapeos.`);
+    } catch (e) { setMsg(`No se pudo preparar el archivo: ${(e as Error).message}`); }
+    finally { setOcupado(false); }
+  };
   const excel = async () => {
     try {
       setMsg('Armando el Excel…');
@@ -310,6 +352,7 @@ export function Panel() {
             <span className="c-cuenta"><b>{vistas.length}</b> mapeo(s) · <b>{metros}</b> m</span>
             <label className={`btn${ocupado || !db ? ' apagado' : ''}`}>📥 Subir mapeos
               <input id="subir" type="file" accept=".json,application/json,text/plain" multiple hidden disabled={ocupado || !db} onChange={e => { subir(e.target.files); e.target.value = ''; }} /></label>
+            <button className="btn" disabled={!vistas.length || ocupado} title="Archivo para recuperar estos mapeos en un celular que los perdió" onClick={alCelular}>📲 Descargar para el celular</button>
             <button className="btn primario" disabled={!vistas.length} onClick={excel}>⬇ Excel</button>
           </div>
         </section>}

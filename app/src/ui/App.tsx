@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { nuevoReporte, siguienteCorrelativo, LISTAS_INICIALES, type Listas, type Reporte } from '../model';
-import { borrarReporte, guardarListas, guardarReporte, leerConfig, leerListas, listarReportes, marcarEnviado, pedirPersistencia } from '../store';
-import { PANEL_LISTO, PANEL_URL, enviarMapeos } from '../export/envio';
+import { borrarReporte, guardarConfig, guardarListas, guardarReporte, leerConfig, leerListas, listarReportes, marcarEnviado, pedirPersistencia, restaurarReportes, riesgoDeBorrado } from '../store';
+import { PANEL_LISTO, PANEL_URL, enviarMapeos, guardarRespaldo, leerPaquete } from '../export/envio';
 import { corregido, nuevo, pendiente, proximoTurno } from '../export/autoenvio';
 import { Editor } from './Editor';
 import { EditorListas } from './EditorListas';
@@ -22,6 +22,40 @@ export function App() {
   const recargarBd = () => leerConfig<Reporte[]>('historialBD').then(l => setBd(l ?? [])).catch(() => {});
 
   const recargar = () => listarReportes().then(setReportes);
+  // Protección contra el borrado del navegador: aviso si puede borrar solos los datos y respaldo en archivo.
+  const [riesgo, setRiesgo] = useState<'ios-safari' | 'navegador' | null>(null);
+  const [ultRespaldo, setUltRespaldo] = useState<string | null>(null);
+  const [respaldo, setRespaldo] = useState<string | null>(null);
+  const respaldar = async () => {
+    setRespaldo('Preparando el respaldo…');
+    try {
+      const { res, enviadoEn } = await guardarRespaldo(reportes, listas);
+      if (res === 'tocar') { setRespaldo('El celular pidió otro toque: toque 💾 Guardar respaldo otra vez.'); return; }
+      await guardarConfig('ultimoRespaldo', enviadoEn).catch(() => {}); setUltRespaldo(enviadoEn);
+      setRespaldo(`💾 Respaldo de ${reportes.length} mapeo(s) listo. Guárdelo en Archivos, OneDrive o Drive (no solo en el navegador).`);
+    } catch (e) { setRespaldo(`No se pudo preparar el respaldo: ${(e as Error).message}`); }
+  };
+  const restaurar = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setRespaldo('Leyendo el archivo…');
+    try {
+      let n = 0, a = 0, i = 0, listasRec: Partial<Listas> = {};
+      for (const f of [...files]) {
+        const p = leerPaquete(await f.text());
+        const r = await restaurarReportes(p.reportes); n += r.nuevos; a += r.actualizados; i += r.iguales;
+        listasRec = { ...listasRec, ...(p.listas ?? {}) };
+      }
+      // listas del archivo: se suman a las del celular (y vuelve el puente al Centro si venía en el respaldo)
+      const l = { ...listas } as Record<string, unknown>;
+      for (const [k, v] of Object.entries(listasRec)) {
+        if (Array.isArray(v)) l[k] = [...new Set([...((Array.isArray(l[k]) ? l[k] : []) as unknown[]), ...v])];
+        else if (l[k] == null || l[k] === '') l[k] = v;
+      }
+      await guardarListas(l as unknown as Listas); setListas(l as unknown as Listas);
+      await recargar();
+      setRespaldo(`📥 Listo: ${n} mapeo(s) recuperado(s)${a ? `, ${a} actualizado(s)` : ''}${i ? `, ${i} ya estaban` : ''}.`);
+    } catch (e) { setRespaldo(`No se pudo recuperar: ${(e as Error).message}`); }
+  };
   const [envio, setEnvio] = useState<string | null>(null);
   const [auto, setAuto] = useState<string | null>(null);
   const enviar = async (lista: Reporte[]) => {
@@ -46,7 +80,9 @@ export function App() {
         <button className="btn mini" onClick={() => setEnvio(null)}>Cerrar</button></div>
     : <p className="tenue">{envio}</p>);
   useEffect(() => {
-    recargar(); recargarBd(); pedirPersistencia();
+    recargar(); recargarBd();
+    pedirPersistencia().then(p => setRiesgo(riesgoDeBorrado(p))).catch(() => {});
+    leerConfig<string>('ultimoRespaldo').then(u => setUltRespaldo(u ?? null)).catch(() => {});
     // Web (GitHub): el enlace privado …/formulario/#puente=URL deja el puente puesto en este navegador.
     // Lo que va después de # nunca sale del celular, así la clave no queda en el código público.
     // Se revisa al abrir y también si la app ya estaba abierta (Safari solo cambia el # sin recargar).
@@ -130,6 +166,26 @@ export function App() {
       </header>
       <main className="contenido">
         {aviso && <p className="alerta" onClick={() => setAviso(null)}>{aviso}</p>}
+        {riesgo && <div className="autoenvio error">
+          <b>⚠️ Este navegador puede borrar sus mapeos</b>
+          <span>{riesgo === 'ios-safari'
+            ? <>Safari borra los datos de esta página si pasan 7 días sin abrirla. Instálela: toque Compartir (cuadro con flecha) → <b>Agregar a inicio</b> y use siempre ese ícono. Ojo: el ícono guarda sus mapeos aparte de Safari; si ya tiene mapeos aquí, guarde un respaldo y recupérelo dentro del ícono.</>
+            : <>Instale la app (menú ⋮ → Instalar aplicación o Agregar a pantalla principal) y guarde un respaldo de vez en cuando.</>}</span>
+        </div>}
+        {(() => {
+          const viejo = reportes.length > 0 && (!ultRespaldo || Date.now() - Date.parse(ultRespaldo) > 7 * 864e5);
+          return <div className={`respaldo${viejo ? ' viejo' : ''}`}>
+            <b>💾 Respaldo de mis mapeos</b>
+            <span>{reportes.length === 0
+              ? '¿Se borraron sus mapeos? Recupérelos con un respaldo, o con el archivo "📲 Descargar para el celular" del Centro de Control, o con archivos que envió antes al panel.'
+              : ultRespaldo ? `Último respaldo: ${new Date(ultRespaldo).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}.${viejo ? ' Guarde uno nuevo.' : ''}` : 'Todavía no guarda un respaldo en este celular.'}</span>
+            <span className="fila-btn">
+              {reportes.length > 0 && <button className="btn mini" onClick={respaldar}>💾 Guardar respaldo</button>}
+              <label className="btn mini">📥 Recuperar mapeos<input type="file" accept=".json,application/json" multiple hidden onChange={e => { void restaurar(e.target.files); e.target.value = ''; }} /></label>
+            </span>
+            {respaldo && <small>{respaldo}</small>}
+          </div>;
+        })()}
         {!listas.puenteUrl && reportes.length > 0 && <div className="autoenvio error">
           <b>⚠️ Envío automático al Centro de Control apagado en este celular</b>
           <span>Abra una vez el enlace privado del Centro que le dieron, o toque ⚙️ y pegue la URL del puente.</span>

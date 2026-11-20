@@ -1,7 +1,7 @@
 // Almacenamiento local en IndexedDB (funciona sin señal en Android e iPhone).
 // Regla de oro: un reporte no sincronizado nunca se borra.
 import type { Listas, Reporte } from './model';
-import { LISTAS_INICIALES } from './model';
+import { LISTAS_INICIALES, nuevoReporte } from './model';
 
 const DB = 'geomecanica';
 let dbp: Promise<IDBDatabase> | null = null;
@@ -36,6 +36,21 @@ export async function marcarEnviado(ids: string[], fecha: string, alCentro = fal
   for (const r of todos) if (ids.includes(r.id)) await tx('reportes', 'readwrite', s => s.put({ ...r, enviado: fecha, ...(alCentro ? { alCentro: fecha } : {}) }));
 }
 
+/** Trae de vuelta mapeos de un respaldo o del Centro. No pisa un mapeo del celular más nuevo que el del archivo. */
+export async function restaurarReportes(lista: Reporte[]): Promise<{ nuevos: number; actualizados: number; iguales: number }> {
+  const hay = new Map((await listarReportes()).map(r => [r.id, r]));
+  let nuevos = 0, actualizados = 0, iguales = 0;
+  for (const r of lista) {
+    if (!r?.id) continue;
+    const ex = hay.get(r.id);
+    if (ex && (ex.modificado ?? '') >= (r.modificado ?? '')) { iguales++; continue; }
+    // se guarda tal cual (con su fecha y su estado de envío), sin marcarlo como modificado ahora
+    await tx('reportes', 'readwrite', s => s.put({ ...nuevoReporte(), ...r, importado: undefined, panel: undefined })); // completa campos de versiones antiguas
+    ex ? actualizados++ : nuevos++;
+  }
+  return { nuevos, actualizados, iguales };
+}
+
 export async function borrarReporte(r: Reporte): Promise<void> {
   await tx('reportes', 'readwrite', s => s.delete(r.id));
 }
@@ -45,7 +60,21 @@ export const guardarListas = (l: Listas) => tx('config', 'readwrite', s => s.put
 
 /** Pide al navegador que no borre los datos por falta de espacio. */
 export async function pedirPersistencia(): Promise<boolean> {
-  try { return (await navigator.storage?.persist?.()) ?? false; } catch { return false; }
+  try { return (await navigator.storage?.persisted?.()) || ((await navigator.storage?.persist?.()) ?? false); } catch { return false; }
+}
+
+/**
+ * ¿Puede el navegador borrar solo los mapeos? En iPhone, Safari borra los datos de una página que no se abre en 7 días
+ * si no está instalada en la pantalla de inicio; el ícono de inicio guarda sus datos aparte de Safari.
+ * El APK (Capacitor) y la app instalada no corren ese riesgo.
+ */
+export function riesgoDeBorrado(persistente: boolean): 'ios-safari' | 'navegador' | null {
+  const w = window as Window & { Capacitor?: { isNativePlatform?: () => boolean } };
+  if (w.Capacitor?.isNativePlatform?.()) return null;
+  const instalada = matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (ios) return instalada ? null : 'ios-safari';
+  return persistente || instalada ? null : 'navegador';
 }
 
 /** Valores sueltos de configuración (por ejemplo, lo que la IA aprende de las fotos del usuario). */
