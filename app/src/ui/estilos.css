@@ -330,6 +330,13 @@ details.ajuste[open] > summary::after { content:'▾'; }
 .autoenvio small { flex:1 1 100%; color:var(--tenue); }
 .autoenvio.error { background:var(--alerta); border-color:var(--alertab); }
 .autoenvio.error small { color:var(--txt); }
+.respaldo { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; padding:10px 12px; border-radius:12px; border:1px solid var(--borde); background:var(--carta); }
+.respaldo b { flex:1 1 100%; font-size:14px; }
+.respaldo span { flex:1 1 100%; font-size:14px; }
+.respaldo .fila-btn { display:flex; flex-wrap:wrap; gap:8px; }
+.respaldo .fila-btn .btn { display:inline-flex; align-items:center; justify-content:center; }
+.respaldo small { flex:1 1 100%; color:var(--tenue); }
+.respaldo.viejo { border-color:var(--alertab); }
 /* ---- Visor 3D de cuñas ---- */
 .visor3d { display:flex; flex-direction:column; gap:8px; }
 .v3-lienzo { position:relative; height:min(62vh, 440px); border-radius:14px; overflow:hidden; background:radial-gradient(ellipse at 50% 30%, #222b37 0%, #12171e 75%); border:1px solid #2c3542; touch-action:pan-y; box-shadow:0 6px 22px rgba(0,0,0,.25) inset; }
@@ -367,3 +374,4 @@ details.ajuste[open] > summary::after { content:'▾'; }
 .visor3d.completo .btn { background:#1b2330; color:#fff; border-color:#38404c; }
 .visor3d.completo .btn.primario { background:#2f6fb3; border-color:#2f6fb3; }
 .v3-fila .btn.mini { flex:1; min-height:34px; padding:4px 6px; font-size:13px; }
+.v3-software { position:absolute; left:12px; bottom:46px; z-index:2; font-size:11.5px; font-weight:700; color:#fde68a; background:#3a2f0bcc; border:1px solid #b5810066; padding:3px 8px; border-radius:8px; pointer-events:none; }

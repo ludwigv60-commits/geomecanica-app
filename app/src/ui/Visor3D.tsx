@@ -16,9 +16,10 @@ const PRESETS: { p: Preset; t: string }[] = [{ p: 'lateral', t: 'Costado' }, { p
 const claveEscena = (r: Reporte, rz: RmrZonas) => JSON.stringify([r.ancho, r.alto, r.azimut, r.avance, r.familias, r.sobreexc, r.rmr, r.ajuste, r.q, r.tipoGeologo, r.desde, r.hasta, r.id, r.fecha, rz]);
 
 export function Visor3D({ r, rz }: { r: Reporte; rz: RmrZonas }) {
-  const caja = useRef<HTMLDivElement>(null), lienzo = useRef<HTMLCanvasElement>(null), vista = useRef<Vista3D | null>(null);
+  const caja = useRef<HTMLDivElement>(null), lienzo = useRef<HTMLCanvasElement>(null), lienzo2 = useRef<HTMLCanvasElement>(null), vista = useRef<Vista3D | null>(null);
   const [esc, setEsc] = useState<Escena3 | null>(null);
   const [estado, setEstado] = useState<'calculando' | 'listo' | 'sin-webgl' | 'sin-datos'>('calculando');
+  const [software, setSoftware] = useState(false);
   const [capas, setCapas] = useState<Record<Capa, boolean>>({ cunas: true, diaclasas: true, fallas: true, influencia: true, anterior: true, labor: true, frente: true, piso: true });
   const [activo, setActivo] = useState(false), [completo, setCompleto] = useState(false), [gira, setGira] = useState(false), [preset, setPreset] = useState<Preset>('lateral');
   const clave = useMemo(() => claveEscena(r, rz), [r, rz]);
@@ -40,8 +41,17 @@ export function Visor3D({ r, rz }: { r: Reporte; rz: RmrZonas }) {
       const { crearVista } = await import('../export/render3d');
       if (!vivo || !lienzo.current || !caja.current) return;
       const b = caja.current.getBoundingClientRect();
-      try { v = crearVista(lienzo.current, esc, { tema: 'oscuro', interactivo: true, w: Math.max(200, b.width), h: Math.max(160, b.height), pr: Math.min(2, window.devicePixelRatio || 1) }); }
-      catch { setEstado('sin-webgl'); return; }
+      const op = { tema: 'oscuro' as const, interactivo: true, w: Math.max(200, b.width), h: Math.max(160, b.height), pr: Math.min(2, window.devicePixelRatio || 1) };
+      try { v = crearVista(lienzo.current, esc, op); setSoftware(false); }
+      catch {
+        // Sin WebGL 2 (aceleración por hardware apagada o GPU bloqueada): se dibuja igual, en 2D por software.
+        try {
+          const { crearVista2D } = await import('../export/vista2d');
+          if (!vivo || !lienzo.current) return;
+          if (!lienzo2.current) return;
+          v = crearVista2D(lienzo2.current, esc, { ...op, pr: Math.min(1.5, op.pr) }); setSoftware(true);
+        } catch { setEstado('sin-webgl'); return; }
+      }
       vista.current = v;
       (Object.keys(capas) as Capa[]).forEach(c => v!.capa(c, capas[c]));
       v.preset(preset); v.interactivo(activo || completo); v.girar(gira);
@@ -70,9 +80,11 @@ export function Visor3D({ r, rz }: { r: Reporte; rz: RmrZonas }) {
   return (
     <div className={`visor3d${completo ? ' completo' : ''}`}>
       <div ref={caja} className={`v3-lienzo${activo || completo ? ' activo' : ''}`}>
-        <canvas ref={lienzo} />
+        <canvas ref={lienzo} hidden={software} />
+        <canvas ref={lienzo2} hidden={!software} />
         {estado === 'calculando' && <div className="v3-aviso"><span className="v3-giro" /> Proyectando cuñas a lo largo del avance…</div>}
-        {estado === 'sin-webgl' && <div className="v3-aviso">Este equipo no puede dibujar 3D (sin WebGL).</div>}
+        {estado === 'sin-webgl' && <div className="v3-aviso">Este navegador no puede dibujar 3D. En Chrome active Configuración → Sistema → “Usar la aceleración de gráficos cuando esté disponible” y reinicie Chrome.</div>}
+        {software && <div className="v3-software" title="Chrome tiene apagada la aceleración por hardware o bloqueó la tarjeta de video">Modo básico (sin aceleración 3D)</div>}
         <div className="v3-titulo"><b>ANTES DEL DESATADO</b><span>{r.labor || 'Labor'} · {r.desde || '—'} → {r.hasta || '—'}{esc ? ` · avance ${esc.L.toFixed(1)} m` : ''}</span></div>
         {!activo && !completo && estado === 'listo' && <button className="v3-tocar" onClick={() => setActivo(true)}>✋ Tocar para girar</button>}
         <div className="v3-botones">

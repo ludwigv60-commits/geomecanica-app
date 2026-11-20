@@ -116,20 +116,30 @@ export function resumir(filas: Fila[]): Resumen[] {
 }
 
 /* ───────── Herramientas: un solo lugar para todo, sin repetidos ───────── */
-export interface Herramienta { nombre: string; que: string; url: string; local?: boolean; icono: string }
+export interface Herramienta { nombre: string; que: string; url: string; local?: boolean; icono: string; viva?: string }
 /** Se abre dentro del Centro todo lo que no sea un artefacto vivo de Claude (esos no se pueden incrustar). */
 export const dentro = (h: Herramienta) => !h.url.startsWith('https://claude.ai/');
 /** Aplicativos principales de la portada "¿Qué vamos a hacer hoy?" (por nombre en HERRAMIENTAS), con su color de marca. */
-export const PRINCIPALES: { nombre: string; color: string; corto: string }[] = [
-  { nombre: 'App de mapeo geomecánico', color: '#2f6fb3', corto: 'Mapeo geomecánico' },
-  { nombre: 'MAP · Perforación iSURE 3D', color: '#0f8a8a', corto: 'Perforación iSURE 3D' },
-  { nombre: 'PERVOL Mallas Mina Justa', color: '#c2410c', corto: 'Mallas PERVOL' },
-  { nombre: 'Vale de explosivos', color: '#b91c1c', corto: 'Vale de explosivos' },
-  { nombre: 'Valorización Shotcrete AESA', color: '#4d7c0f', corto: 'Valorización shotcrete' },
-  { nombre: 'Simulador del ciclo de minado', color: '#083a66', corto: 'Simulador del ciclo' },
-  { nombre: 'Utilización de Equipos AESA', color: '#6d28d9', corto: 'Utilización de equipos' },
-  { nombre: 'Actualizador de PETS', color: '#a16207', corto: 'Actualizador de PETS' },
-  { nombre: 'Dip y dip dir con el celular', color: '#334155', corto: 'Dip con el celular' },
+export interface Principal { nombre: string; color: string; corto: string; act?: string; area: string }
+/** Aplicativos de "MIS APLICATIVOS" (por nombre en HERRAMIENTAS). act = versión o fecha conocida, sin inventar. */
+export const PRINCIPALES: Principal[] = [
+  { nombre: 'App de mapeo geomecánico', color: '#22d3ee', corto: 'Mapeo Geomecánico', act: '20-nov · cuñas 3D y FS', area: 'Geomecánica' },
+  { nombre: 'MAP · Perforación iSURE 3D', color: '#2dd4bf', corto: 'Perforación iSURE 3D', act: 'Versión 59', area: 'Perforación' },
+  { nombre: 'PERVOL Mallas Mina Justa', color: '#fb923c', corto: 'Mallas PERVOL', act: 'Versión 8 · 30-oct', area: 'Voladura' },
+  { nombre: 'Vale de explosivos', color: '#f87171', corto: 'Gestión de explosivos', area: 'Voladura' },
+  { nombre: 'Valorización Shotcrete AESA', color: '#a3e635', corto: 'Valorización shotcrete', act: 'Versión 11 · 29-oct', area: 'Shotcrete' },
+  { nombre: 'Simulador del ciclo de minado', color: '#60a5fa', corto: 'Análisis de ciclos', area: 'Ciclo de minado' },
+  { nombre: 'Utilización de Equipos AESA', color: '#a78bfa', corto: 'Control de flota', act: '07-nov', area: 'Equipos' },
+  { nombre: 'Rendimiento de Equipos Justa', color: '#818cf8', corto: 'Rendimiento de equipos', area: 'Equipos' },
+  { nombre: 'Desvíos y supervisión', color: '#f472b6', corto: 'Desvíos y supervisión', area: 'Gestión' },
+  { nombre: 'Actualizador de PETS', color: '#facc15', corto: 'Control documentario PETS', area: 'Seguridad' },
+  { nombre: 'Dip y dip dir con el celular', color: '#94a3b8', corto: 'Dip con el celular', area: 'Geomecánica' },
+];
+/** Módulos que el usuario pidió y aún no existen: se muestran como "En desarrollo", sin datos. */
+export const EN_DESARROLLO: { icono: string; nombre: string; que: string }[] = [
+  { icono: '🧾', nombre: 'Boleta inteligente', que: 'Boletas de operación llenadas solas' },
+  { icono: '📑', nombre: 'Reportes automáticos', que: 'Informes diarios sin armar a mano' },
+  { icono: '📈', nombre: 'Dashboard de KPIs', que: 'Indicadores de toda la operación' },
 ];
 export interface Grupo { titulo: string; icono: string; items: Herramienta[] }
 const A = (id: string) => `https://claude.ai/artifact/${id}`;
@@ -145,7 +155,7 @@ export const HERRAMIENTAS: Grupo[] = [
     { icono: '📐', nombre: 'Diseño de la app', que: 'Entendimiento, riesgos y arquitectura', url: H('doc-RXJzd7B8YSvGUysMXG3VdG.html') },
   ] },
   { titulo: 'Perforación y voladura', icono: '💥', items: [
-    { icono: '🎯', nombre: 'PERVOL Mallas Mina Justa', que: 'Diseñador de mallas (versión viva en Claude, guarda datos)', url: A('QpHY3XzD5uZaUZ4DxwnSt8') },
+    { icono: '🎯', nombre: 'PERVOL Mallas Mina Justa', que: 'Diseñador de mallas, aquí dentro (versión 8 del 30-oct)', url: H('mallas-pervol.html'), local: true, viva: A('QpHY3XzD5uZaUZ4DxwnSt8') },
     { icono: '🔍', nombre: 'Análisis crítico de mallas', que: 'Revisión de las mallas actuales', url: H('doc-FD6NH2AaBvtF64gyVqfRxS.html') },
     { icono: '🧾', nombre: 'Prompt maestro PERVOL', que: 'Instrucciones del diseñador de mallas', url: H('doc-3PxpZCa8zzrpytHArJoEA5.html') },
     { icono: '🛰️', nombre: 'MAP · Perforación iSURE 3D', que: 'Análisis de perforación del jumbo (versión 59)', url: H('map-perforacion-isure-3d.html'), local: true },
@@ -155,7 +165,7 @@ export const HERRAMIENTAS: Grupo[] = [
     { icono: '🧨', nombre: 'Vale de explosivos', que: 'Llenado automático desde la malla', url: H('vale-explosivos.html'), local: true },
   ] },
   { titulo: 'Shotcrete', icono: '🏗️', items: [
-    { icono: '💰', nombre: 'Valorización Shotcrete AESA', que: 'Versión viva en Claude (guarda datos)', url: A('Sni5Dztb5Lqd2xixjd8rui') },
+    { icono: '💰', nombre: 'Valorización Shotcrete AESA', que: 'Valorización mensual, aquí dentro (versión 11 del 29-oct)', url: H('valorizacion-shotcrete.html'), local: true, viva: A('Sni5Dztb5Lqd2xixjd8rui') },
     { icono: '📘', nombre: 'Cómo se calcula la valorización', que: 'Método, setiembre 2026', url: H('doc-Sw9ZTa2NHRNwadPjxiXGKQ.html') },
     { icono: '📏', nombre: 'Shotcrete por rendimiento m²/m³', que: 'Julio y agosto 2026', url: H('shotcrete-rendimiento.html'), local: true },
     { icono: '🛡️', nombre: 'Guardias Shotcrete y Calidad', que: 'Control por guardia', url: H('art-TBMGaYP5jajy5g5z4LoELS.html') },
@@ -178,8 +188,6 @@ export const HERRAMIENTAS: Grupo[] = [
     { icono: '🎤', nombre: 'Talento en Avance', que: 'Presentación del programa trainee', url: H('talento-en-avance.html'), local: true },
   ] },
   { titulo: 'Otras versiones y copias de Descargas', icono: '🗄️', items: [
-    { icono: '🎯', nombre: 'PERVOL Mallas (copia de Descargas)', que: 'Versión 8 del 30-oct', url: H('mallas-pervol.html'), local: true },
-    { icono: '💰', nombre: 'Valorización Shotcrete (copia de Descargas)', que: 'Versión 11 del 29-oct', url: H('valorizacion-shotcrete.html'), local: true },
     { icono: '📊', nombre: 'Valorización shotcrete julio vs agosto', que: 'Dashboard anterior', url: H('shotcrete-jul-vs-ago.html'), local: true },
     { icono: '📊', nombre: 'Valorización shotcrete jul-ago 2026', que: 'Dashboard anterior', url: H('shotcrete-jul-ago-2026.html'), local: true },
     { icono: '⚙️', nombre: 'Rendimiento de equipos (copia de Descargas)', que: 'Versión 8', url: H('rendimiento-equipos.html'), local: true },

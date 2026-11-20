@@ -137,7 +137,7 @@ export function Tabla({ filas, abrir }: { filas: Fila[]; abrir: (id: string) => 
 export function Visor({ h, cerrar }: { h: Herramienta; cerrar: () => void }) {
   return (
     <div className="c-visor">
-      <div className="c-visor-barra"><button className="btn" onClick={cerrar}>← Centro</button><i>{h.icono}</i><b>{h.nombre}</b><a className="btn mini" href={h.url} target="_blank" rel="noopener">Abrir aparte ↗</a></div>
+      <div className="c-visor-barra"><button className="btn" onClick={cerrar}>← Centro de Control</button><i>{h.icono}</i><b>{h.nombre}</b>{h.viva && <a className="btn mini" href={h.viva} target="_blank" rel="noopener" title="La versión viva guarda sus datos en Claude">Versión viva ↗</a>}</div>
       <iframe title={h.nombre} src={h.url} allow="camera; geolocation; accelerometer; gyroscope; magnetometer; clipboard-write; fullscreen" />
     </div>
   );
@@ -236,72 +236,3 @@ export function Puente({ abierto }: { abierto?: boolean } = {}) {
 
 /* ───────── Inicio: ¿Qué vamos a hacer hoy? ───────── */
 const saludo = (h: number) => (h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches');
-export function Inicio({ filas, ocultas, abrir, abrirMapeo, nuevo, recibir, recibiendo, ir, excel }: {
-  filas: Fila[]; ocultas: string[]; abrir: (h: Herramienta) => void; abrirMapeo: (id: string) => void;
-  nuevo?: () => void; recibir?: () => void; recibiendo: boolean; ir: (t: Pestana) => void; excel: () => void;
-}) {
-  const ahora = new Date(), h = ahora.getHours();
-  const guardia = h >= 7 && h < 19 ? 'Guardia día' : 'Guardia noche';
-  const todas = HERRAMIENTAS.flatMap(g => g.items);
-  const apps = PRINCIPALES.map(p => ({ ...p, h: todas.find(x => x.nombre === p.nombre) })).filter((p): p is typeof p & { h: Herramienta } => !!p.h && !ocultas.includes(p.nombre));
-  const mes = ahora.toISOString().slice(0, 7);
-  const delMes = filas.filter(x => (x.r.fecha ?? '').startsWith(mes));
-  const semana = new Date(ahora.getTime() - 7 * 864e5).toISOString().slice(0, 10);
-  const deSemana = filas.filter(x => (x.r.fecha ?? '') >= semana);
-  const metrosMes = Math.round(delMes.reduce((s, x) => s + (x.avance ?? 0), 0) * 10) / 10;
-  const porTipo = TIPOS.map(t => ({ tipo: t.tipo, m: delMes.filter(x => x.tipo === t.tipo).reduce((s, x) => s + (x.avance && x.avance > 0 ? x.avance : 0), 0) })).filter(x => x.m > 0);
-  const ultimos = filas.slice(0, 5);
-  return (
-    <div className="c-inicio">
-      <section className="c-hoy">
-        <div className="c-hoy-txt">
-          <small>{ahora.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' })} · {guardia}</small>
-          <h2>{saludo(h)}, Ludwig.<br /><span>¿Qué vamos a hacer hoy?</span></h2>
-        </div>
-        <div className="c-hoy-acc">
-          {nuevo && <button className="c-accion fuerte" onClick={nuevo}><i>➕</i><b>Nuevo mapeo</b><small>Se guarda directo en el Centro</small></button>}
-          {recibir && <button className={`c-accion${recibiendo ? ' apagado' : ''}`} onClick={recibir}><i>📨</i><b>{recibiendo ? 'Recibiendo…' : 'Recibir del celular'}</b><small>Mapeos que mandó el APK</small></button>}
-          <button className="c-accion" onClick={() => ir('resumen')}><i>📈</i><b>Resumen PK a PK</b><small>Tipo de roca por tramo</small></button>
-          <button className="c-accion" onClick={excel} disabled={!filas.length}><i>⬇</i><b>Excel</b><small>Resumen, PK a PK y detalle</small></button>
-        </div>
-      </section>
-
-      <section className="c-sec">
-        <div className="c-sec-cab"><h2>Aplicativos principales</h2><button className="c-link" onClick={() => ir('herramientas')}>Ver todas mis herramientas →</button></div>
-        <div className="c-apps">
-          {apps.map(({ h: x, color, corto }) => {
-            const fuera = !dentro(x);
-            const cont = <><i style={{ background: `linear-gradient(145deg, ${color}, color-mix(in srgb, ${color} 62%, #000))` }}>{x.icono}</i><b>{corto}</b><small>{x.que}</small>{fuera && <em title="Se abre en Claude porque guarda sus datos allí">↗</em>}</>;
-            return fuera
-              ? <a key={x.nombre} className="c-app" style={{ '--c': color } as CSSProperties} href={x.url} target="_blank" rel="noopener">{cont}</a>
-              : <button key={x.nombre} className="c-app" style={{ '--c': color } as CSSProperties} onClick={() => abrir(x)}>{cont}</button>;
-          })}
-        </div>
-      </section>
-
-      <div className="c-dos">
-        <section className="c-card">
-          <div className="c-sec-cab"><h2>Últimos mapeos</h2><button className="c-link" onClick={() => ir('mapeos')}>Ver todos →</button></div>
-          {!ultimos.length && <p className="tenue">Todavía no hay mapeos. Toque <b>➕ Nuevo mapeo</b> o <b>📨 Recibir del celular</b>.</p>}
-          <ul className="c-ult">
-            {ultimos.map(x => { const i = infoTipo(x.tipo); return (
-              <li key={x.r.id}><button onClick={() => abrirMapeo(x.r.id)}>
-                <span className="chip" style={i ? { background: i.color, color: i.texto, borderColor: i.color } : {}}>{x.tipo ?? '—'}</span>
-                <span className="c-ult-t"><b>{x.tipoLabor === 'CAMARA' ? '🏛️ ' : ''}{x.r.labor || 'Sin labor'}</b><small>PK {x.r.desde || '—'}{x.avance != null ? ` · ${x.avance} m` : ''} · {x.r.fecha} {x.r.turno}</small></span>
-                <span className="c-ult-n">RMR <b>{x.rmr ?? '—'}</b></span>
-              </button></li>); })}
-          </ul>
-        </section>
-        <section className="c-card">
-          <div className="c-sec-cab"><h2>Este mes</h2><span className="tenue">{ahora.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}</span></div>
-          <div className="c-mini">
-            <div><b>{delMes.length}</b><span>mapeos</span></div>
-            <div><b>{metrosMes}</b><span>m mapeados</span></div>
-            <div><b>{deSemana.length}</b><span>últimos 7 días</span></div>
-          </div>
-          {porTipo.length ? <Barra partes={porTipo} total={porTipo.reduce((s, x) => s + x.m, 0)} /> : <p className="tenue">Sin metros mapeados este mes.</p>}
-        </section>
-      </div>
-    </div>
-  );
-}

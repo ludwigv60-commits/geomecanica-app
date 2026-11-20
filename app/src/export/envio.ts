@@ -31,7 +31,15 @@ export async function enviarMapeos(reportes: Reporte[], listas: Listas) {
   return { res, enviadoEn: p.enviadoEn };
 }
 
-/** Lee un archivo de envío (en el panel). */
+/** Respaldo de TODOS los mapeos del celular (con fotos y listas) en un archivo que el usuario guarda fuera del navegador. */
+export async function guardarRespaldo(reportes: Reporte[], listas: Listas) {
+  const p = armarPaquete(reportes, listas);
+  const datos = new TextEncoder().encode(JSON.stringify(p));
+  const res = await entregar(datos, `respaldo_mapeos_${p.enviadoEn.slice(0, 10)}_${reportes.length}.json`, 'application/json');
+  return { res, enviadoEn: p.enviadoEn };
+}
+
+/** Lee un archivo de envío (en el panel), un respaldo o lo descargado del Centro (en el celular). */
 export function leerPaquete(texto: string | Paquete): Paquete {
   const p = (typeof texto === 'string' ? JSON.parse(texto.replace(/^﻿/, '')) : texto) as Paquete;
   if (p?.formato !== FORMATO || !Array.isArray(p.reportes)) throw new Error('Este archivo no es un envío de mapeos de la app.');

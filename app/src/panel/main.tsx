@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Panel } from './Panel';
 import '../ui/estilos.css';
 import './panel.css';
+import './inicio.css';
 
 // El artefacto no sirve archivos .xlsx: la plantilla va como texto base64 y se decodifica al pedirla.
 const fetchOriginal = window.fetch.bind(window);

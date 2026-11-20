@@ -451,6 +451,15 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
           </div>
         </section>
 
+        <section className="seccion abierta" id="sec-3d">
+          <div className="sec-cab estatica"><span className="sec-ico">🧊</span>
+            <span className="sec-tit">Cuñas en 3D, planta y sección<small className="sec-res">Se arman solas con el dip / dip dir de cada estructura</small></span></div>
+          <div className="sec-cuerpo">
+            {r.familias.some(f => f.dip != null && f.dipdir != null) ? tarjetaVistas
+              : <p className="tenue">Mida al menos una estructura (dip y dip dir) en Fotos y estructuras o en Litología y estructuras, y aquí aparecen las cuñas en 3D, la planta y la sección con el FS.</p>}
+          </div>
+        </section>
+
         <Seccion titulo="RMR (puntos)" resumen={resumenRmr(c)} abierta={abierta} setAbierta={setAbierta} id="rmr" listo={listo.rmr}>
           {tablaRmr}
         </Seccion>
@@ -478,7 +487,7 @@ export function Editor({ inicial, listas, historial, onGuardar, onSalir, onBase,
                 <NumIn placeholder="0.05" valor={f.potencia} on={v => set('familias', r.familias.map((x, j) => j === i ? { ...x, potencia: v } : x))} /></label>)}
             </div>}
           </section>
-          {tarjetaVistas}
+          <p className="tenue">Las cuñas en 3D, la planta y la sección están arriba, debajo de Fotos y estructuras.</p>
         </Seccion>
 
         <Seccion titulo="Condición y verificación" resumen={r.condicion ? "lleno" : ""} abierta={abierta} setAbierta={setAbierta} id="cond" listo={listo.cond}>

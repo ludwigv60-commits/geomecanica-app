@@ -5,11 +5,13 @@ import { Editor } from '../ui/Editor';
 import { LISTAS_INICIALES, nuevoReporte, siguienteCorrelativo, type FotoZona, type Listas, type Reporte } from '../model';
 import { TIPOS } from '../core/rmr';
 import { FILTRO_VACIO, filtrar, fila, infoTipo, type Filtro, type Herramienta } from './centro';
-import { excelDe, Herramientas, Inicio, PESTANAS, ResumenPk, Tabla, Visor, type Pestana } from './vistas';
+import { excelDe, Herramientas, ResumenPk, Tabla, Visor, type Pestana } from './vistas';
+import { Cabecera, Inicio } from './inicio';
 import { usarEntrega } from '../export/compartir';
 import { GMAIL, leerGmail, type Mcp } from './gmail';
 import { Puente } from './vistas';
-import { leerPaquete, type Paquete } from '../export/envio';
+import { armarPaquete, leerPaquete, type Paquete } from '../export/envio';
+import { entregar } from '../export/compartir';
 
 /* Capacidades del artefacto (tipos mínimos de lo que se usa). */
 type Snap = { id: string; exists: boolean; data(): Record<string, unknown> | undefined };
@@ -37,6 +39,22 @@ function blobDeDataUrl(u: string): Blob {
   const [cab, b64] = u.split(',') as [string, string];
   const tipo = /data:([^;]+)/.exec(cab)?.[1] ?? 'image/jpeg';
   return new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], { type: tipo });
+}
+/** Foto guardada en el Centro (URL) → data: para el celular. Primero fetch; si no, a través de un canvas. */
+async function fotoADataUrl(url: string): Promise<string | null> {
+  try {
+    const r = await fetch(url); if (!r.ok) throw new Error(String(r.status));
+    const b = await r.blob();
+    return await new Promise<string>((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.onerror = () => rej(fr.error); fr.readAsDataURL(b); });
+  } catch {
+    try {
+      const img = new Image(); img.crossOrigin = 'anonymous';
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+      const c = Object.assign(document.createElement('canvas'), { width: img.naturalWidth, height: img.naturalHeight });
+      c.getContext('2d')!.drawImage(img, 0, 0);
+      return c.toDataURL('image/jpeg', 0.9);
+    } catch { return null; }
+  }
 }
 const fechaHora = (iso?: string) => (iso ? new Date(iso).toLocaleString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 
@@ -96,7 +114,7 @@ export function Panel() {
   }, []);
 
   // nombres de quienes subieron (se resuelven cada vez; no se guardan)
-  const ids = useMemo(() => [...new Set(mapeos.map(m => m.panel?.subidoPor).filter((x): x is string => !!x))].sort().join('|'), [mapeos]);
+  const ids = useMemo(() => [...new Set([...mapeos.map(m => m.panel?.subidoPor), uid].filter((x): x is string => !!x))].sort().join('|'), [mapeos, uid]);
   useEffect(() => {
     if (!user || !ids) return;
     user.profiles(ids.split('|')).then(p => setNombres(Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v?.name || 'Alguien'])))).catch(() => {});
@@ -228,6 +246,31 @@ export function Panel() {
   const hayFiltro = JSON.stringify(f) !== JSON.stringify(FILTRO_VACIO);
   const poner = <K extends keyof Filtro>(k: K, v: Filtro[K]) => setF(x => ({ ...x, [k]: v, ...(k === 'tipoLabor' || k === 'rampa' ? { labor: '' } : {}) }));
 
+  /** Devuelve los mapeos (con sus fotos) a un celular que los perdió: archivo para "📥 Recuperar mapeos" en la app. */
+  const alCelular = async () => {
+    if (!vistas.length) return;
+    setOcupado(true);
+    try {
+      const ahora = new Date().toISOString();
+      const lista: Reporte[] = [];
+      for (const [i, x] of vistas.entries()) {
+        setMsg(`Preparando ${x.r.labor || 'mapeo'} ${x.r.desde ?? ''} (${i + 1} de ${vistas.length})…`);
+        const fotos: FotoZona[] = [];
+        for (const f of x.r.fotos ?? []) {
+          if (f.data.startsWith('data:')) { fotos.push(f); continue; }
+          const d = await fotoADataUrl(f.data);
+          if (d) fotos.push({ ...f, data: d }); // foto no disponible: el mapeo va sin ella
+        }
+        const mod = [x.r.modificado ?? '', x.r.panel?.editadoEn ?? ''].sort().pop() || ahora;
+        // ya está en el Centro: en el celular queda como enviado (no se vuelve a mandar)
+        lista.push({ ...x.r, fotos, modificado: mod, enviado: ahora, alCentro: ahora, panel: undefined, sincronizado: true });
+      }
+      const p = armarPaquete(lista, listas);
+      await entregar(new TextEncoder().encode(JSON.stringify(p)), `mapeos_para_celular_${ahora.slice(0, 10)}_${lista.length}.json`, 'application/json');
+      setMsg(`Archivo listo con ${lista.length} mapeo(s). Páselo al celular (correo, WhatsApp o Drive) y en la app toque 📥 Recuperar mapeos.`);
+    } catch (e) { setMsg(`No se pudo preparar el archivo: ${(e as Error).message}`); }
+    finally { setOcupado(false); }
+  };
   const excel = async () => {
     try {
       setMsg('Armando el Excel…');
@@ -260,30 +303,13 @@ export function Panel() {
   );
 
   return (
-    <div className="centro">
-      <header className="c-cab">
-        <div className="c-cab-in">
-          <div className="c-marca">
-            <img src="logo-lk.png" alt="LK Geomecánica" className="c-logo" />
-            <div>
-              <small>LK GEOMECÁNICA · INGENIERÍA · GEOTÉCNICA</small>
-              <h1>CENTRO DE CONTROL LUDWIG<br /><span>JUSTA SUBTERRÁNEA</span></h1>
-            </div>
-          </div>
-          <div className="c-kpis">
-            <div><b>{mapeos.length}</b><span>mapeos</span></div>
-            <div><b>{new Set(mapeos.map(m => m.labor).filter(Boolean)).size}</b><span>labores</span></div>
-            <div><b>{Math.round(filasTodas.reduce((s, x) => s + (x.avance ?? 0), 0))}</b><span>m mapeados</span></div>
-            <div><b className="chico">{fechaHora(ultimo)}</b><span>último envío</span></div>
-          </div>
-          <nav className="c-tabs" role="tablist">
-            {PESTANAS.map(p => <button key={p.id} role="tab" aria-selected={tab === p.id} className={tab === p.id ? 'sel' : ''} onClick={() => irA(p.id)}>{p.icono} {p.nombre}</button>)}
-          </nav>
-        </div>
-      </header>
+    <div className={`centro${tab === 'inicio' ? ' cc' : ''}`}>
+      <Cabecera tab={tab} ir={irA} abrir={setApp} usuario={uid ? nombres[uid] : undefined}
+        estado={estado === 'listo' ? 'ok' : estado === 'cargando' || estado === 'lento' ? 'cargando' : 'error'}
+        aviso={gmail.estado !== 'nada' ? { texto: `📨 ${gmail.texto}`, tipo: gmail.estado } : msg ? { texto: msg, tipo: 'ok' } : null} />
       <main className="c-cuerpo">
         {msg && <p className="panel-msg" onClick={() => setMsg(null)}>{msg}</p>}
-        {gmail.estado !== 'nada' && tab !== 'herramientas' && <p className={`c-gmail ${gmail.estado}`}>📨 {gmail.texto}{gmail.cuando ? ` · ${fechaHora(gmail.cuando)}` : ''}</p>}
+        {gmail.estado !== 'nada' && tab !== 'herramientas' && tab !== 'inicio' && <p className={`c-gmail ${gmail.estado}`}>📨 {gmail.texto}{gmail.cuando ? ` · ${fechaHora(gmail.cuando)}` : ''}</p>}
         {estado === 'cargando' && <p className="tenue">Cargando los mapeos…</p>}
         {estado === 'lento' && <p className="alerta">La base aún no responde. Revise su conexión; los mapeos aparecerán solos al conectar.</p>}
         {estado === 'sin-acceso' && <p className="alerta">Este Centro funciona dentro de Claude: ábralo con su enlace de claude.ai, con su cuenta.</p>}
@@ -310,6 +336,7 @@ export function Panel() {
             <span className="c-cuenta"><b>{vistas.length}</b> mapeo(s) · <b>{metros}</b> m</span>
             <label className={`btn${ocupado || !db ? ' apagado' : ''}`}>📥 Subir mapeos
               <input id="subir" type="file" accept=".json,application/json,text/plain" multiple hidden disabled={ocupado || !db} onChange={e => { subir(e.target.files); e.target.value = ''; }} /></label>
+            <button className="btn" disabled={!vistas.length || ocupado} title="Archivo para recuperar estos mapeos en un celular que los perdió" onClick={alCelular}>📲 Descargar para el celular</button>
             <button className="btn primario" disabled={!vistas.length} onClick={excel}>⬇ Excel</button>
           </div>
         </section>}
@@ -344,9 +371,9 @@ export function Panel() {
           {estado === 'listo' && mapeos.length > 0 && !vistas.length && <p className="tenue">Ningún mapeo coincide con el filtro.</p>}
         </>}
 
-        {tab === 'inicio' && <Puente abierto={!(hechos.current?.length)} />}
-        {tab === 'inicio' && <Inicio filas={filasTodas} ocultas={ocultas} abrir={setApp} abrirMapeo={setAbierto} ir={irA} excel={excel}
+        {tab === 'inicio' && <Inicio filas={filasTodas} ocultas={ocultas} abrir={setApp} abrirMapeo={setAbierto} ir={irA} excel={excel} alCelular={alCelular} ultimoEnvio={fechaHora(ultimo)} sincro={gmail}
           nuevo={db && editor ? nuevoMapeo : undefined} recibir={mcp && editor ? () => recibirGmail(true) : undefined} recibiendo={gmail.estado === 'leyendo'} />}
+        {tab === 'inicio' && <Puente abierto={!(hechos.current?.length)} />}
         {tab === 'resumen' && <ResumenPk filas={vistas} abrir={setAbierto} />}
         {tab === 'tabla' && <Tabla filas={vistas} abrir={setAbierto} />}
         {tab === 'herramientas' && <><Puente /><Herramientas ocultas={ocultas} abrir={setApp} cambiar={db && editor ? (n => { setOcultas(n); db.doc('config/herramientas').set({ ocultas: n }).catch(e => setMsg(`No se pudo guardar: ${(e as Error).message}`)); }) : undefined} /></>}
