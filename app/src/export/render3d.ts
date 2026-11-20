@@ -49,7 +49,10 @@ export interface Vista3D {
 /** Arma la escena de three.js. `canvas` puede no estar en la página (imágenes para el reporte). */
 export function crearVista(canvas: HTMLCanvasElement, esc: Escena3, o: { tema?: Tema; interactivo?: boolean; w: number; h: number; pr?: number; rotulos?: number }): Vista3D {
   const tema = o.tema ?? 'oscuro';
-  const ren = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: !o.interactivo, alpha: false });
+  // Algunos equipos (Intel con driver antiguo, GPU en lista negra) fallan con antialias: se reintenta sin él.
+  let ren: THREE.WebGLRenderer;
+  try { ren = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: !o.interactivo, alpha: false }); }
+  catch { ren = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: !o.interactivo, alpha: false, powerPreference: 'default', failIfMajorPerformanceCaveat: false }); }
   ren.setPixelRatio(o.pr ?? 1); ren.setSize(o.w, o.h, false);
   ren.outputColorSpace = THREE.SRGBColorSpace; ren.toneMapping = THREE.NoToneMapping;
   const scene = new THREE.Scene();
@@ -150,17 +153,22 @@ export function crearVista(canvas: HTMLCanvasElement, esc: Escena3, o: { tema?: 
 /** Imagen fija (JPEG) de la escena para el PDF / Excel. Devuelve null si el equipo no tiene WebGL. */
 export async function imagen3d(esc: Escena3, o: { w: number; h: number; preset?: Preset; tema?: Tema; capas?: Partial<Record<Capa, boolean>>; correr?: [number, number]; zoom?: number; rotulos?: number }): Promise<Uint8Array | null> {
   const cv = document.createElement('canvas');
-  let v: Vista3D;
-  try { v = crearVista(cv, esc, { tema: o.tema ?? 'claro', w: o.w, h: o.h, rotulos: o.rotulos }); } catch { return null; }
+  let v: Vista3D, cv2 = cv;
+  try { v = crearVista(cv, esc, { tema: o.tema ?? 'claro', w: o.w, h: o.h, rotulos: o.rotulos }); }
+  catch { // sin WebGL 2: la misma escena dibujada en 2D
+    try { const { crearVista2D } = await import('./vista2d'); cv2 = document.createElement('canvas'); v = crearVista2D(cv2, esc, { tema: o.tema ?? 'claro', w: o.w, h: o.h, rotulos: (o.rotulos ?? 1) * 1.6 }); }
+    catch { return null; }
+  }
+  const cvx = cv2;
   try {
     for (const [c, on] of Object.entries(o.capas ?? {})) v.capa(c as Capa, !!on);
     v.preset(o.preset ?? 'lateral');
     v.encuadre(o.correr ?? [0, 0], o.zoom ?? 1);
     v.render();
-    const b = await new Promise<Blob | null>(ok => cv.toBlob(ok, 'image/jpeg', 0.92));
+    const b = await new Promise<Blob | null>(ok => cvx.toBlob(ok, 'image/jpeg', 0.92));
     let out: Uint8Array | null = null;
     if (b) out = new Uint8Array(await b.arrayBuffer());
-    else { const u = cv.toDataURL('image/jpeg', 0.92).split(',')[1]; out = u ? Uint8Array.from(atob(u), c => c.charCodeAt(0)) : null; }
+    else { const u = cvx.toDataURL('image/jpeg', 0.92).split(',')[1]; out = u ? Uint8Array.from(atob(u), c => c.charCodeAt(0)) : null; }
     return out && out.length > 2000 ? out : null;
   } catch { return null; } finally { v.destruir(); }
 }
