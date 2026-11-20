@@ -71,6 +71,7 @@ export async function pedirPersistencia(): Promise<boolean> {
 export function riesgoDeBorrado(persistente: boolean): 'ios-safari' | 'navegador' | null {
   const w = window as Window & { Capacitor?: { isNativePlatform?: () => boolean } };
   if (w.Capacitor?.isNativePlatform?.()) return null;
+  if (window.top !== window) return null; // dentro del Centro de Control (Claude): no aplica instalar en inicio
   const instalada = matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (ios) return instalada ? null : 'ios-safari';

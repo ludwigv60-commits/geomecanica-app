@@ -308,18 +308,12 @@ export function Panel() {
           <div className="c-marca">
             <img src="logo-lk.png" alt="LK Geomecánica" className="c-logo" />
             <div>
-              <small>LK GEOMECÁNICA · INGENIERÍA · GEOTÉCNICA</small>
-              <h1>CENTRO DE CONTROL LUDWIG<br /><span>JUSTA SUBTERRÁNEA</span></h1>
+              <h1>Centro de Control</h1>
+              <small>Justa Subterránea · LK Geomecánica</small>
             </div>
           </div>
-          <div className="c-kpis">
-            <div><b>{mapeos.length}</b><span>mapeos</span></div>
-            <div><b>{new Set(mapeos.map(m => m.labor).filter(Boolean)).size}</b><span>labores</span></div>
-            <div><b>{Math.round(filasTodas.reduce((s, x) => s + (x.avance ?? 0), 0))}</b><span>m mapeados</span></div>
-            <div><b className="chico">{fechaHora(ultimo)}</b><span>último envío</span></div>
-          </div>
           <nav className="c-tabs" role="tablist">
-            {PESTANAS.map(p => <button key={p.id} role="tab" aria-selected={tab === p.id} className={tab === p.id ? 'sel' : ''} onClick={() => irA(p.id)}>{p.icono} {p.nombre}</button>)}
+            {PESTANAS.map(p => <button key={p.id} role="tab" aria-selected={tab === p.id} className={tab === p.id ? 'sel' : ''} onClick={() => irA(p.id)}><span aria-hidden="true">{p.icono}</span> {p.nombre}</button>)}
           </nav>
         </div>
       </header>
@@ -387,9 +381,9 @@ export function Panel() {
           {estado === 'listo' && mapeos.length > 0 && !vistas.length && <p className="tenue">Ningún mapeo coincide con el filtro.</p>}
         </>}
 
-        {tab === 'inicio' && <Puente abierto={!(hechos.current?.length)} />}
-        {tab === 'inicio' && <Inicio filas={filasTodas} ocultas={ocultas} abrir={setApp} abrirMapeo={setAbierto} ir={irA} excel={excel}
+        {tab === 'inicio' && <Inicio filas={filasTodas} ocultas={ocultas} abrir={setApp} abrirMapeo={setAbierto} ir={irA} excel={excel} alCelular={alCelular} ultimoEnvio={fechaHora(ultimo)}
           nuevo={db && editor ? nuevoMapeo : undefined} recibir={mcp && editor ? () => recibirGmail(true) : undefined} recibiendo={gmail.estado === 'leyendo'} />}
+        {tab === 'inicio' && <Puente abierto={!(hechos.current?.length)} />}
         {tab === 'resumen' && <ResumenPk filas={vistas} abrir={setAbierto} />}
         {tab === 'tabla' && <Tabla filas={vistas} abrir={setAbierto} />}
         {tab === 'herramientas' && <><Puente /><Herramientas ocultas={ocultas} abrir={setApp} cambiar={db && editor ? (n => { setOcultas(n); db.doc('config/herramientas').set({ ocultas: n }).catch(e => setMsg(`No se pudo guardar: ${(e as Error).message}`)); }) : undefined} /></>}

@@ -236,9 +236,9 @@ export function Puente({ abierto }: { abierto?: boolean } = {}) {
 
 /* ───────── Inicio: ¿Qué vamos a hacer hoy? ───────── */
 const saludo = (h: number) => (h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches');
-export function Inicio({ filas, ocultas, abrir, abrirMapeo, nuevo, recibir, recibiendo, ir, excel }: {
+export function Inicio({ filas, ocultas, abrir, abrirMapeo, nuevo, recibir, recibiendo, ir, excel, alCelular, ultimoEnvio }: {
   filas: Fila[]; ocultas: string[]; abrir: (h: Herramienta) => void; abrirMapeo: (id: string) => void;
-  nuevo?: () => void; recibir?: () => void; recibiendo: boolean; ir: (t: Pestana) => void; excel: () => void;
+  nuevo?: () => void; recibir?: () => void; recibiendo: boolean; ir: (t: Pestana) => void; excel: () => void; alCelular?: () => void; ultimoEnvio?: string;
 }) {
   const ahora = new Date(), h = ahora.getHours();
   const guardia = h >= 7 && h < 19 ? 'Guardia día' : 'Guardia noche';
@@ -249,29 +249,46 @@ export function Inicio({ filas, ocultas, abrir, abrirMapeo, nuevo, recibir, reci
   const semana = new Date(ahora.getTime() - 7 * 864e5).toISOString().slice(0, 10);
   const deSemana = filas.filter(x => (x.r.fecha ?? '') >= semana);
   const metrosMes = Math.round(delMes.reduce((s, x) => s + (x.avance ?? 0), 0) * 10) / 10;
-  const porTipo = TIPOS.map(t => ({ tipo: t.tipo, m: delMes.filter(x => x.tipo === t.tipo).reduce((s, x) => s + (x.avance && x.avance > 0 ? x.avance : 0), 0) })).filter(x => x.m > 0);
-  const ultimos = filas.slice(0, 5);
+  const base = delMes.length ? delMes : filas; // la barra usa el mes; si aún no hay, todo
+  const porTipo = TIPOS.map(t => ({ tipo: t.tipo, m: base.filter(x => x.tipo === t.tipo).reduce((s, x) => s + (x.avance && x.avance > 0 ? x.avance : 0), 0) })).filter(x => x.m > 0);
+  const labores = new Set(filas.map(x => x.r.labor).filter(Boolean)).size;
+  const ultimos = filas.slice(0, 6);
+  const nombreMes = ahora.toLocaleDateString('es-PE', { month: 'long' });
   return (
     <div className="c-inicio">
-      <section className="c-hoy">
-        <div className="c-hoy-txt">
+      <section className="c-hero">
+        <div className="c-hero-txt">
           <small>{ahora.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' })} · {guardia}</small>
-          <h2>{saludo(h)}, Ludwig.<br /><span>¿Qué vamos a hacer hoy?</span></h2>
+          <h2>{saludo(h)}, Ludwig.</h2>
+          <p>¿Qué vamos a hacer hoy?</p>
+          <div className="c-hero-acc">
+            {nuevo && <button className="c-btn fuerte" onClick={nuevo}><i>＋</i>Nuevo mapeo</button>}
+            {recibir && <button className={`c-btn${recibiendo ? ' apagado' : ''}`} onClick={recibir} title="Mapeos que mandó el celular por correo"><i>📨</i>{recibiendo ? 'Recibiendo…' : 'Recibir del celular'}</button>}
+            {alCelular && <button className="c-btn" onClick={alCelular} disabled={!filas.length} title="Archivo para recuperar los mapeos en la app"><i>📲</i>Pasar al celular</button>}
+            <button className="c-btn" onClick={excel} disabled={!filas.length}><i>⬇</i>Excel</button>
+          </div>
         </div>
-        <div className="c-hoy-acc">
-          {nuevo && <button className="c-accion fuerte" onClick={nuevo}><i>➕</i><b>Nuevo mapeo</b><small>Se guarda directo en el Centro</small></button>}
-          {recibir && <button className={`c-accion${recibiendo ? ' apagado' : ''}`} onClick={recibir}><i>📨</i><b>{recibiendo ? 'Recibiendo…' : 'Recibir del celular'}</b><small>Mapeos que mandó el APK</small></button>}
-          <button className="c-accion" onClick={() => ir('resumen')}><i>📈</i><b>Resumen PK a PK</b><small>Tipo de roca por tramo</small></button>
-          <button className="c-accion" onClick={excel} disabled={!filas.length}><i>⬇</i><b>Excel</b><small>Resumen, PK a PK y detalle</small></button>
+        <div className="c-hero-datos">
+          <div className="c-hero-kpis">
+            <div><b>{delMes.length}</b><span>mapeos en {nombreMes}</span></div>
+            <div><b>{metrosMes}<em> m</em></b><span>mapeados en {nombreMes}</span></div>
+            <div><b>{deSemana.length}</b><span>últimos 7 días</span></div>
+            <div><b>{labores}</b><span>labores · {filas.length} mapeos</span></div>
+          </div>
+          <div className="c-hero-barra">
+            <small>Tipo de roca {delMes.length ? `en ${nombreMes}` : 'acumulado'}</small>
+            {porTipo.length ? <Barra partes={porTipo} total={porTipo.reduce((s, x) => s + x.m, 0)} /> : <p>Sin metros registrados todavía.</p>}
+          </div>
+          {ultimoEnvio && ultimoEnvio !== '—' && <small className="c-hero-pie">Último mapeo recibido: {ultimoEnvio}</small>}
         </div>
       </section>
 
-      <section className="c-sec">
-        <div className="c-sec-cab"><h2>Aplicativos principales</h2><button className="c-link" onClick={() => ir('herramientas')}>Ver todas mis herramientas →</button></div>
+      <section>
+        <div className="c-sec-cab"><h2>Mis aplicativos</h2><button className="c-link" onClick={() => ir('herramientas')}>Todas las herramientas →</button></div>
         <div className="c-apps">
           {apps.map(({ h: x, color, corto }) => {
             const fuera = !dentro(x);
-            const cont = <><i style={{ background: `linear-gradient(145deg, ${color}, color-mix(in srgb, ${color} 62%, #000))` }}>{x.icono}</i><b>{corto}</b><small>{x.que}</small>{fuera && <em title="Se abre en Claude porque guarda sus datos allí">↗</em>}</>;
+            const cont = <><i style={{ background: `linear-gradient(145deg, ${color}, color-mix(in srgb, ${color} 62%, #000))` }}>{x.icono}</i><span><b>{corto}</b><small>{x.que}</small></span>{fuera ? <em title="Se abre en Claude porque guarda sus datos allí">↗</em> : <em aria-hidden="true">›</em>}</>;
             return fuera
               ? <a key={x.nombre} className="c-app" style={{ '--c': color } as CSSProperties} href={x.url} target="_blank" rel="noopener">{cont}</a>
               : <button key={x.nombre} className="c-app" style={{ '--c': color } as CSSProperties} onClick={() => abrir(x)}>{cont}</button>;
@@ -282,7 +299,7 @@ export function Inicio({ filas, ocultas, abrir, abrirMapeo, nuevo, recibir, reci
       <div className="c-dos">
         <section className="c-card">
           <div className="c-sec-cab"><h2>Últimos mapeos</h2><button className="c-link" onClick={() => ir('mapeos')}>Ver todos →</button></div>
-          {!ultimos.length && <p className="tenue">Todavía no hay mapeos. Toque <b>➕ Nuevo mapeo</b> o <b>📨 Recibir del celular</b>.</p>}
+          {!ultimos.length && <p className="tenue">Todavía no hay mapeos. Toque <b>＋ Nuevo mapeo</b> o <b>📨 Recibir del celular</b>.</p>}
           <ul className="c-ult">
             {ultimos.map(x => { const i = infoTipo(x.tipo); return (
               <li key={x.r.id}><button onClick={() => abrirMapeo(x.r.id)}>
@@ -292,14 +309,15 @@ export function Inicio({ filas, ocultas, abrir, abrirMapeo, nuevo, recibir, reci
               </button></li>); })}
           </ul>
         </section>
-        <section className="c-card">
-          <div className="c-sec-cab"><h2>Este mes</h2><span className="tenue">{ahora.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}</span></div>
-          <div className="c-mini">
-            <div><b>{delMes.length}</b><span>mapeos</span></div>
-            <div><b>{metrosMes}</b><span>m mapeados</span></div>
-            <div><b>{deSemana.length}</b><span>últimos 7 días</span></div>
-          </div>
-          {porTipo.length ? <Barra partes={porTipo} total={porTipo.reduce((s, x) => s + x.m, 0)} /> : <p className="tenue">Sin metros mapeados este mes.</p>}
+        <section className="c-card c-nuevo">
+          <div className="c-sec-cab"><h2>Lo nuevo en el mapeo</h2></div>
+          <ul>
+            <li style={{ '--c': '#2f6fb3' } as CSSProperties}><i>🧊</i><span><b>Cuñas proyectadas en 3D</b><small>Antes del desatado, como bloques reales dentro del área de influencia. Gire y acerque.</small>
+              {filas[0] && <button className="c-link" onClick={() => abrirMapeo(filas[0]!.r.id)}>Verlas en {filas[0].r.labor || 'el último mapeo'} PK {filas[0].r.desde || '—'} →</button>}</span></li>
+            <li style={{ '--c': '#15803d' } as CSSProperties}><i>🛡️</i><span><b>FS del sostenimiento</b><small>Realista, con perno de 16.4 t (pull test) y shotcrete con fibra.</small></span></li>
+            <li style={{ '--c': '#b45309' } as CSSProperties}><i>🧭</i><span><b>Red estereográfica</b><small>Familias y cuñas sobre la corona, en la sección del reporte.</small></span></li>
+            <li style={{ '--c': '#7c3aed' } as CSSProperties}><i>💾</i><span><b>Respaldo y recuperación</b><small>Si el celular pierde los mapeos, 📲 Pasar al celular los devuelve con sus fotos.</small></span></li>
+          </ul>
         </section>
       </div>
     </div>
