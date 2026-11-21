@@ -90,3 +90,21 @@ for f in glob.glob(d+'/*.html')+[d+'/mapeo/index.html']:
     open(f,'w',encoding='utf-8').write(s)
 PY
 }
+
+# Herramientas con memoria dentro del Centro: les da window.claude con la base del Centro (carpeta lk/<herramienta>/),
+# las descargas y la identidad del Centro, y respalda su localStorage en esa base (ver nube-polyfill.js).
+# Va primero en <head>, antes que el código de la herramienta. No se usa en mapeo/ (tiene su propio guardado).
+# Uso: inyectar_nube <dir_herramientas>
+inyectar_nube() {
+  local poly; poly="$(dirname "$0")/src/panel/nube-polyfill.js"
+  python3 - "$1" "$poly" <<'PY'
+import sys,re,glob
+d,p=sys.argv[1],sys.argv[2]
+tag='<script data-lk="nube">'+open(p,encoding='utf-8').read()+'</script>'
+for f in glob.glob(d+'/*.html'):
+    s=open(f,encoding='utf-8').read()
+    s=re.sub(r'<script data-lk="nube">.*?</script>','',s,count=1,flags=re.S)
+    m=re.search(r'<head[^>]*>',s,re.I); s=s[:m.end()]+tag+s[m.end():] if m else tag+s
+    open(f,'w',encoding='utf-8').write(s)
+PY
+}
