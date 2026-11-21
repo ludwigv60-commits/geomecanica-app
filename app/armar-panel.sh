@@ -108,3 +108,31 @@ for f in glob.glob(d+'/*.html'):
     open(f,'w',encoding='utf-8').write(s)
 PY
 }
+
+# Herramientas que abren más rápido: las librerías grandes embebidas como <script type="text/plain" id=…> (más de 150 KB)
+# pasan a herramientas/lib/<hash>.txt y se traen solo cuando la herramienta las usa (ver perezoso-polyfill.js).
+# Uso: separar_librerias <dir_herramientas>   (publicar también herramientas/lib/*.txt)
+separar_librerias() {
+  local poly; poly="$(dirname "$0")/src/panel/perezoso-polyfill.js"
+  python3 - "$1" "$poly" <<'PY'
+import re,glob,hashlib,os,sys
+d,p=sys.argv[1],sys.argv[2]
+shim='<script data-lk="perezoso">'+open(p,encoding='utf-8').read()+'</script>'
+os.makedirs(d+'/lib',exist_ok=True)
+for f in sorted(glob.glob(d+'/*.html')):
+    s=open(f,encoding='utf-8').read(); movidos=[]
+    def rep(m):
+        attrs,body=m.group(1),m.group(2)
+        t=re.search(r'type="([^"]+)"',attrs); i=re.search(r'id="([^"]+)"',attrs)
+        if not t or not i or 'javascript' in t.group(1) or t.group(1)=='module' or len(body)<150000 or 'data-lk-src' in attrs: return m.group(0)
+        ruta='lib/%s.txt'%hashlib.sha256(body.encode('utf-8')).hexdigest()[:16]
+        if not os.path.exists(d+'/'+ruta): open(d+'/'+ruta,'w',encoding='utf-8').write(body)
+        movidos.append(i.group(1))
+        return '<script%s data-lk-src="%s"></script><script>lkPerezoso(%r)</script>'%(attrs,ruta,i.group(1))
+    s=re.sub(r'<script([^>]*)>(.*?)</script>',rep,s,flags=re.S)
+    if movidos:
+        s=re.sub(r'<script data-lk="perezoso">.*?</script>','',s,count=1,flags=re.S)
+        m=re.search(r'<head[^>]*>',s,re.I); s=s[:m.end()]+shim+s[m.end():]
+        open(f,'w',encoding='utf-8').write(s); print(os.path.basename(f),movidos)
+PY
+}
